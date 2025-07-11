@@ -1,12 +1,11 @@
 # Function to detect if we're in a container and return colored status
 function container_status() {
   local version=""
-  if command -v lsb_release >/dev/null 2>&1; then
-    local release_output
-    release_output=$(lsb_release -r 2>/dev/null)
-    version=$(echo "$release_output" | grep "Release:" | cut -d':' -f2 | xargs)
-    if [[ -n "$version" ]]; then
-      version=", $version"
+  if [[ -f /etc/os-release ]]; then
+    local os_id=$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    local version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    if [[ -n "$os_id" && -n "$version_id" ]]; then
+      version=", $os_id-$version_id"
     fi
   fi
   
