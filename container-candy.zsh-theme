@@ -1,9 +1,18 @@
 # Function to detect if we're in a container and return colored status
 function container_status() {
+  local version=""
+  if command -v lsb_release >/dev/null 2>&1; then
+    local release_output=$(lsb_release -r 2>/dev/null)
+    version=$(echo "$release_output" | grep "Release:" | cut -d':' -f2 | xargs)
+    if [[ -n "$version" ]]; then
+      version=", $version"
+    fi
+  fi
+  
   if test -f /run/.containerenv; then
-    echo "%{$fg[red]%}(container)%{$reset_color%}"
+    echo "%{$fg[red]%}(container$version)%{$reset_color%}"
   else
-    echo "%{$fg[yellow]%}(physical)%{$reset_color%}"
+    echo "%{$fg[yellow]%}(physical$version)%{$reset_color%}"
   fi
 }
 
