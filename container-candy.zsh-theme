@@ -25,8 +25,20 @@ function prompt_dynamic_info() {
   fi
   local os_long="" os_short=""
   local kernel_long="" kernel_short=""
+  local os_type=$(uname -s 2>/dev/null)
 
-  if [[ -f /etc/os-release ]]; then
+  if [[ "$os_type" == "Darwin" ]]; then
+    # macOS: use sw_vers
+    if command -v sw_vers &>/dev/null; then
+      local product_name=$(sw_vers -productName 2>/dev/null)
+      local product_version=$(sw_vers -productVersion 2>/dev/null)
+      if [[ -n "$product_name" && -n "$product_version" ]]; then
+        os_long=", $product_name $product_version"
+        os_short=", macOS-$product_version"
+      fi
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # Linux: use /etc/os-release
     # Get PRETTY_NAME for long version
     local pretty_name=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
     # Get ID-VERSION_ID for short version
@@ -49,11 +61,13 @@ function prompt_dynamic_info() {
   if command -v uname &>/dev/null; then
     local kernel_full=$(uname -r 2>/dev/null)
     if [[ -n "$kernel_full" ]]; then
-      kernel_long=", linux-$kernel_full"
+      local kernel_name="$os_type"
+      [[ -z "$kernel_name" ]] && kernel_name="Unknown"
+      kernel_long=", $kernel_name-$kernel_full"
       # Extract just major.minor.patch for short version
       local kernel_short_ver=$(echo "$kernel_full" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
       if [[ -n "$kernel_short_ver" ]]; then
-        kernel_short=", linux-$kernel_short_ver"
+        kernel_short=", $kernel_name-$kernel_short_ver"
       else
         kernel_short="$kernel_long"
       fi
@@ -62,9 +76,9 @@ function prompt_dynamic_info() {
 
   local container_type
   if test -f /run/.containerenv; then
-    container_type="container"
+    container_type="Container"
   else
-    container_type="host"
+    container_type="Host"
   fi
 
   # Calculate prompt lengths for all three tiers
