@@ -49,9 +49,10 @@ function prompt_dynamic_info() {
       os_long="$pretty_name"
     fi
     if [[ -n "$os_id" && -n "$version_id" ]]; then
-      os_short="$os_id-$version_id"
+      # Capitalize first letter of os_id
+      os_short="${(C)os_id}-$version_id"
     elif [[ -n "$os_id" ]]; then
-      os_short="$os_id"
+      os_short="${(C)os_id}"
     fi
     # If no pretty_name, use short version for both
     [[ -z "$os_long" && -n "$os_short" ]] && os_long="$os_short"
@@ -79,7 +80,7 @@ function prompt_dynamic_info() {
   local badge_color
   if test -f /run/.containerenv; then
     container_type="CNTR"
-    badge_color="%{$fg[red]%}"
+    badge_color="%{$fg[magenta]%}"
   else
     container_type="HOST"
     badge_color="%{$fg[yellow]%}"
@@ -93,7 +94,7 @@ function prompt_dynamic_info() {
 
   # Core components (always present)
   local user_host_len=$((${#USER} + 1 + ${#HOST}))  # user@host
-  local time_len=13                                  # [HH:MM:SS XM]
+  local time_len=10                                  # [HH:MM:SS] 24-hour format
   local path_len=${#PWD}                             # current directory
   local fixed_len=7                                  # spaces and [] around path
 
@@ -424,7 +425,7 @@ function ai_tools_status() {
 # Modified PROMPT with host badge, system info, and AI tools status
 # Uses four-tier display: min < short < short+ai < long based on terminal width
 # Order: user@host [Host/Container] [time] [path] [git] [system_info] [AI_tools]
-PROMPT=$'%{$fg_bold[green]%}%n@%m%{$reset_color%}$(host_container_badge) %{$fg_bold[red]%}%D{[%X]} %{$reset_color%}%{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(system_info_status)$(ai_tools_status_conditional)\
+PROMPT=$'%{$fg_bold[green]%}%n@%m%{$reset_color%}$(host_container_badge) %B%{$FG[214]%}[%D{%H:%M:%S}]%b%{$reset_color%} %{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(system_info_status)$(ai_tools_status_conditional)\
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 ZSH_THEME_GIT_PROMPT_PREFIX="%{$fg[green]%}["
