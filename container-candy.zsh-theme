@@ -10,9 +10,9 @@ _prompt_visible_len() {
 _PROMPT_CACHE=""
 _PROMPT_CACHE_KEY=""
 
-# Function to build complete prompt info (container + AI tools)
-# Three-tier system: min (no container/AI) < short (compact container, no AI) < long (full details + AI)
-# Returns: "container_part|ai_part" separated by pipe
+# Function to build complete prompt info (host badge + system info + AI tools)
+# Three-tier system: min (no extras) < short (compact system info) < long (full details + AI)
+# Returns: "host_badge|system_info|ai_part" separated by pipes
 # Cached per-prompt to avoid duplicate computation
 function prompt_dynamic_info() {
   # Cache key: COLUMNS + PWD + last command exit status
@@ -33,8 +33,8 @@ function prompt_dynamic_info() {
       local product_name=$(sw_vers -productName 2>/dev/null)
       local product_version=$(sw_vers -productVersion 2>/dev/null)
       if [[ -n "$product_name" && -n "$product_version" ]]; then
-        os_long=", $product_name $product_version"
-        os_short=", macOS-$product_version"
+        os_long="$product_name $product_version"
+        os_short="macOS-$product_version"
       fi
     fi
   elif [[ -f /etc/os-release ]]; then
@@ -46,12 +46,12 @@ function prompt_dynamic_info() {
     local version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
 
     if [[ -n "$pretty_name" ]]; then
-      os_long=", $pretty_name"
+      os_long="$pretty_name"
     fi
     if [[ -n "$os_id" && -n "$version_id" ]]; then
-      os_short=", $os_id-$version_id"
+      os_short="$os_id-$version_id"
     elif [[ -n "$os_id" ]]; then
-      os_short=", $os_id"
+      os_short="$os_id"
     fi
     # If no pretty_name, use short version for both
     [[ -z "$os_long" && -n "$os_short" ]] && os_long="$os_short"
@@ -74,11 +74,15 @@ function prompt_dynamic_info() {
     fi
   fi
 
+  # Determine container type and badge (4-char abbreviations)
   local container_type
+  local badge_color
   if test -f /run/.containerenv; then
-    container_type="Container"
+    container_type="CNTR"
+    badge_color="%{$fg[red]%}"
   else
-    container_type="Host"
+    container_type="HOST"
+    badge_color="%{$fg[yellow]%}"
   fi
 
   # Calculate prompt lengths for all three tiers
@@ -93,69 +97,78 @@ function prompt_dynamic_info() {
   local path_len=${#PWD}                             # current directory
   local fixed_len=7                                  # spaces and [] around path
 
+  # Host/Container badge length: [Host] or [Container] + space
+  local badge_len=$((${#container_type} + 3))  # +3 for [], space
+
   # MIN: user@host [time] [path] [git]
   local min_len=$((user_host_len + time_len + path_len + git_len + fixed_len))
 
-  # SHORT: min + [container, os-short, kernel-short]
+  # SHORT: min + [Host/Container] + [os-short, kernel-short]
   local short_version="${os_short}${kernel_short}"
-  local short_container_len=$((${#container_type} + ${#short_version} + 3))  # +3 for [], space
-  local short_len=$((min_len + short_container_len))
+  local short_sysinfo_len=$((${#short_version} + 3))  # +3 for [], space
+  local short_len=$((min_len + badge_len + short_sysinfo_len))
 
-  # SHORT+AI: short container + AI tools (+ 1 for space before AI)
+  # SHORT+AI: short + AI tools (+ 1 for space before AI)
   local ai_space=$([[ -n "$ai_info" ]] && echo 1 || echo 0)
   local short_ai_len=$((short_len + ai_len + ai_space))
 
-  # LONG: long container + AI tools
+  # LONG: min + badge + long system info + AI tools
   local long_version="${os_long}${kernel_long}"
-  local long_container_len=$((${#container_type} + ${#long_version} + 3))  # +3 for [], space
-  local long_len=$((min_len + long_container_len + ai_len + ai_space))
+  local long_sysinfo_len=$((${#long_version} + 3))  # +3 for [], space
+  local long_len=$((min_len + badge_len + long_sysinfo_len + ai_len + ai_space))
 
   # Decide which tier to use based on COLUMNS
   # Priority: LONG > SHORT+AI > SHORT > MIN
-  # Container type color: cyan for physical, red for container
-  local type_color="%{$fg[cyan]%}"
-  if test -f /run/.containerenv; then
-    type_color="%{$fg[red]%}"
-  fi
-
-  local container_output=""
+  local host_badge=""
+  local system_info=""
   local ai_output=""
 
   if (( long_len <= COLUMNS )); then
-    # LONG mode: full container info + AI tools
-    container_output=" %{$fg[cyan]%}[${type_color}${container_type}%{$fg[cyan]%}${long_version}]%{$reset_color%}"
+    # LONG mode: badge + full system info + AI tools
+    host_badge=" ${badge_color}[${container_type}]%{$reset_color%}"
+    system_info=" %{$fg[cyan]%}[${long_version}]%{$reset_color%}"
     [[ -n "$ai_info" ]] && ai_output=" $ai_info" || ai_output=""
   elif (( short_ai_len <= COLUMNS )); then
-    # SHORT+AI mode: short container info + AI tools
-    container_output=" %{$fg[cyan]%}[${type_color}${container_type}%{$fg[cyan]%}${short_version}]%{$reset_color%}"
+    # SHORT+AI mode: badge + short system info + AI tools
+    host_badge=" ${badge_color}[${container_type}]%{$reset_color%}"
+    system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
     [[ -n "$ai_info" ]] && ai_output=" $ai_info" || ai_output=""
   elif (( short_len <= COLUMNS )); then
-    # SHORT mode: short container info, no AI
-    container_output=" %{$fg[cyan]%}[${type_color}${container_type}%{$fg[cyan]%}${short_version}]%{$reset_color%}"
+    # SHORT mode: badge + short system info, no AI
+    host_badge=" ${badge_color}[${container_type}]%{$reset_color%}"
+    system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
     ai_output=""
   else
-    # MIN mode: no container, no AI
-    container_output=""
+    # MIN mode: no badge, no system info, no AI
+    host_badge=""
+    system_info=""
     ai_output=""
   fi
 
   # Store in cache and return
-  local result="${container_output}|${ai_output}"
+  local result="${host_badge}|${system_info}|${ai_output}"
   _PROMPT_CACHE="$result"
   _PROMPT_CACHE_KEY="$cache_key"
   echo "$result"
 }
 
-# Extract container status from prompt_dynamic_info
-function container_status() {
+# Extract host/container badge from prompt_dynamic_info
+function host_container_badge() {
   local info=$(prompt_dynamic_info)
-  echo "${info%%|*}"  # Everything before the pipe
+  echo "${info%%|*}"  # First part before first pipe
+}
+
+# Extract system info from prompt_dynamic_info
+function system_info_status() {
+  local info=$(prompt_dynamic_info)
+  local rest="${info#*|}"  # Remove first part
+  echo "${rest%%|*}"  # Second part before second pipe
 }
 
 # Extract AI status from prompt_dynamic_info
 function ai_tools_status_conditional() {
   local info=$(prompt_dynamic_info)
-  echo "${info#*|}"  # Everything after the pipe
+  echo "${info##*|}"  # Last part after last pipe
 }
 
 # AI Coding Tools version status for prompt
@@ -408,10 +421,10 @@ function ai_tools_status() {
   echo "$ai_status"
 }
 
-# Modified PROMPT with container status and AI tools status
+# Modified PROMPT with host badge, system info, and AI tools status
 # Uses four-tier display: min < short < short+ai < long based on terminal width
-# Order: user@host [time] [path] [git] (system_info) [AI_tools]
-PROMPT=$'%{$fg_bold[green]%}%n@%m %{$reset_color%}%{$fg_bold[red]%}%D{[%X]} %{$reset_color%}%{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(container_status)$(ai_tools_status_conditional)\
+# Order: user@host [Host/Container] [time] [path] [git] [system_info] [AI_tools]
+PROMPT=$'%{$fg_bold[green]%}%n@%m%{$reset_color%}$(host_container_badge) %{$fg_bold[red]%}%D{[%X]} %{$reset_color%}%{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(system_info_status)$(ai_tools_status_conditional)\
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 ZSH_THEME_GIT_PROMPT_PREFIX="%{$fg[green]%}["
