@@ -89,8 +89,10 @@ function prompt_dynamic_info() {
   # Calculate prompt lengths for all three tiers
   local git_info=$(git_prompt_info 2>/dev/null)
   local ai_info=$(ai_tools_status 2>/dev/null)
+  local pr_info=$(gh_pr_status 2>/dev/null)
   local git_len=$(_prompt_visible_len "$git_info")
   local ai_len=$(_prompt_visible_len "$ai_info")
+  local pr_len=$(_prompt_visible_len "$pr_info")
 
   # Core components (always present)
   local user_host_len=$((${#USER} + 1 + ${#HOST}))  # user@host
@@ -101,8 +103,8 @@ function prompt_dynamic_info() {
   # Host/Container badge length: [Host] or [Container] + space
   local badge_len=$((${#container_type} + 3))  # +3 for [], space
 
-  # MIN: user@host [time] [path] [git]
-  local min_len=$((user_host_len + time_len + path_len + git_len + fixed_len))
+  # MIN: user@host [time] [path] [git] [pr]
+  local min_len=$((user_host_len + time_len + path_len + git_len + pr_len + fixed_len))
 
   # SHORT: min + [Host/Container] + [os-short, kernel-short]
   local short_version="${os_short}${kernel_short}"
@@ -180,6 +182,10 @@ _CLAUDE_CACHE_FILE="${TMPDIR:-/tmp}/.claude_version_cache_${USER}"
 _CODEX_CACHE_FILE="${TMPDIR:-/tmp}/.codex_version_cache_${USER}"
 _GEMINI_CACHE_FILE="${TMPDIR:-/tmp}/.gemini_version_cache_${USER}"
 
+# GitHub PR cache
+_GH_PR_CACHE_FILE="${TMPDIR:-/tmp}/.gh_pr_cache_${USER}"
+_GH_PR_CACHE_TTL=300  # 5 minutes
+
 # Helper: compare semantic versions, returns 0 if $1 > $2
 _prompt_version_gt() {
   test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"
@@ -196,9 +202,9 @@ _claude_update_cache() {
     # Get local installed version
     installed_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
 
-    # Get remote latest version
-    local changelog_url="https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md"
-    remote_version=$(curl -s --max-time 5 "$changelog_url" | head -n 50 | grep "^## " | head -n 1 | sed 's/^## //')
+    # Get remote latest version from NPM registry
+    local npm_url="https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
+    remote_version=$(curl -s --max-time 5 "$npm_url" | grep -o '"version":"[^"]*"' | sed 's/"version":"//; s/"//')
 
     # Only update cache if we got the local version
     if [[ -n "$installed_version" ]]; then
@@ -408,6 +414,85 @@ function gemini_status() {
   fi
 }
 
+# Update GitHub PR cache (runs in background)
+# Cache format: remote_url|branch_name|pr_number|timestamp
+_gh_pr_update_cache() {
+  (
+    local cache_file="$1"
+    local remote_url="$2"
+    local branch="$3"
+
+    local pr_number
+    pr_number=$(gh pr view --json number --jq '.number' 2>/dev/null)
+
+    if [[ -z "$pr_number" ]]; then
+      pr_number="-1"
+    fi
+
+    local current_time=$(date +%s)
+    local cache_key="${remote_url}|${branch}"
+
+    # Read existing cache, filter out this key, add new entry
+    local temp_file="${cache_file}.tmp.$$"
+    if [[ -f "$cache_file" ]]; then
+      grep -v "^${cache_key}|" "$cache_file" > "$temp_file" 2>/dev/null || true
+    fi
+    echo "${cache_key}|${pr_number}|${current_time}" >> "$temp_file"
+    mv "$temp_file" "$cache_file"
+  ) &>/dev/null &
+}
+
+# Get GitHub PR status for prompt
+function gh_pr_status() {
+  # Check if gh command exists
+  if ! command -v gh &>/dev/null; then
+    return
+  fi
+
+  # Check if we're in a git repo
+  if ! git rev-parse --git-dir &>/dev/null 2>&1; then
+    return
+  fi
+
+  local remote_url=$(git config --get remote.origin.url 2>/dev/null)
+  local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+  if [[ -z "$remote_url" || -z "$branch" ]]; then
+    return
+  fi
+
+  local cache_key="${remote_url}|${branch}"
+  local pr_number=""
+  local cache_time=0
+  local current_time=$(date +%s)
+
+  # Check cache
+  if [[ -f "$_GH_PR_CACHE_FILE" ]]; then
+    local cached_line=$(grep "^${cache_key}|" "$_GH_PR_CACHE_FILE" 2>/dev/null | tail -1)
+    if [[ -n "$cached_line" ]]; then
+      pr_number=$(echo "$cached_line" | cut -d'|' -f3)
+      cache_time=$(echo "$cached_line" | cut -d'|' -f4)
+
+      # Validate cache_time
+      if [[ ! "$cache_time" =~ ^[0-9]+$ ]]; then
+        cache_time=0
+      fi
+    fi
+  fi
+
+  # Check if cache expired or missing
+  if (( current_time - cache_time > _GH_PR_CACHE_TTL )); then
+    # Trigger background refresh
+    _gh_pr_update_cache "$_GH_PR_CACHE_FILE" "$remote_url" "$branch"
+  fi
+
+  # Display PR number if available and valid
+  if [[ -n "$pr_number" && "$pr_number" != "-1" ]]; then
+    # Pink color: FG[213]
+    echo "%{$FG[213]%}[#${pr_number}]%{$reset_color%}"
+  fi
+}
+
 # Combined AI tools status
 function ai_tools_status() {
   local ai_status=""
@@ -424,8 +509,8 @@ function ai_tools_status() {
 
 # Modified PROMPT with host badge, system info, and AI tools status
 # Uses four-tier display: min < short < short+ai < long based on terminal width
-# Order: user@host [Host/Container] [time] [path] [git] [system_info] [AI_tools]
-PROMPT=$'%{$fg_bold[green]%}%n@%m%{$reset_color%}$(host_container_badge) %B%{$FG[214]%}[%D{%H:%M:%S}]%b%{$reset_color%} %{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(system_info_status)$(ai_tools_status_conditional)\
+# Order: user@host [Host/Container] [time] [path] [git][PR#] [system_info] [AI_tools]
+PROMPT=$'%{$fg_bold[green]%}%n@%m%{$reset_color%}$(host_container_badge) %B%{$FG[214]%}[%D{%H:%M:%S}]%b%{$reset_color%} %{$fg[white]%}[%~]%{$reset_color%} $(git_prompt_info)$(gh_pr_status)$(system_info_status)$(ai_tools_status_conditional)\
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 ZSH_THEME_GIT_PROMPT_PREFIX="%{$fg[green]%}["
