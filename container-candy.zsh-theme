@@ -29,6 +29,13 @@ typeset -g _CLR_USER_HOST=136         # Brown - user@host
 # Level 3+ (deeper): light magenta
 typeset -ga _PATH_BG_COLORS=(159 229 157 225)
 
+# Internal separator for git hierarchy cache (avoid collisions with ':' in paths)
+# Uses ASCII Unit Separator (0x1f) which won't appear in filesystem paths.
+# IMPORTANT: When splitting strings with this separator in zsh, use:
+#   ${(@ps.$sep.)string}   -- CORRECT (p flag + s.$var. syntax)
+#   ${(@s:$sep:)string}    -- WRONG (s:X: requires literal X, not variable)
+typeset -g _GIT_HIERARCHY_SEP=$'\x1f'
+
 # GitHub username badge background color (white background for normal, red for mismatch)
 typeset -g _CLR_GH_USER_BG=255        # White background
 typeset -g _CLR_GH_USER_FG=16         # Black foreground
@@ -161,19 +168,21 @@ typeset -g _CACHE_USE_SQLITE=0  # Will be set to 1 if sqlite3 is available
 
 # Check if sqlite3 is available and initialize database
 if command -v sqlite3 &>/dev/null; then
-  _CACHE_USE_SQLITE=1
-
   # Initialize database schema (only creates if not exists)
   # Enable WAL mode for better concurrent write handling across multiple shells
-  sqlite3 "$_CACHE_DB_FILE" "
-    PRAGMA journal_mode=WAL;
-    CREATE TABLE IF NOT EXISTS cache (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      timestamp INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);
-  " &>/dev/null
+  if sqlite3 "$_CACHE_DB_FILE" "
+      PRAGMA journal_mode=WAL;
+      CREATE TABLE IF NOT EXISTS cache (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        timestamp INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);
+    " &>/dev/null; then
+    _CACHE_USE_SQLITE=1
+  else
+    _CACHE_USE_SQLITE=0
+  fi
 fi
 
 # Check if flock is available for file-based cache locking (fallback mode)
@@ -501,9 +510,15 @@ function _prompt_emoji_help() {
 }
 
 # Aliases for quick commands
-alias e='_prompt_toggle_emoji'
-alias p='_prompt_toggle_path_sep'
-alias h='_prompt_emoji_help'
+if (( ! $+aliases[e] && ! $+functions[e] )); then
+  alias e='_prompt_toggle_emoji'
+fi
+if (( ! $+aliases[p] && ! $+functions[p] )); then
+  alias p='_prompt_toggle_path_sep'
+fi
+if (( ! $+aliases[h] && ! $+functions[h] )); then
+  alias h='_prompt_emoji_help'
+fi
 
 # Manual cache refresh function - clears all prompt caches
 # Call this to force refresh of all cached data (system info, git, PR, AI tools)
@@ -550,20 +565,9 @@ function _prompt_refresh_all_caches() {
 }
 
 # Alias for quick cache refresh
-alias u='_prompt_refresh_all_caches'
-
-# SSH session indicator
-# Returns ⚡/[SSH] if connected via SSH, empty otherwise
-# Plaintext mode wraps in brackets with trailing space, emoji mode shows just the symbol
-function ssh_indicator() {
-  if [[ -n "$SSH_CONNECTION" ]]; then
-    if (( _PROMPT_EMOJI_MODE )); then
-      echo "%{$fg[cyan]%}$(_e ssh)%{$reset_color%}"
-    else
-      echo "%{$fg[cyan]%}[$(_e ssh)]%{$reset_color%} "
-    fi
-  fi
-}
+if (( ! $+aliases[u] && ! $+functions[u] )); then
+  alias u='_prompt_refresh_all_caches'
+fi
 
 # Capture exit status before any other precmd runs
 _LAST_EXIT_STATUS=0
@@ -574,51 +578,11 @@ function _capture_exit_status() {
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _capture_exit_status
 
-# Exit status indicator - shows success/failure with code, wrapped in brackets
-function exit_status_indicator() {
-  if [[ $_LAST_EXIT_STATUS -eq 0 ]]; then
-    echo "%{$fg[green]%}[$(_e exit_ok)]%{$reset_color%}"
-  else
-    echo "%{$fg[red]%}[$(_e exit_fail)${_LAST_EXIT_STATUS}]%{$reset_color%}"
-  fi
-}
-
-# Background jobs indicator
-function jobs_indicator() {
-  # Get job count using zsh's special %j which expands at prompt time
-  # We return the icon/text based on mode, prompt handles the conditional
-  echo "$(_e jobs)"
-}
-
-# Time display with dynamic color based on hour of day
-# Morning (6-12): warm yellow, Afternoon (12-18): bright white
-# Evening (18-22): soft orange, Night (22-6): dim blue
-function time_with_color() {
-  local hour=""
-  if (( ${+EPOCHSECONDS} )); then
-    strftime -s hour "%H" "$EPOCHSECONDS"
-  else
-    hour=$(date +%H)
-  fi
-  local color
-  if (( hour >= 6 && hour < 12 )); then
-    color="%{$FG[$_CLR_TIME_MORNING]%}"    # Morning: warm yellow
-  elif (( hour >= 12 && hour < 18 )); then
-    color="%{$FG[$_CLR_TIME_AFTERNOON]%}"  # Afternoon: bright white
-  elif (( hour >= 18 && hour < 22 )); then
-    color="%{$FG[$_CLR_TIME_EVENING]%}"    # Evening: soft orange
-  else
-    color="%{$FG[$_CLR_TIME_NIGHT]%}"      # Night: dim blue
-  fi
-  echo "${color}[%D{%H:%M:%S}]%{$reset_color%}"
-}
-
 # Per-prompt render id to avoid recomputing expensive segments multiple times
 _PROMPT_RENDER_ID=0
 function _prompt_bump_render_id() {
   (( _PROMPT_RENDER_ID++ ))
 }
-autoload -Uz add-zsh-hook
 add-zsh-hook precmd _prompt_bump_render_id
 
 # ============================================================================
@@ -648,7 +612,7 @@ typeset -g _PP_RPROMPT=""        # Right prompt content
 # PERFORMANCE: Inline logic and use direct variable assignment to minimize subshells
 # Target: reduce from 10-15 subshells to 2-4 per prompt
 function _precmd_compute_prompt() {
-  # === Exit status (inline exit_status_indicator) ===
+  # === Exit status ===
   if [[ $_LAST_EXIT_STATUS -eq 0 ]]; then
     if (( _PROMPT_EMOJI_MODE )); then
       _PP_EXIT="%{$fg[green]%}[✓]%{$reset_color%}"
@@ -663,7 +627,7 @@ function _precmd_compute_prompt() {
     fi
   fi
 
-  # === SSH indicator (inline ssh_indicator) ===
+  # === SSH indicator ===
   if [[ -n "$SSH_CONNECTION" ]]; then
     if (( _PROMPT_EMOJI_MODE )); then
       _PP_SSH="%{$fg[cyan]%}⚡%{$reset_color%}"
@@ -680,7 +644,7 @@ function _precmd_compute_prompt() {
   # === GitHub username badge (direct assignment, no subshell) ===
   _compute_gh_username_direct  # Sets _PP_GH_USER directly
 
-  # === Time with dynamic color (inline time_with_color) ===
+  # === Time with dynamic color ===
   local hour=""
   if (( ${+EPOCHSECONDS} )); then
     strftime -s hour "%H" "$EPOCHSECONDS"
@@ -822,73 +786,6 @@ _GIT_EXT_CACHE_FILE="${TMPDIR:-/tmp}/.git_ext_cache_${USER}"
 # System info cache (file-based, uses _CACHE_TTL_LOW - rarely changes)
 _SYSINFO_CACHE_FILE="${TMPDIR:-/tmp}/.sysinfo_cache_${USER}"
 
-# Get cached system info (OS and kernel versions)
-# Returns: os_long|os_short|kernel_long|kernel_short
-# Cached to avoid subprocess calls on every prompt
-function _get_cached_sysinfo() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  # Check file cache (use zsh native file reading to avoid subprocesses)
-  if [[ -f "$_SYSINFO_CACHE_FILE" ]]; then
-    local cache_lines=("${(@f)$(<"$_SYSINFO_CACHE_FILE")}")
-    local cache_time="${cache_lines[1]}"
-    if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_LOW )); then
-      echo "${cache_lines[2]}"
-      return
-    fi
-  fi
-
-  # Compute system info
-  local os_long="" os_short=""
-  local kernel_long="" kernel_short=""
-  local os_type=$(uname -s 2>/dev/null)
-
-  if [[ "$os_type" == "Darwin" ]]; then
-    if command -v sw_vers &>/dev/null; then
-      local product_name=$(sw_vers -productName 2>/dev/null)
-      local product_version=$(sw_vers -productVersion 2>/dev/null)
-      if [[ -n "$product_name" && -n "$product_version" ]]; then
-        os_long="$product_name $product_version"
-        os_short="macOS-$product_version"
-      fi
-    fi
-  elif [[ -f /etc/os-release ]]; then
-    local pretty_name=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
-    local os_id=$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
-    local version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
-
-    [[ -n "$pretty_name" ]] && os_long="$pretty_name"
-    if [[ -n "$os_id" && -n "$version_id" ]]; then
-      os_short="${(C)os_id}-$version_id"
-    elif [[ -n "$os_id" ]]; then
-      os_short="${(C)os_id}"
-    fi
-    [[ -z "$os_long" && -n "$os_short" ]] && os_long="$os_short"
-  fi
-
-  if command -v uname &>/dev/null; then
-    local kernel_full=$(uname -r 2>/dev/null)
-    if [[ -n "$kernel_full" ]]; then
-      local kernel_name="$os_type"
-      [[ -z "$kernel_name" ]] && kernel_name="Unknown"
-      kernel_long=", $kernel_name-$kernel_full"
-      local kernel_short_ver=$(echo "$kernel_full" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
-      if [[ -n "$kernel_short_ver" ]]; then
-        kernel_short=", $kernel_name-$kernel_short_ver"
-      else
-        kernel_short="$kernel_long"
-      fi
-    fi
-  fi
-
-  # Save to cache
-  local result="${os_long}|${os_short}|${kernel_long}|${kernel_short}"
-  echo "$current_time" > "$_SYSINFO_CACHE_FILE"
-  echo "$result" >> "$_SYSINFO_CACHE_FILE"
-
-  echo "$result"
-}
-
 # Global variables for direct sysinfo assignment (avoids subshell)
 typeset -g _PP_SYSINFO_OS_LONG=""
 typeset -g _PP_SYSINFO_OS_SHORT=""
@@ -1020,9 +917,10 @@ function _cache_update_line_by_prefix() {
 
   # Use flock for atomic write if available
   if (( _CACHE_HAS_FLOCK )); then
-    # flock the lock file directly (simpler, zsh-compatible)
+    # Hold the lock fd for the duration of the write.
     (
-      flock -x -w 1 "$lock_file" || exit 1
+      exec {lock_fd}>"$lock_file" || exit 1
+      flock -x -w 1 $lock_fd || exit 1
       print -r -- "$new_content" > "$temp_file"
       mv "$temp_file" "$cache_file" 2>/dev/null
     ) 2>/dev/null
@@ -1085,7 +983,7 @@ _GIT_HIERARCHY_CACHE_FILE="${TMPDIR:-/tmp}/.git_hierarchy_cache_${USER}"
 # Path background colors defined in COLOR CONSTANTS section at file top
 
 # Get git repository hierarchy (handles submodules)
-# Returns: repo1:repo2:repo3:...:current_subdir
+# Returns: repo1<sep>repo2<sep>repo3<sep>current_subdir
 # Where repo1 is outermost, repoN is innermost git root
 # current_subdir is the path within the innermost repo (may be empty)
 function _get_git_hierarchy() {
@@ -1122,8 +1020,12 @@ function _get_git_hierarchy() {
   # Build hierarchy from innermost to outermost
   local hierarchy=()
   local dir="$PWD"
+  local depth=0
+  local max_depth=20
 
   while true; do
+    (( depth >= max_depth )) && break
+    (( depth++ ))
     local git_root=$(cd "$dir" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
     [[ -z "$git_root" ]] && break
 
@@ -1131,22 +1033,23 @@ function _get_git_hierarchy() {
 
     # Check for superproject
     local superproject=$(cd "$git_root" 2>/dev/null && git rev-parse --show-superproject-working-tree 2>/dev/null)
-    [[ -z "$superproject" ]] && break
+    [[ -z "$superproject" || "$superproject" == "$dir" || "$superproject" == "$git_root" ]] && break
 
     dir="$superproject"
   done
 
-  # Build result: repo1:repo2:...:subdir
+  # Build result: repo1<sep>repo2<sep>...<sep>subdir
   local result=""
-  local IFS=':'
+  local sep="${_GIT_HIERARCHY_SEP:-:}"
+  local IFS="$sep"
   if (( ${#hierarchy[@]} > 0 )); then
     result="${hierarchy[*]}"
     # Add current subdirectory within innermost repo
     local innermost="${hierarchy[-1]}"
     if [[ "$PWD" != "$innermost" ]]; then
-      result="${result}:${PWD#$innermost/}"
+      result="${result}${sep}${PWD#$innermost/}"
     else
-      result="${result}:"  # empty subdir marker
+      result="${result}${sep}"  # empty subdir marker
     fi
   fi
 
@@ -1157,404 +1060,6 @@ function _get_git_hierarchy() {
   # Cleanup memory cache if it grows too large
   (( ${#_MEM_CACHE_GIT_HIERARCHY} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _mem_cache_cleanup "git_hierarchy"
 
-  echo "$result"
-}
-
-# Smart path display with git-aware coloring and submodule support
-# Each git level gets a different light background color with black text
-# When terminal width is limited, outermost paths are truncated first
-function smart_path_display() {
-  local full_path="${PWD/#$HOME/~}"
-  local use_short="$1"  # "short" for narrow terminal mode
-  local max_path_width="${2:-0}"  # optional max width for path
-
-  # Check if we're in a git repo (using cached value)
-  local git_root=$(_get_cached_git_root)
-
-  if [[ "$git_root" == "NOT_GIT" ]]; then
-    # Not in git repo - just show path in white
-    echo "%{$fg[white]%}[${full_path}]%{$reset_color%}"
-    return
-  fi
-
-  # Get full hierarchy
-  local hierarchy_str=$(_get_git_hierarchy)
-
-  if [[ -z "$hierarchy_str" ]]; then
-    # Fallback to simple display
-    echo "%{$fg[white]%}[${full_path}]%{$reset_color%}"
-    return
-  fi
-
-  # Parse hierarchy (colon-separated: repo1:repo2:...:subdir)
-  local parts=("${(@s/:/)hierarchy_str}")
-  local num_parts=${#parts[@]}
-
-  # Last part is the subdirectory within innermost repo (may be empty)
-  local subdir=""
-  local repos=()
-  if (( num_parts > 0 )); then
-    subdir="${parts[-1]}"
-    repos=("${parts[@]:0:$((num_parts-1))}")
-  fi
-
-  local num_repos=${#repos[@]}
-
-  # Build display segments: each repo shows its relative path from parent
-  # Format: [repo1_rel/repo2_rel/repo3_rel/subdir]
-  local segments=()
-  local segment_lengths=()
-
-  for (( i=1; i<=num_repos; i++ )); do
-    local repo="${repos[$i]}"
-    local display_path=""
-
-    if (( i == 1 )); then
-      # First repo: show full path (with ~ for home)
-      display_path="${repo/#$HOME/~}"
-    else
-      # Submodule: show path relative to parent repo
-      local parent="${repos[$((i-1))]}"
-      display_path="${repo#$parent/}"
-    fi
-
-    segments+=("$display_path")
-    segment_lengths+=(${#display_path})
-  done
-
-  # Add subdirectory as final segment (if not empty)
-  if [[ -n "$subdir" ]]; then
-    segments+=("$subdir")
-    segment_lengths+=(${#subdir})
-  fi
-
-  local total_segments=${#segments[@]}
-
-  # Calculate total visible length (segments + separators + brackets)
-  local total_len=2  # for [ and ]
-  for len in "${segment_lengths[@]}"; do
-    (( total_len += len ))
-  done
-  (( total_len += total_segments - 1 ))  # for / separators
-
-  # Determine which segments to show based on width
-  # In short mode or if total is too long, truncate from outermost (left)
-  local start_idx=1
-  if [[ "$use_short" == "short" ]] || (( max_path_width > 0 && total_len > max_path_width )); then
-    # Try to fit by removing outermost segments
-    local target_width=${max_path_width:-50}
-    [[ "$use_short" == "short" ]] && target_width=40
-
-    while (( start_idx < total_segments && total_len > target_width )); do
-      # Remove segment and its separator
-      (( total_len -= segment_lengths[$start_idx] + 1 ))
-      (( start_idx++ ))
-    done
-  fi
-
-  # Build the colored path string
-  local result="["
-  local sep=""
-  local color_idx=0
-
-  # Determine path separator based on mode (space for easy double-click selection, slash for traditional)
-  # Force slash mode if PWD or any path segment contains spaces (to avoid ambiguity)
-  local path_sep="/"
-  local has_space_in_path=0
-
-  # Quick check: if PWD contains space, force slash mode
-  [[ "$PWD" == *" "* ]] && has_space_in_path=1
-
-  # Also check each segment (may have different representation than PWD)
-  if (( ! has_space_in_path )); then
-    for seg in "${segments[@]}"; do
-      [[ "$seg" == *" "* ]] && has_space_in_path=1 && break
-    done
-  fi
-
-  if (( _PROMPT_PATH_SEP_MODE && ! has_space_in_path )); then
-    path_sep=" "
-  fi
-
-  # If we truncated, add indicator (inline to avoid subshell)
-  if (( start_idx > 1 )); then
-    result="${result}%{$FG[$_CLR_TRUNCATED]%}..%{$reset_color%}${path_sep}"
-  fi
-
-  for (( i=start_idx; i<=total_segments; i++ )); do
-    local seg="${segments[$i]}"
-
-    # Determine color based on segment type
-    if (( i <= num_repos )); then
-      # This is a git repo root - use background color
-      local level=$((i - start_idx))
-      (( level >= ${#_PATH_BG_COLORS[@]} )) && level=$(( ${#_PATH_BG_COLORS[@]} - 1 ))
-      local bg_num="${_PATH_BG_COLORS[$((level+1))]}"
-      # Use ANSI escape: 48;5;N for 256-color background, 38;5;16 for black foreground
-      result="${result}${sep}%{\e[48;5;${bg_num}m\e[38;5;16m%}${seg}%{$reset_color%}"
-    else
-      # This is subdirectory within innermost repo - no background
-      result="${result}${sep}%{$fg[white]%}${seg}%{$reset_color%}"
-    fi
-
-    sep="$path_sep"
-  done
-
-  result="${result}]"
-  echo "$result"
-}
-
-# Detect git special states (rebase, merge, bisect, cherry-pick, detached HEAD)
-# Returns colored status indicator or empty if normal state
-function git_special_state() {
-  local git_root=$(_get_cached_git_root)
-  if [[ "$git_root" == "NOT_GIT" ]]; then
-    return
-  fi
-
-  local git_dir="${git_root}/.git"
-  # Handle worktrees where .git is a file pointing to the real git dir
-  # Use zsh native file reading instead of cat | sed
-  if [[ -f "$git_dir" ]]; then
-    local git_link=$(<"$git_dir")
-    git_dir="${git_link#gitdir: }"
-    # Trim trailing whitespace/newline
-    git_dir="${git_dir%%[[:space:]]}"
-  fi
-
-  local state=""
-  local step=""
-  local total=""
-
-  # Check for rebase in progress
-  # Use zsh native file reading instead of cat
-  if [[ -d "${git_dir}/rebase-merge" ]]; then
-    [[ -f "${git_dir}/rebase-merge/msgnum" ]] && step=$(<"${git_dir}/rebase-merge/msgnum")
-    [[ -f "${git_dir}/rebase-merge/end" ]] && total=$(<"${git_dir}/rebase-merge/end")
-    if [[ -f "${git_dir}/rebase-merge/interactive" ]]; then
-      state="rebase-i"
-    else
-      state="rebase-m"
-    fi
-  elif [[ -d "${git_dir}/rebase-apply" ]]; then
-    [[ -f "${git_dir}/rebase-apply/next" ]] && step=$(<"${git_dir}/rebase-apply/next")
-    [[ -f "${git_dir}/rebase-apply/last" ]] && total=$(<"${git_dir}/rebase-apply/last")
-    if [[ -f "${git_dir}/rebase-apply/rebasing" ]]; then
-      state="rebase"
-    elif [[ -f "${git_dir}/rebase-apply/applying" ]]; then
-      state="am"
-    else
-      state="am/rebase"
-    fi
-  # Check for merge in progress
-  elif [[ -f "${git_dir}/MERGE_HEAD" ]]; then
-    state="merge"
-  # Check for cherry-pick in progress
-  elif [[ -f "${git_dir}/CHERRY_PICK_HEAD" ]]; then
-    state="cherry"
-  # Check for revert in progress
-  elif [[ -f "${git_dir}/REVERT_HEAD" ]]; then
-    state="revert"
-  # Check for bisect in progress
-  elif [[ -f "${git_dir}/BISECT_LOG" ]]; then
-    state="bisect"
-  fi
-
-  # Check for detached HEAD (only if no other state)
-  if [[ -z "$state" ]]; then
-    local head_ref=$(git symbolic-ref HEAD 2>/dev/null)
-    if [[ -z "$head_ref" ]]; then
-      state="detached"
-    fi
-  fi
-
-  # Format output - inline icon selection to avoid _e subshell
-  if [[ -n "$state" ]]; then
-    local icon=""
-    local color="%{$fg[magenta]%}"
-
-    if (( _PROMPT_EMOJI_MODE )); then
-      case "$state" in
-        rebase*|am*)
-          icon="🔀"; color="%{$fg[yellow]%}" ;;
-        merge)
-          icon="🔀"; color="%{$fg[cyan]%}" ;;
-        cherry|revert)
-          icon="🍒"; color="%{$fg[red]%}" ;;
-        bisect)
-          icon="🔍"; color="%{$fg[blue]%}" ;;
-        detached)
-          icon="🔌"; color="%{$fg[red]%}" ;;
-      esac
-    else
-      case "$state" in
-        rebase*|am*)
-          icon="RB"; color="%{$fg[yellow]%}" ;;
-        merge)
-          icon="MG"; color="%{$fg[cyan]%}" ;;
-        cherry|revert)
-          icon="CP"; color="%{$fg[red]%}" ;;
-        bisect)
-          icon="BI"; color="%{$fg[blue]%}" ;;
-        detached)
-          icon="DT"; color="%{$fg[red]%}" ;;
-      esac
-    fi
-
-    # Add progress for rebase/am
-    if [[ -n "$step" && -n "$total" ]]; then
-      echo "${color}${icon}${step}/${total}%{$reset_color%}"
-    else
-      echo "${color}${icon}%{$reset_color%}"
-    fi
-  fi
-}
-
-# Extended git status: ahead/behind remote + stash count
-# Format: ↑N↓M⚑K where N=ahead, M=behind, K=stash count
-# Cached with 5 min TTL to avoid slow git operations on every prompt
-function git_extended_status() {
-  # Check if we're in a git repo (using cached value)
-  local git_root=$(_get_cached_git_root)
-  if [[ "$git_root" == "NOT_GIT" ]]; then
-    return
-  fi
-
-  local cache_key="${git_root}"
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  # Check memory cache first (fastest, no I/O)
-  if [[ -n "${_MEM_CACHE_GIT_EXT[$cache_key]}" ]]; then
-    local cached="${_MEM_CACHE_GIT_EXT[$cache_key]}"
-    local cache_time="${cached##*|}"
-    local cached_result="${cached%|*}"
-    if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_MEDIUM )); then
-      echo "$cached_result"
-      return
-    fi
-  fi
-
-  # Check persistent cache (SQLite or file)
-  local cached_line=$(_cache_get "git_ext" "$cache_key")
-  if [[ -n "$cached_line" ]]; then
-    local cached_result cache_time
-    cache_time="${cached_line##*|}"
-    cached_result="${cached_line%|*}"
-
-    if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_MEDIUM )); then
-      # Update memory cache from persistent cache
-      _MEM_CACHE_GIT_EXT[$cache_key]="${cached_result}|${cache_time}"
-      echo "$cached_result"
-      return
-    fi
-  fi
-
-  local result=""
-
-  # Get ahead/behind counts relative to upstream
-  local upstream=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null)
-  if [[ -n "$upstream" ]]; then
-    local counts=$(git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)
-    if [[ -n "$counts" ]]; then
-      local ahead behind
-      IFS=$'\t ' read -r ahead behind <<< "$counts"
-
-      # Build indicators inline to avoid subshells
-      if [[ "$ahead" -gt 0 ]]; then
-        if (( _PROMPT_EMOJI_MODE )); then
-          result="${result}%{$fg[green]%}↑${ahead}%{$reset_color%}"
-        else
-          result="${result}%{$fg[green]%}+${ahead}%{$reset_color%}"
-        fi
-      fi
-      if [[ "$behind" -gt 0 ]]; then
-        if (( _PROMPT_EMOJI_MODE )); then
-          result="${result}%{$fg[red]%}↓${behind}%{$reset_color%}"
-        else
-          result="${result}%{$fg[red]%}-${behind}%{$reset_color%}"
-        fi
-      fi
-    fi
-  fi
-
-  # Get stash count (pure zsh: count lines without forking wc)
-  local stash_output stash_count=0
-  stash_output=$(git stash list 2>/dev/null)
-  [[ -n "$stash_output" ]] && stash_count=${#${(f)stash_output}}
-  if [[ "$stash_count" -gt 0 ]]; then
-    if (( _PROMPT_EMOJI_MODE )); then
-      result="${result}%{$fg[yellow]%}⚑${stash_count}%{$reset_color%}"
-    else
-      result="${result}%{$fg[yellow]%}S${stash_count}%{$reset_color%}"
-    fi
-  fi
-
-  # Update both caches
-  _MEM_CACHE_GIT_EXT[$cache_key]="${result}|${current_time}"
-  _cache_set_async "git_ext" "$cache_key" "$result" "$current_time"
-
-  # Cleanup memory cache if it grows too large
-  (( ${#_MEM_CACHE_GIT_EXT} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _mem_cache_cleanup "git_ext"
-
-  echo "$result"
-}
-
-# Per-prompt cached wrappers for git/PR segments
-# NOTE: oh-my-zsh async git may not work reliably, so we call the worker function directly when available
-function _git_prompt_info_cached() {
-  local git_root=$(_get_cached_git_root)
-  if [[ "$git_root" == "NOT_GIT" ]]; then
-    return
-  fi
-
-  # Prefer oh-my-zsh's worker when present; fall back to git_prompt_info if available.
-  if (( $+functions[_omz_git_prompt_info] )); then
-    _omz_git_prompt_info 2>/dev/null
-  elif (( $+functions[git_prompt_info] )); then
-    git_prompt_info 2>/dev/null
-  fi
-}
-
-function _git_extended_status_cached() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_PROMPT_GIT_EXT_CACHE_ID" == "$current_id" ]]; then
-    echo "$_PROMPT_GIT_EXT_CACHE"
-    return
-  fi
-
-  local result=$(git_extended_status 2>/dev/null)
-  _PROMPT_GIT_EXT_CACHE="$result"
-  _PROMPT_GIT_EXT_CACHE_ID="$current_id"
-  echo "$result"
-}
-
-function _gh_pr_status_cached() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_PROMPT_GH_PR_CACHE_ID" == "$current_id" ]]; then
-    echo "$_PROMPT_GH_PR_CACHE"
-    return
-  fi
-
-  local result=$(gh_pr_status 2>/dev/null)
-  _PROMPT_GH_PR_CACHE="$result"
-  _PROMPT_GH_PR_CACHE_ID="$current_id"
-  echo "$result"
-}
-
-# Per-prompt cache for git special state
-_PROMPT_GIT_SPECIAL_CACHE=""
-_PROMPT_GIT_SPECIAL_CACHE_ID=-1
-
-function _git_special_state_cached() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_PROMPT_GIT_SPECIAL_CACHE_ID" == "$current_id" ]]; then
-    echo "$_PROMPT_GIT_SPECIAL_CACHE"
-    return
-  fi
-
-  local result=$(git_special_state 2>/dev/null)
-  _PROMPT_GIT_SPECIAL_CACHE="$result"
-  _PROMPT_GIT_SPECIAL_CACHE_ID="$current_id"
   echo "$result"
 }
 
@@ -1839,7 +1344,8 @@ function _compute_smart_path_direct() {
   local git_root=$(_get_cached_git_root)
 
   if [[ "$git_root" == "NOT_GIT" ]]; then
-    _PP_PATH="%{$fg[white]%}[${full_path}]%{$reset_color%}"
+    # Escape % to %% to prevent zsh prompt escape interpretation
+    _PP_PATH="%{$fg[white]%}[${full_path//\%/%%}]%{$reset_color%}"
     return
   fi
 
@@ -1847,12 +1353,15 @@ function _compute_smart_path_direct() {
   local hierarchy_str=$(_get_git_hierarchy)
 
   if [[ -z "$hierarchy_str" ]]; then
-    _PP_PATH="%{$fg[white]%}[${full_path}]%{$reset_color%}"
+    # Escape % to %% to prevent zsh prompt escape interpretation
+    _PP_PATH="%{$fg[white]%}[${full_path//\%/%%}]%{$reset_color%}"
     return
   fi
 
-  # Parse hierarchy (colon-separated: repo1:repo2:...:subdir)
-  local parts=("${(@s/:/)hierarchy_str}")
+  # Parse hierarchy (separator defined by _GIT_HIERARCHY_SEP)
+  # Note: zsh s:X: syntax requires literal delimiter, use s.$sep. for variable
+  local sep="${_GIT_HIERARCHY_SEP:-:}"
+  local -a parts=("${(@ps.$sep.)hierarchy_str}")
   local num_parts=${#parts[@]}
 
   local subdir=""
@@ -1923,6 +1432,8 @@ function _compute_smart_path_direct() {
 
   for (( i=start_idx; i<=total_segments; i++ )); do
     local seg="${segments[$i]}"
+    # Escape % to %% to prevent zsh prompt escape interpretation
+    seg="${seg//\%/%%}"
 
     if (( i <= num_repos )); then
       local level=$((i - start_idx))
@@ -2017,8 +1528,9 @@ _prompt_version_gt() {
 _version_update_type() {
   local installed="$1"
   local remote="$2"
+  REPLY=""
 
-  [[ -z "$installed" || -z "$remote" ]] && return
+  [[ -z "$installed" || -z "$remote" ]] && return 1
 
   # Parse version components
   local inst_major inst_minor inst_patch
@@ -2035,12 +1547,17 @@ _version_update_type() {
   rem_patch=${remote##*.}
 
   if (( rem_major > inst_major )); then
-    echo "major"
+    REPLY="major"
+    return 0
   elif (( rem_minor > inst_minor )); then
-    echo "minor"
+    REPLY="minor"
+    return 0
   elif (( rem_patch > inst_patch )); then
-    echo "patch"
+    REPLY="patch"
+    return 0
   fi
+
+  return 1
 }
 
 # Generic AI tool version cache updater (runs in background)
@@ -2136,11 +1653,12 @@ function _ai_tool_status() {
   fi
 
   # Check update type and determine indicator
-  local update_type=$(_version_update_type "$installed_version" "$remote_version")
   local update_indicator=""
-  [[ -n "$update_type" ]] && update_indicator="%{$fg[red]%}*"
+  if _version_update_type "$installed_version" "$remote_version"; then
+    update_indicator="%{$fg[red]%}*"
+  fi
 
-  # Output: icon+version or icon+version* (brackets added by ai_tools_status)
+  # Output: icon+version or icon+version* (brackets added by caller)
   # Inline icon selection to avoid _e subshell
   local icon=""
   if (( _PROMPT_EMOJI_MODE )); then
@@ -2164,25 +1682,6 @@ function _ai_tool_status() {
   else
     echo "%{$FG[$color_num]%}${icon}${installed_version}%{$reset_color%}"
   fi
-}
-
-# AI tool status wrappers - thin wrappers around the generic function
-function claude_code_status() {
-  _ai_tool_status "claude" "$_CLAUDE_CACHE_FILE" \
-    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" \
-    "claude" "$_CLR_CLAUDE"
-}
-
-function codex_status() {
-  _ai_tool_status "codex" "$_CODEX_CACHE_FILE" \
-    "https://registry.npmjs.org/@openai/codex/latest" \
-    "codex" "$_CLR_CODEX"
-}
-
-function gemini_status() {
-  _ai_tool_status "gemini" "$_GEMINI_CACHE_FILE" \
-    "https://registry.npmjs.org/@google/gemini-cli/latest" \
-    "gemini" "$_CLR_GEMINI"
 }
 
 # GitHub CLI authentication status cache (uses _CACHE_TTL_LOW)
@@ -2320,37 +1819,6 @@ function _get_gh_username_ssh() {
 
   # No cache, trigger background refresh
   _gh_username_update_ssh
-}
-
-# Get GitHub username badge for prompt
-# Returns formatted badge: [Username] with white bg/black fg, or [A|B] in red if mismatch
-function github_username_badge() {
-  local gh_user=$(_get_gh_username_gh)
-  local ssh_user=$(_get_gh_username_ssh)
-
-  # If neither has a username, return empty
-  if [[ -z "$gh_user" && -z "$ssh_user" ]]; then
-    return
-  fi
-
-  # If only one has a username, use that one
-  if [[ -z "$gh_user" ]]; then
-    echo "%{\\e[48;5;${_CLR_GH_USER_BG}m\\e[38;5;${_CLR_GH_USER_FG}m%}[${ssh_user}]%{$reset_color%}"
-    return
-  fi
-  if [[ -z "$ssh_user" ]]; then
-    echo "%{\\e[48;5;${_CLR_GH_USER_BG}m\\e[38;5;${_CLR_GH_USER_FG}m%}[${gh_user}]%{$reset_color%}"
-    return
-  fi
-
-  # Both have usernames - check if they match
-  if [[ "$gh_user" == "$ssh_user" ]]; then
-    # Match: white background, black text
-    echo "%{\\e[48;5;${_CLR_GH_USER_BG}m\\e[38;5;${_CLR_GH_USER_FG}m%}[${gh_user}]%{$reset_color%}"
-  else
-    # Mismatch: red background, white text
-    echo "%{\\e[48;5;${_CLR_GH_USER_MISMATCH}m\\e[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
-  fi
 }
 
 # Direct-assignment version: writes result to _PP_GH_USER global variable
@@ -2556,121 +2024,7 @@ _gh_pr_update_cache() {
   ) &>/dev/null &!
 }
 
-# Get GitHub PR status for prompt
-# Displays icon with PR number and CI status indicator
-function gh_pr_status() {
-  # Check if gh command exists
-  if ! command -v gh &>/dev/null; then
-    return
-  fi
-
-  # Check if gh is authenticated (uses cached result, won't run gh auth status every time)
-  if ! _gh_is_authenticated; then
-    return
-  fi
-
-  # Get cached git remote/branch (avoids git calls on every prompt)
-  local remote_branch=$(_get_cached_git_remote_branch)
-  if [[ -z "$remote_branch" ]]; then
-    return
-  fi
-
-  local remote_url="${remote_branch%%|*}"
-  local branch="${remote_branch#*|}"
-
-  local cache_key="${remote_url}|${branch}"
-  local pr_number=""
-  local ci_status="none"
-  local cache_time=0
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  # Check persistent cache (SQLite or file)
-  local cached_line=$(_cache_get "gh_pr" "$cache_key")
-  if [[ -n "$cached_line" ]]; then
-    # Format: pr_number|ci_status|timestamp
-    cache_time="${cached_line##*|}"
-    local rest="${cached_line%|*}"
-    ci_status="${rest##*|}"
-    pr_number="${rest%|*}"
-
-    # Validate cache_time
-    if [[ ! "$cache_time" =~ ^[0-9]+$ ]]; then
-      cache_time=0
-    fi
-  fi
-
-  # Check if cache expired or missing
-  if (( current_time - cache_time > _CACHE_TTL_HIGH )); then
-    # Trigger background refresh
-    _gh_pr_update_cache "$remote_url" "$branch"
-  fi
-
-  # Display PR number with CI status if available and valid
-  if [[ -n "$pr_number" && "$pr_number" != "-1" ]]; then
-    # Determine CI indicator inline to avoid subshells
-    local ci_indicator=""
-    case "$ci_status" in
-      pass)
-        if (( _PROMPT_EMOJI_MODE )); then
-          ci_indicator="%{$fg[green]%}✓"
-        else
-          ci_indicator="%{$fg[green]%}OK"
-        fi
-        ;;
-      fail)
-        if (( _PROMPT_EMOJI_MODE )); then
-          ci_indicator="%{$fg[red]%}✗"
-        else
-          ci_indicator="%{$fg[red]%}X"
-        fi
-        ;;
-      pending)
-        if (( _PROMPT_EMOJI_MODE )); then
-          ci_indicator="%{$fg[yellow]%}⏳"
-        else
-          ci_indicator="%{$fg[yellow]%}..."
-        fi
-        ;;
-    esac
-
-    if [[ -n "$ci_indicator" ]]; then
-      echo "%{$FG[$_CLR_PR]%}#${pr_number}${ci_indicator}%{$reset_color%}"
-    else
-      echo "%{$FG[$_CLR_PR]%}#${pr_number}%{$reset_color%}"
-    fi
-  fi
-}
-
 # Combined AI tools status: [tool1tool2tool3] format (emoji) or [tool1|tool2|tool3] (plaintext)
-function ai_tools_status() {
-  local ai_status=""
-  local claude_st=$(claude_code_status)
-  local codex_st=$(codex_status)
-  local gemini_st=$(gemini_status)
-
-  # Determine separator based on mode (| for plaintext, none for emoji)
-  local sep=""
-  (( ! _PROMPT_EMOJI_MODE )) && sep="|"
-
-  # Concatenate all tools with separator in plaintext mode
-  if [[ -n "$claude_st" ]]; then
-    ai_status="$claude_st"
-  fi
-  if [[ -n "$codex_st" ]]; then
-    [[ -n "$ai_status" ]] && ai_status="$ai_status$sep"
-    ai_status="$ai_status$codex_st"
-  fi
-  if [[ -n "$gemini_st" ]]; then
-    [[ -n "$ai_status" ]] && ai_status="$ai_status$sep"
-    ai_status="$ai_status$gemini_st"
-  fi
-
-  # Wrap in brackets if any tools are present
-  if [[ -n "$ai_status" ]]; then
-    echo "%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
-  fi
-}
-
 # Direct-assignment version: writes result to _PP_AI_STATUS global variable
 # PERFORMANCE: Avoids subshells by using direct variable assignment
 typeset -g _PP_AI_STATUS=""
@@ -2694,8 +2048,7 @@ function _compute_ai_tools_direct() {
     fi
     if [[ -n "$installed_version" ]]; then
       local update_ind="" icon=""
-      local update_type=$(_version_update_type "$installed_version" "$remote_version")
-      [[ -n "$update_type" ]] && update_ind="%{$fg[red]%}*"
+      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
       if (( _PROMPT_EMOJI_MODE )); then icon="🤖"; else icon="Cl:"; fi
       tool_result="%{$FG[$_CLR_CLAUDE]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
     fi
@@ -2717,8 +2070,7 @@ function _compute_ai_tools_direct() {
     fi
     if [[ -n "$installed_version" ]]; then
       local update_ind="" icon=""
-      local update_type=$(_version_update_type "$installed_version" "$remote_version")
-      [[ -n "$update_type" ]] && update_ind="%{$fg[red]%}*"
+      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
       if (( _PROMPT_EMOJI_MODE )); then icon="🧠"; else icon="Cx:"; fi
       tool_result="%{$FG[$_CLR_CODEX]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
     fi
@@ -2745,8 +2097,7 @@ function _compute_ai_tools_direct() {
     fi
     if [[ -n "$installed_version" ]]; then
       local update_ind="" icon=""
-      local update_type=$(_version_update_type "$installed_version" "$remote_version")
-      [[ -n "$update_type" ]] && update_ind="%{$fg[red]%}*"
+      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
       if (( _PROMPT_EMOJI_MODE )); then icon="🔷"; else icon="Gm:"; fi
       tool_result="%{$FG[$_CLR_GEMINI]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
     fi
