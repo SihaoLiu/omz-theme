@@ -950,10 +950,9 @@ function _get_cached_git_root() {
   # Check persistent cache (SQLite or file)
   local cached_line=$(_cache_get "git_root" "$current_dir")
   if [[ -n "$cached_line" ]]; then
-    local cached_root cache_time
     # Format: value|timestamp (from _cache_get)
-    cache_time="${cached_line##*|}"
-    cached_root="${cached_line%|*}"
+    local cache_time="${cached_line##*|}"
+    local cached_root="${cached_line%|*}"
 
     if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_MEDIUM )); then
       # Update memory cache from persistent cache
@@ -1004,10 +1003,9 @@ function _get_git_hierarchy() {
   # Check persistent cache (SQLite or file)
   local cached_line=$(_cache_get "git_hierarchy" "$cache_key")
   if [[ -n "$cached_line" ]]; then
-    local cached_result cache_time
     # Format: value|timestamp
-    cache_time="${cached_line##*|}"
-    cached_result="${cached_line%|*}"
+    local cache_time="${cached_line##*|}"
+    local cached_result="${cached_line%|*}"
 
     if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_MEDIUM )); then
       # Update memory cache from persistent cache
@@ -1118,9 +1116,8 @@ function _compute_git_extended_direct() {
   # Check persistent cache (SQLite or file)
   local cached_line=$(_cache_get "git_ext" "$cache_key")
   if [[ -n "$cached_line" ]]; then
-    local cached_result cache_time
-    cache_time="${cached_line##*|}"
-    cached_result="${cached_line%|*}"
+    local cache_time="${cached_line##*|}"
+    local cached_result="${cached_line%|*}"
 
     if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time < _CACHE_TTL_MEDIUM )); then
       _MEM_CACHE_GIT_EXT[$cache_key]="${cached_result}|${cache_time}"
