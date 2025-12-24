@@ -137,6 +137,10 @@ typeset -g _GIT_HIERARCHY_MAX_DEPTH=20
 typeset -g _PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
 typeset -g _PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
 
+# Layout margin - minimum free space to leave before switching to shorter format
+# If remaining terminal width is less than this, trigger RPROMPT or shorter mode
+typeset -g _LAYOUT_MARGIN=8
+
 # ============================================================================
 # CACHE DIRECTORY SETUP - Secure cache location in user's home directory
 # ============================================================================
@@ -1123,14 +1127,26 @@ function _compute_layout_mode() {
   # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (no-internet) 13 chars, or empty
   local public_ip_len=0
   if [[ -n "$_PP_PUBLIC_IP" ]]; then
-    # Strip ANSI codes and count visible length
-    local ip_visible="${_PP_PUBLIC_IP//\%\{*\%\}/}"
-    public_ip_len=${#ip_visible}
+    # Strip ANSI codes and count visible length (use (S) for shortest match)
+    _tmp="${_PP_PUBLIC_IP}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; public_ip_len=${#_tmp}
   fi
 
-  # time_len=14 for [HH:MM:SS TZ] (e.g., [11:16:06 PST]), badge_len accounts for space + icon
-  # fixed_len covers: spaces between segments (approximately 5-6 spaces in PROMPT)
-  local time_len=14 fixed_len=6 badge_len=2
+  # time_len: compute dynamically based on actual timezone abbreviation
+  # Format: [HH:MM:SS TZ] where TZ varies (e.g., PST=3, UTC=3, CEST=4)
+  local tz_abbrev
+  if (( ${+EPOCHSECONDS} )); then
+    strftime -s tz_abbrev "%Z" "$EPOCHSECONDS"
+  else
+    tz_abbrev=$(date +%Z)
+  fi
+  # [HH:MM:SS TZ] = 1 + 8 + 1 + tz_len + 1 = 11 + tz_len
+  local time_len=$((11 + ${#tz_abbrev}))
+
+  # badge_len accounts for leading space + icon (" H" = 2 chars)
+  # fixed_len includes:
+  #   - 2 literal spaces in PROMPT (after BADGE, after TIME)
+  #   - _LAYOUT_MARGIN buffer to trigger shorter format before overflow
+  local fixed_len=$((2 + _LAYOUT_MARGIN)) badge_len=2
 
   # min_len: base length without sysinfo/AI (badge_len already included)
   local min_len=$((exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_len + fixed_len))
