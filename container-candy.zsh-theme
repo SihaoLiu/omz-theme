@@ -209,13 +209,19 @@ function _cache_get() {
     " 2>/dev/null
   else
     # Fallback to file cache
-    # File format is: key|value|timestamp
-    # Return format must be: value|timestamp (strip the key prefix)
+    # File format is: key<SEP>value<SEP>timestamp (SEP = \x1f to avoid key containing |)
+    # Return format must be: value|timestamp (consistent with SQLite path)
     local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
-    local prefix="${key}|"
+    local sep=$'\x1f'
+    local prefix="${key}${sep}"
     local line=$(_cache_get_line_by_prefix "$cache_file" "$prefix")
-    # Strip key| prefix to return value|timestamp
-    [[ -n "$line" ]] && echo "${line#*|}"
+    if [[ -n "$line" ]]; then
+      # Parse: key<sep>value<sep>timestamp -> return value|timestamp
+      local rest="${line#*$sep}"      # Remove key<sep>
+      local value="${rest%%$sep*}"    # Get value (before second sep)
+      local timestamp="${rest#*$sep}" # Get timestamp (after second sep)
+      echo "${value}|${timestamp}"
+    fi
   fi
 }
 
@@ -236,10 +242,11 @@ function _cache_set() {
       VALUES ('${cache_name}:${escaped_key}', '${escaped_value}', ${timestamp});
     " 2>/dev/null
   else
-    # Fallback to file cache
+    # Fallback to file cache (use \x1f separator to avoid key containing |)
     local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
-    local prefix="${key}|"
-    _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}|${value}|${timestamp}"
+    local sep=$'\x1f'
+    local prefix="${key}${sep}"
+    _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}${sep}${value}${sep}${timestamp}"
   fi
 }
 
@@ -273,8 +280,9 @@ function _cache_set_async() {
   else
     (
       local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
-      local prefix="${key}|"
-      _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}|${value}|${timestamp}"
+      local sep=$'\x1f'
+      local prefix="${key}${sep}"
+      _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}${sep}${value}${sep}${timestamp}"
     ) &!
   fi
 }
@@ -708,10 +716,11 @@ function _precmd_compute_prompt() {
 
   # Calculate visible lengths for layout decision (inline, no subshells)
   # Pure zsh: remove %{...%} escape sequences and count remaining chars
-  local _tmp git_len git_ext_len ai_len pr_len
+  local _tmp git_len git_ext_len ai_len ai_len_long pr_len
   _tmp="${_PP_GIT_INFO}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; git_len=${#_tmp}
   _tmp="${_PP_GIT_EXT}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; git_ext_len=${#_tmp}
   _tmp="${_PP_AI_STATUS}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; ai_len=${#_tmp}
+  _tmp="${_PP_AI_STATUS_LONG}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; ai_len_long=${#_tmp}
   _tmp="${_PP_PR}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; pr_len=${#_tmp}
 
   local user_host_len=$((${#USER} + 1 + ${#HOST}))
@@ -730,6 +739,8 @@ function _precmd_compute_prompt() {
   local long_version="${os_long}${kernel_long}"
   local long_sysinfo_len=$((${#long_version} + 3))
   local long_len=$((min_len + badge_len + long_sysinfo_len + ai_len + ai_space))
+  # Calculate length with long AI names (Claude/Codex/Gemini instead of Cl:/Cx:/Gm:)
+  local long_len_with_long_ai=$((min_len + badge_len + long_sysinfo_len + ai_len_long + ai_space))
 
   # Decide layout mode and set variables
   local mode path_mode="full"
@@ -738,7 +749,12 @@ function _precmd_compute_prompt() {
   if (( long_len <= COLUMNS )); then
     mode="long"
     system_info=" %{$fg[cyan]%}[${long_version}]%{$reset_color%}"
-    [[ -n "$_PP_AI_STATUS" ]] && ai_output=" $_PP_AI_STATUS"
+    # In plaintext mode, try to use long AI names if width allows
+    if (( ! _PROMPT_EMOJI_MODE )) && [[ -n "$_PP_AI_STATUS_LONG" ]] && (( long_len_with_long_ai <= COLUMNS )); then
+      ai_output=" $_PP_AI_STATUS_LONG"
+    elif [[ -n "$_PP_AI_STATUS" ]]; then
+      ai_output=" $_PP_AI_STATUS"
+    fi
   elif (( short_ai_len <= COLUMNS )); then
     mode="short"
     system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
@@ -2012,8 +2028,9 @@ _gh_pr_update_cache() {
       " 2>/dev/null
     else
       local cache_file="${TMPDIR:-/tmp}/.gh_pr_cache_${USER}"
-      local prefix="${cache_key}|"
-      _cache_update_line_by_prefix "$cache_file" "$prefix" "${cache_key}|${cache_value}|${current_time}"
+      local sep=$'\x1f'
+      local prefix="${cache_key}${sep}"
+      _cache_update_line_by_prefix "$cache_file" "$prefix" "${cache_key}${sep}${cache_value}${sep}${current_time}"
     fi
 
     # Remove lock file when done
@@ -2023,15 +2040,20 @@ _gh_pr_update_cache() {
 
 # Combined AI tools status: [tool1tool2tool3] format (emoji) or [tool1|tool2|tool3] (plaintext)
 # Direct-assignment version: writes result to _PP_AI_STATUS global variable
+# In plaintext mode, also generates _PP_AI_STATUS_LONG with full names (Claude/Codex/Gemini)
 # PERFORMANCE: Avoids subshells by using direct variable assignment
 typeset -g _PP_AI_STATUS=""
+typeset -g _PP_AI_STATUS_LONG=""
 
 function _compute_ai_tools_direct() {
   local ai_status=""
+  local ai_status_long=""
   local tool_result=""
+  local tool_result_long=""
 
   # Claude Code - direct computation without subshell
   tool_result=""
+  tool_result_long=""
   if command -v claude &>/dev/null; then
     local installed_version="" remote_version="" cache_time=0
     local current_time=${EPOCHSECONDS:-$(date +%s)}
@@ -2044,16 +2066,27 @@ function _compute_ai_tools_direct() {
       _ai_tool_update_cache "$_CLAUDE_CACHE_FILE" "claude" "https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
     fi
     if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon=""
+      local update_ind="" icon="" icon_long=""
       _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then icon="🤖"; else icon="Cl:"; fi
+      if (( _PROMPT_EMOJI_MODE )); then
+        icon="🤖"
+        icon_long="🤖"
+      else
+        icon="Cl:"
+        icon_long="Claude:"
+      fi
       tool_result="%{$FG[$_CLR_CLAUDE]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
+      tool_result_long="%{$FG[$_CLR_CLAUDE]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
     fi
   fi
-  [[ -n "$tool_result" ]] && ai_status="$tool_result"
+  if [[ -n "$tool_result" ]]; then
+    ai_status="$tool_result"
+    ai_status_long="$tool_result_long"
+  fi
 
   # Codex - direct computation without subshell
   tool_result=""
+  tool_result_long=""
   if command -v codex &>/dev/null; then
     local installed_version="" remote_version="" cache_time=0
     local current_time=${EPOCHSECONDS:-$(date +%s)}
@@ -2066,21 +2099,31 @@ function _compute_ai_tools_direct() {
       _ai_tool_update_cache "$_CODEX_CACHE_FILE" "codex" "https://registry.npmjs.org/@openai/codex/latest"
     fi
     if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon=""
+      local update_ind="" icon="" icon_long=""
       _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then icon="🧠"; else icon="Cx:"; fi
+      if (( _PROMPT_EMOJI_MODE )); then
+        icon="🧠"
+        icon_long="🧠"
+      else
+        icon="Cx:"
+        icon_long="Codex:"
+      fi
       tool_result="%{$FG[$_CLR_CODEX]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
+      tool_result_long="%{$FG[$_CLR_CODEX]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
     fi
   fi
   if [[ -n "$tool_result" ]]; then
     local sep=""
     (( ! _PROMPT_EMOJI_MODE )) && sep="|"
     [[ -n "$ai_status" ]] && ai_status="${ai_status}${sep}"
+    [[ -n "$ai_status_long" ]] && ai_status_long="${ai_status_long}${sep}"
     ai_status="${ai_status}${tool_result}"
+    ai_status_long="${ai_status_long}${tool_result_long}"
   fi
 
   # Gemini - direct computation without subshell
   tool_result=""
+  tool_result_long=""
   if command -v gemini &>/dev/null; then
     local installed_version="" remote_version="" cache_time=0
     local current_time=${EPOCHSECONDS:-$(date +%s)}
@@ -2093,24 +2136,35 @@ function _compute_ai_tools_direct() {
       _ai_tool_update_cache "$_GEMINI_CACHE_FILE" "gemini" "https://registry.npmjs.org/@google/gemini-cli/latest"
     fi
     if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon=""
+      local update_ind="" icon="" icon_long=""
       _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then icon="🔷"; else icon="Gm:"; fi
+      if (( _PROMPT_EMOJI_MODE )); then
+        icon="🔷"
+        icon_long="🔷"
+      else
+        icon="Gm:"
+        icon_long="Gemini:"
+      fi
       tool_result="%{$FG[$_CLR_GEMINI]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
+      tool_result_long="%{$FG[$_CLR_GEMINI]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
     fi
   fi
   if [[ -n "$tool_result" ]]; then
     local sep=""
     (( ! _PROMPT_EMOJI_MODE )) && sep="|"
     [[ -n "$ai_status" ]] && ai_status="${ai_status}${sep}"
+    [[ -n "$ai_status_long" ]] && ai_status_long="${ai_status_long}${sep}"
     ai_status="${ai_status}${tool_result}"
+    ai_status_long="${ai_status_long}${tool_result_long}"
   fi
 
   # Wrap in brackets if any tools are present
   if [[ -n "$ai_status" ]]; then
     _PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
+    _PP_AI_STATUS_LONG="%{$fg[white]%}[${ai_status_long}%{$fg[white]%}]%{$reset_color%}"
   else
     _PP_AI_STATUS=""
+    _PP_AI_STATUS_LONG=""
   fi
 }
 
