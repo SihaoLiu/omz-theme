@@ -161,6 +161,7 @@ chmod 700 "$_CACHE_DIR" 2>/dev/null
 typeset -g _SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
 typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
 typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
+typeset -g _NETWORK_MODE_FILE="${_CACHE_DIR}/network_mode"
 
 # AI tool version caches
 typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
@@ -638,6 +639,19 @@ else
   _PROMPT_PATH_SEP_MODE=1
 fi
 
+# Network mode toggle (1 = enabled, 0 = disabled)
+# Controls all network-dependent features: public IP, GitHub username/PR, AI update checks
+# When disabled, network features are hidden AND underlying network calls are skipped
+# Persisted to file so it survives shell restarts
+# (_NETWORK_MODE_FILE defined in CACHE FILE PATHS section)
+
+# Load network mode from file or default to 1 (network enabled)
+if [[ -f "$_NETWORK_MODE_FILE" ]]; then
+  _PROMPT_NETWORK_MODE=$(<"$_NETWORK_MODE_FILE")
+else
+  _PROMPT_NETWORK_MODE=1
+fi
+
 # Toggle emoji mode
 function _prompt_toggle_emoji() {
   if (( _PROMPT_EMOJI_MODE )); then
@@ -671,6 +685,23 @@ function _prompt_toggle_path_sep() {
     _PROMPT_PATH_SEP_MODE=1
     _cache_write "$_PATH_SEP_MODE_FILE" "1"
     echo "Space mode: [repo/root submodule path/in/submodule]"
+  fi
+}
+
+# Toggle network mode (on/off)
+# When off: all network-dependent features are disabled (both display and underlying calls)
+# Affected features: public IP, GitHub username/PR, AI tool update checks
+function _prompt_toggle_network() {
+  if (( _PROMPT_NETWORK_MODE )); then
+    _PROMPT_NETWORK_MODE=0
+    _cache_write "$_NETWORK_MODE_FILE" "0"
+    echo "Network mode: OFF"
+    echo "Disabled: public IP, GitHub username/PR status, AI update checks"
+  else
+    _PROMPT_NETWORK_MODE=1
+    _cache_write "$_NETWORK_MODE_FILE" "1"
+    echo "Network mode: ON"
+    echo "Enabled: public IP, GitHub username/PR status, AI update checks"
   fi
 }
 
@@ -739,6 +770,7 @@ function _prompt_emoji_help() {
   echo "║    u         Refresh all cached prompt info                      ║"
   echo "║    e         Toggle emoji/plaintext mode                         ║"
   echo "║    p         Toggle path separator (space/slash)                 ║"
+  echo "║    n         Toggle network features (IP, GitHub, AI updates)    ║"
   echo "║    h         Show this help                                      ║"
   echo "║    t         Show tool availability status                       ║"
   echo "╚══════════════════════════════════════════════════════════════════╝"
@@ -917,6 +949,18 @@ function _prompt_tool_status() {
   _tsl "    Cache files:    ${cache_count} files"
 
   _tsl ""
+  echo "$MID"
+  _tsl "  ${CYAN}NETWORK MODE${RESET}"
+  _tsl ""
+  if (( _PROMPT_NETWORK_MODE )); then
+    _tsl "    ${CHECK} Network features: ENABLED"
+    _tsl "        Public IP, GitHub username/PR, AI update checks"
+  else
+    _tsl "    ${CROSS} Network features: DISABLED"
+    _tsl "        Use 'n' to toggle network mode on"
+  fi
+
+  _tsl ""
   echo "$BOT"
   echo ""
 
@@ -935,6 +979,9 @@ if (( ! $+aliases[h] && ! $+functions[h] )); then
 fi
 if (( ! $+aliases[t] && ! $+functions[t] )); then
   alias t='_prompt_tool_status'
+fi
+if (( ! $+aliases[n] && ! $+functions[n] )); then
+  alias n='_prompt_toggle_network'
 fi
 
 # Manual cache refresh function - clears all prompt caches
@@ -1758,6 +1805,9 @@ function _compute_pr_status_direct() {
 
   _PP_PR=""
 
+  # Skip if network mode is disabled
+  (( _PROMPT_NETWORK_MODE )) || return
+
   # Check if gh command exists
   (( _HAS_GH )) || return
 
@@ -2186,6 +2236,12 @@ function _gh_username_update_ssh() {
 # Direct-assignment version: writes result to _PP_GH_USER global variable
 # PERFORMANCE: Avoids 3 subshells by reading cache files directly
 function _compute_gh_username_direct() {
+  # Skip if network mode is disabled
+  if (( ! _PROMPT_NETWORK_MODE )); then
+    _PP_GH_USER=""
+    return
+  fi
+
   local gh_user="" ssh_user=""
   local current_time=${EPOCHSECONDS}
 
@@ -2288,6 +2344,12 @@ function _public_ip_update_background() {
 # Direct-assignment version: writes result to _PP_PUBLIC_IP global variable
 # PERFORMANCE: Reads cache file directly without subshells
 function _compute_public_ip_direct() {
+  # Skip if network mode is disabled
+  if (( ! _PROMPT_NETWORK_MODE )); then
+    _PP_PUBLIC_IP=""
+    return
+  fi
+
   # Skip if curl is not available
   if (( ! _HAS_CURL )); then
     _PP_PUBLIC_IP=""
@@ -2511,10 +2573,13 @@ function _compute_ai_tool_status() {
   if [[ -f "$cache_file" ]]; then
     read -r installed_version remote_version cache_time < "$cache_file"
     [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
-    (( current_time - cache_time > _CACHE_TTL_LOW )) && \
+    # Only trigger background update if network mode is enabled
+    if (( _PROMPT_NETWORK_MODE )) && (( current_time - cache_time > _CACHE_TTL_LOW )); then
       _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+    fi
   else
-    _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+    # Only trigger background update if network mode is enabled
+    (( _PROMPT_NETWORK_MODE )) && _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
   fi
 
   if [[ -n "$installed_version" ]]; then
@@ -2589,7 +2654,7 @@ function _compute_ai_tools_direct() {
 # - PR status with CI indicator
 # - Background jobs counter (⚙N/JN)
 # - Adaptive RPROMPT for system info and AI tools
-# - Toggle emoji/plaintext with 'e', help with 'h', refresh with 'u'
+# - Toggle emoji/plaintext with 'e', network with 'n', help with 'h', refresh with 'u'
 #
 # Order: [exit][ssh]user@host(IP)[GHUser] [container] [time+TZ] [path] [git+ext+special][PR+CI] [sysinfo] [AI] [jobs]
 # Second line: -> %#
