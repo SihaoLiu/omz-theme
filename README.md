@@ -1,6 +1,8 @@
-# Container Candy
+# AI Candy
 
 **A responsive Oh My Zsh theme for the AI-assisted developer who works across containers, VMs, and bare metal.**
+
+*Author: Sihao Liu <sihao@cs.ucla.edu>*
 
 Ever SSH'd into a machine and wondered *"Wait, am I on the host or in a container?"* — This theme has your back.
 
@@ -117,14 +119,14 @@ Example: `🔀2/5` means interactive rebase at step 2 of 5.
 
 ### Using Oh My Zsh
 
-1. Clone this repo or download `container-candy.zsh-theme`
+1. Clone this repo or download `ai-candy.zsh-theme`
 2. Copy the theme to your Oh My Zsh themes directory:
    ```bash
-   cp container-candy.zsh-theme ~/.oh-my-zsh/custom/themes/
+   cp ai-candy.zsh-theme ~/.oh-my-zsh/custom/themes/
    ```
 3. Set it in your `~/.zshrc`:
    ```bash
-   ZSH_THEME="container-candy"
+   ZSH_THEME="ai-candy"
    ```
 4. Reload your shell:
    ```bash
@@ -152,9 +154,9 @@ MIN       → Essential: user@host, time, path, git only
 
 Version checks for AI tools run in the background and cache results for 1 hour — your prompt stays snappy.
 
-## Why "Container Candy"?
+## Why "AI Candy"?
 
-Because knowing where you are should be sweet, not stressful.
+Because knowing where you are—and what AI tools are at your fingertips—should be sweet, not stressful.
 
 ---
 

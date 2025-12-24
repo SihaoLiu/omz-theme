@@ -1,9 +1,15 @@
 # ============================================================================
+# AI Candy - Oh My Zsh Theme
+# Author: Sihao Liu <sihao@cs.ucla.edu>
+# License: MIT
+# ============================================================================
+
+# ============================================================================
 # ZSH VERSION CHECK - This theme requires zsh 5.4+ for nameref support
 # ============================================================================
 autoload -Uz is-at-least
 if ! is-at-least 5.4; then
-  print -P "%F{red}[container-candy.zsh-theme]%f Requires zsh 5.4+, current: $ZSH_VERSION"
+  print -P "%F{red}[ai-candy.zsh-theme]%f Requires zsh 5.4+, current: $ZSH_VERSION"
   return 1
 fi
 
@@ -12,6 +18,10 @@ fi
 # ============================================================================
 # These flags avoid repeated `command -v` calls throughout the file.
 # Each flag is set to 1 if the command is available, 0 otherwise.
+#
+# NOTE: AI tools (claude/codex/gemini) use LAZY detection because they're
+# installed via nvm/npm which may not be in PATH when the theme first loads.
+# They are detected on first prompt render when shell is fully initialized.
 
 typeset -g _HAS_SQLITE3=0
 typeset -g _HAS_TIMEOUT=0
@@ -21,10 +31,14 @@ typeset -g _HAS_XXD=0
 typeset -g _HAS_GH=0
 typeset -g _HAS_SSH=0
 typeset -g _HAS_CURL=0
+
+# AI tools - lazy detection (set on first prompt render)
 typeset -g _HAS_CLAUDE=0
 typeset -g _HAS_CODEX=0
 typeset -g _HAS_GEMINI=0
+typeset -g _AI_TOOLS_DETECTED=0  # Flag to trigger one-time detection
 
+# Core system tools - detect immediately (always in PATH)
 command -v sqlite3 &>/dev/null && _HAS_SQLITE3=1
 if command -v timeout &>/dev/null; then
   _HAS_TIMEOUT=1
@@ -38,9 +52,20 @@ command -v xxd &>/dev/null && _HAS_XXD=1
 command -v gh &>/dev/null && _HAS_GH=1
 command -v ssh &>/dev/null && _HAS_SSH=1
 command -v curl &>/dev/null && _HAS_CURL=1
-command -v claude &>/dev/null && _HAS_CLAUDE=1
-command -v codex &>/dev/null && _HAS_CODEX=1
-command -v gemini &>/dev/null && _HAS_GEMINI=1
+
+# Hash command detection (for _hash_string performance)
+typeset -g _HASH_CMD=""
+if command -v sha256sum &>/dev/null; then
+  _HASH_CMD="sha256sum"
+elif command -v shasum &>/dev/null; then
+  _HASH_CMD="shasum"
+elif command -v openssl &>/dev/null; then
+  _HASH_CMD="openssl"
+elif command -v cksum &>/dev/null; then
+  _HASH_CMD="cksum"
+fi
+
+# AI tools detected lazily in _compute_ai_tools_direct()
 
 # ============================================================================
 # COLOR CONSTANTS - Centralized color definitions for easy customization
@@ -173,6 +198,23 @@ function _run_with_timeout() {
 }
 
 # ============================================================================
+# SECURE CACHE WRITE - Ensures proper permissions on all cache files
+# ============================================================================
+# SECURITY: All cache writes use umask 077 to prevent information leakage
+# Usage: _cache_write <file> <content>
+# For append: _cache_write <file> <content> append
+function _cache_write() {
+  local file="$1"
+  local content="$2"
+  local mode="${3:-overwrite}"
+  if [[ "$mode" == "append" ]]; then
+    ( umask 077 && print -r -- "$content" >> "$file" )
+  else
+    ( umask 077 && print -r -- "$content" > "$file" )
+  fi
+}
+
+# ============================================================================
 # MEMORY CACHE - Associative arrays for fast in-memory caching
 # ============================================================================
 # These reduce file I/O by caching values in memory with timestamps.
@@ -276,22 +318,18 @@ fi
 
 # Note: _HAS_FLOCK and _HAS_XXD are set in COMMAND AVAILABILITY section
 
-# Check if sqlite3 supports .parameter command (requires sqlite 3.32+)
+# Check if sqlite3 supports .parameter command with hex literals (requires sqlite 3.32+)
 # This enables secure hex parameter binding for SQL injection prevention
-typeset -g _CACHE_HAS_PARAM_BINDING=0
+# Robust validation: verify hex literal X'00' produces exactly 1-byte blob
+# This catches builds where .parameter exits 0 but doesn't accept X'..' literals
+typeset -g _CACHE_USE_HEX_BINDING=0
 if (( _CACHE_USE_SQLITE && _HAS_XXD )); then
-  # Robust validation: verify hex literal X'00' produces exactly 1-byte blob
-  # This catches builds where .parameter exits 0 but doesn't accept X'..' literals
   if [[ "$(echo ".parameter init
 .parameter set @test X'00'
 SELECT length(@test);" | sqlite3 :memory: 2>/dev/null)" == "1" ]]; then
-    _CACHE_HAS_PARAM_BINDING=1
+    _CACHE_USE_HEX_BINDING=1
   fi
 fi
-
-# Use hex binding only if both xxd and .parameter are available
-typeset -g _CACHE_USE_HEX_BINDING=0
-(( _CACHE_USE_SQLITE && _HAS_XXD && _CACHE_HAS_PARAM_BINDING )) && _CACHE_USE_HEX_BINDING=1
 
 # SECURITY: Safe SQL string escaping for SQLite fallback mode
 # Uses hex encoding when xxd is available for injection-proof escaping.
@@ -430,7 +468,7 @@ typeset -g _FILE_CACHE_MAX_LINES=500        # Max lines per file cache
 # Args: $1=max_age_seconds (optional, defaults to _CACHE_MAX_AGE)
 function _cache_cleanup() {
   local max_age="${1:-$_CACHE_MAX_AGE}"
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
   local cutoff=$((current_time - max_age))
 
   # SQLite cleanup
@@ -596,11 +634,11 @@ fi
 function _prompt_toggle_emoji() {
   if (( _PROMPT_EMOJI_MODE )); then
     _PROMPT_EMOJI_MODE=0
-    echo "0" > "$_EMOJI_MODE_FILE"
+    _cache_write "$_EMOJI_MODE_FILE" "0"
     echo "Switched to plaintext mode"
   else
     _PROMPT_EMOJI_MODE=1
-    echo "1" > "$_EMOJI_MODE_FILE"
+    _cache_write "$_EMOJI_MODE_FILE" "1"
     echo "Switched to emoji mode"
   fi
 }
@@ -611,7 +649,7 @@ function _prompt_toggle_path_sep() {
   if (( _PROMPT_PATH_SEP_MODE )); then
     # Currently in space mode, switch to slash mode (always allowed)
     _PROMPT_PATH_SEP_MODE=0
-    echo "0" > "$_PATH_SEP_MODE_FILE"
+    _cache_write "$_PATH_SEP_MODE_FILE" "0"
     echo "Slash mode: [repo/root/submodule/path/in/submodule]"
   else
     # Currently in slash mode, try to switch to space mode
@@ -623,7 +661,7 @@ function _prompt_toggle_path_sep() {
       return 1
     fi
     _PROMPT_PATH_SEP_MODE=1
-    echo "1" > "$_PATH_SEP_MODE_FILE"
+    _cache_write "$_PATH_SEP_MODE_FILE" "1"
     echo "Space mode: [repo/root submodule path/in/submodule]"
   fi
 }
@@ -719,9 +757,8 @@ function _prompt_tool_status() {
   # Strips ANSI codes to calculate visible length, then pads to INNER width
   _tsl() {
     local content="$1"
-    # Strip ANSI escape codes to get visible text
-    local visible="${content//\$\'\\e\[*m\'/}"  # doesn't work well, use sed
-    visible=$(printf '%s' "$content" | sed 's/\x1b\[[0-9;]*m//g')
+    # Strip ANSI escape codes to get visible text (use sed for reliable ANSI stripping)
+    local visible=$(printf '%s' "$content" | sed 's/\x1b\[[0-9;]*m//g')
     local vlen=${#visible}
     local pad=$((INNER - vlen))
     if (( pad < 0 )); then pad=0; fi
@@ -771,11 +808,11 @@ function _prompt_tool_status() {
 
   # gh CLI
   if (( _HAS_GH )); then
-    local gh_version=$(gh --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    local gh_version=$(gh --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
     _tsl "    ${CHECK} gh          - GitHub CLI v${gh_version}"
     if (( _HAS_TIMEOUT )); then
       local auth_status=""
-      local current_time=${EPOCHSECONDS:-$(date +%s)}
+      local current_time=${EPOCHSECONDS}
       # Check cache first
       if [[ -f "$_GH_AUTH_CACHE_FILE" ]]; then
         local auth_data=$(<"$_GH_AUTH_CACHE_FILE")
@@ -788,10 +825,10 @@ function _prompt_tool_status() {
       if [[ -z "$auth_status" ]]; then
         if _run_with_timeout "${_NETWORK_TIMEOUT:-5}" gh auth status &>/dev/null; then
           auth_status="1"
-          echo "1|${current_time}" > "$_GH_AUTH_CACHE_FILE"
+          _cache_write "$_GH_AUTH_CACHE_FILE" "1|${current_time}"
         else
           auth_status="0"
-          echo "0|${current_time}" > "$_GH_AUTH_CACHE_FILE"
+          _cache_write "$_GH_AUTH_CACHE_FILE" "0|${current_time}"
         fi
       fi
       # Display result
@@ -893,7 +930,15 @@ fi
 
 # Manual cache refresh function - clears all prompt caches
 # Call this to force refresh of all cached data (system info, git, PR, AI tools)
+# Also re-detects command availability (useful after nvm/pyenv/etc. loads)
 function _prompt_refresh_all_caches() {
+  # Re-detect AI tool availability (may have changed after shell init)
+  command -v claude &>/dev/null && _HAS_CLAUDE=1 || _HAS_CLAUDE=0
+  command -v codex &>/dev/null && _HAS_CODEX=1 || _HAS_CODEX=0
+  command -v gemini &>/dev/null && _HAS_GEMINI=1 || _HAS_GEMINI=0
+  command -v gh &>/dev/null && _HAS_GH=1 || _HAS_GH=0
+  _AI_TOOLS_DETECTED=1  # Mark as detected
+
   # Clear SQLite cache if available
   if (( _CACHE_USE_SQLITE )); then
     sqlite3 "$_CACHE_DB_FILE" "
@@ -1132,7 +1177,14 @@ function _compute_layout_mode() {
 # ============================================================================
 # PERFORMANCE: Inline logic and use direct variable assignment to minimize subshells
 # Target: reduce from 10-15 subshells to 2-4 per prompt
+
+# Per-prompt git root cache (avoids repeated _get_cached_git_root calls)
+typeset -g _PP_CACHED_GIT_ROOT=""
+
 function _precmd_compute_prompt() {
+  # Cache git root once per prompt (used by multiple functions)
+  _PP_CACHED_GIT_ROOT=$(_get_cached_git_root)
+
   # === Status indicators ===
   _compute_exit_status_direct
 
@@ -1191,7 +1243,7 @@ typeset -g _PP_SYSINFO_KERNEL_SHORT=""
 # Direct-assignment version: writes result to _PP_SYSINFO_* global variables
 # PERFORMANCE: Avoids 1 subshell by parsing cache directly into variables
 function _compute_sysinfo_direct() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
 
   # Check file cache (use zsh native file reading)
   if [[ -f "$_SYSINFO_CACHE_FILE" ]]; then
@@ -1254,8 +1306,8 @@ function _compute_sysinfo_direct() {
 
   # Save to cache
   local result="${os_long}|${os_short}|${kernel_long}|${kernel_short}"
-  echo "$current_time" > "$_SYSINFO_CACHE_FILE"
-  echo "$result" >> "$_SYSINFO_CACHE_FILE"
+  _cache_write "$_SYSINFO_CACHE_FILE" "$current_time"
+  _cache_write "$_SYSINFO_CACHE_FILE" "$result" append
 
   # Assign to global variables
   _PP_SYSINFO_OS_LONG="$os_long"
@@ -1332,7 +1384,7 @@ function _cache_update_line_by_prefix() {
 # Get cached git root for current directory
 function _get_cached_git_root() {
   local current_dir="$PWD"
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
 
   # Check memory cache first (fastest, no I/O)
   if [[ -n "${_MEM_CACHE_GIT_ROOT[$current_dir]}" ]]; then
@@ -1381,7 +1433,7 @@ function _get_cached_git_root() {
 # Where repo1 is outermost, repoN is innermost git root
 # current_subdir is the path within the innermost repo (may be empty)
 function _get_git_hierarchy() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
   local cache_key="$PWD"
 
   # Check memory cache first (fastest, no I/O)
@@ -1462,9 +1514,9 @@ function _get_git_hierarchy() {
 
 # Direct-assignment version of _git_prompt_info_cached
 # PERFORMANCE: Sets _PP_GIT_INFO directly (1 subshell for oh-my-zsh compat)
+# Uses _PP_CACHED_GIT_ROOT set in _precmd_compute_prompt
 function _compute_git_info_direct() {
-  local git_root=$(_get_cached_git_root)
-  if [[ "$git_root" == "NOT_GIT" ]]; then
+  if [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
     _PP_GIT_INFO=""
     return
   fi
@@ -1481,6 +1533,7 @@ function _compute_git_info_direct() {
 
 # Direct-assignment version of _git_extended_status_cached
 # PERFORMANCE: Sets _PP_GIT_EXT directly (0 subshells)
+# Uses _PP_CACHED_GIT_ROOT set in _precmd_compute_prompt
 function _compute_git_extended_direct() {
   local current_id="$_PROMPT_RENDER_ID"
   if [[ "$_PROMPT_GIT_EXT_CACHE_ID" == "$current_id" ]]; then
@@ -1489,11 +1542,10 @@ function _compute_git_extended_direct() {
   fi
 
   _PP_GIT_EXT=""
-  local git_root=$(_get_cached_git_root)
-  [[ "$git_root" == "NOT_GIT" ]] && return
+  [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]] && return
 
-  local cache_key="${git_root}"
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local cache_key="${_PP_CACHED_GIT_ROOT}"
+  local current_time=${EPOCHSECONDS}
 
   # Check memory cache first (fastest, no I/O)
   if [[ -n "${_MEM_CACHE_GIT_EXT[$cache_key]}" ]]; then
@@ -1575,6 +1627,7 @@ function _compute_git_extended_direct() {
 
 # Direct-assignment version of _git_special_state_cached
 # PERFORMANCE: Sets _PP_GIT_SPECIAL directly (0 subshells)
+# Uses _PP_CACHED_GIT_ROOT set in _precmd_compute_prompt
 function _compute_git_special_direct() {
   local current_id="$_PROMPT_RENDER_ID"
   if [[ "$_PROMPT_GIT_SPECIAL_CACHE_ID" == "$current_id" ]]; then
@@ -1583,10 +1636,9 @@ function _compute_git_special_direct() {
   fi
 
   _PP_GIT_SPECIAL=""
-  local git_root=$(_get_cached_git_root)
-  [[ "$git_root" == "NOT_GIT" ]] && return
+  [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]] && return
 
-  local git_dir="${git_root}/.git"
+  local git_dir="${_PP_CACHED_GIT_ROOT}/.git"
   # Handle worktrees
   if [[ -f "$git_dir" ]]; then
     local git_link=$(<"$git_dir")
@@ -1686,7 +1738,7 @@ function _compute_pr_status_direct() {
   local branch="${remote_branch#*|}"
   local cache_key="${remote_key}|${branch}"
   local pr_number="" ci_status="none" cache_time=0
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
 
   # FIX: Check memory cache first (fastest, no I/O)
   # Memory cache format: "pr_number|ci_status|timestamp"
@@ -1753,14 +1805,12 @@ function _compute_pr_status_direct() {
 
 # Direct-assignment version of smart_path_display
 # PERFORMANCE: Sets _PP_PATH directly (0 subshells when cached)
+# Uses _PP_CACHED_GIT_ROOT set in _precmd_compute_prompt
 function _compute_smart_path_direct() {
   local use_short="$1"
   local full_path="${PWD/#$HOME/~}"
 
-  # Check if we're in a git repo
-  local git_root=$(_get_cached_git_root)
-
-  if [[ "$git_root" == "NOT_GIT" ]]; then
+  if [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
     # Escape % to %% to prevent zsh prompt escape interpretation
     _PP_PATH="%{$fg[white]%}[${full_path//\%/%%}]%{$reset_color%}"
     return
@@ -1886,31 +1936,39 @@ _GIT_REMOTE_BRANCH_CACHE_ID=-1
 # Hash sensitive strings (e.g., remote URLs) for cache keys.
 # Args: $1=input string
 # Returns: hash string
+# PERFORMANCE: Uses _HASH_CMD detected at load time (no repeated command -v calls)
 function _hash_string() {
   local input="$1"
   local hash=""
 
-  if command -v sha256sum &>/dev/null; then
-    hash=$(printf '%s' "$input" | sha256sum 2>/dev/null)
-    hash="${hash%% *}"
-  elif command -v shasum &>/dev/null; then
-    hash=$(printf '%s' "$input" | shasum -a 256 2>/dev/null)
-    hash="${hash%% *}"
-  elif command -v openssl &>/dev/null; then
-    hash=$(printf '%s' "$input" | openssl dgst -sha256 2>/dev/null)
-    hash="${hash##* }"
-  elif command -v cksum &>/dev/null; then
-    hash=$(printf '%s' "$input" | cksum 2>/dev/null)
-    hash="${hash%% *}"
-  else
-    hash="${#input}"
-  fi
+  case "$_HASH_CMD" in
+    sha256sum)
+      hash=$(printf '%s' "$input" | sha256sum 2>/dev/null)
+      hash="${hash%% *}"
+      ;;
+    shasum)
+      hash=$(printf '%s' "$input" | shasum -a 256 2>/dev/null)
+      hash="${hash%% *}"
+      ;;
+    openssl)
+      hash=$(printf '%s' "$input" | openssl dgst -sha256 2>/dev/null)
+      hash="${hash##* }"
+      ;;
+    cksum)
+      hash=$(printf '%s' "$input" | cksum 2>/dev/null)
+      hash="${hash%% *}"
+      ;;
+    *)
+      hash="${#input}"
+      ;;
+  esac
 
   print -r -- "$hash"
 }
 
 # Get cached git remote key and branch (per-prompt cache)
 # Returns: remote_key|branch or empty if not in git repo
+# Uses _PP_CACHED_GIT_ROOT set in _precmd_compute_prompt
 function _get_cached_git_remote_branch() {
   local current_id="$_PROMPT_RENDER_ID"
   if [[ "$_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" ]]; then
@@ -1918,8 +1976,7 @@ function _get_cached_git_remote_branch() {
     return
   fi
 
-  local git_root=$(_get_cached_git_root)
-  if [[ "$git_root" == "NOT_GIT" ]]; then
+  if [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
     _GIT_REMOTE_BRANCH_CACHE=""
     _GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
     return
@@ -1993,6 +2050,7 @@ _ai_tool_update_cache() {
 
   # Pass variables to subshell
   (
+    umask 077  # SECURITY: Ensure cache files are private
     local installed_version
     local remote_version
 
@@ -2006,7 +2064,7 @@ _ai_tool_update_cache() {
 
     # Only update cache if we got the local version
     if [[ -n "$installed_version" ]]; then
-      local current_time=${EPOCHSECONDS:-$(date +%s)}
+      local current_time=${EPOCHSECONDS}
       echo "$installed_version $remote_version $current_time" > "$cache_file"
     fi
 
@@ -2034,6 +2092,7 @@ function _gh_username_update_gh() {
 
   # Pass variables to subshell via environment
   (
+    umask 077  # SECURITY: Ensure cache files are private
     local username=""
     local auth_output
 
@@ -2043,7 +2102,7 @@ function _gh_username_update_gh() {
     # Extract username from "Logged in to github.com account USERNAME"
     username=$(echo "$auth_output" | grep -oE 'account [^ ]+' | head -n1 | sed 's/account //')
 
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
+    local current_time=${EPOCHSECONDS}
     if [[ -n "$username" ]]; then
       echo "${username}|${current_time}" > "$cache_file"
     else
@@ -2069,6 +2128,7 @@ function _gh_username_update_ssh() {
 
   # Pass variables to subshell via environment
   (
+    umask 077  # SECURITY: Ensure cache files are private
     local username=""
     local ssh_output
 
@@ -2078,7 +2138,7 @@ function _gh_username_update_ssh() {
     # Extract username from "Hi USERNAME! You've successfully authenticated..."
     username=$(echo "$ssh_output" | grep -oE 'Hi [^!]+!' | head -n1 | sed 's/Hi //; s/!//')
 
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
+    local current_time=${EPOCHSECONDS}
     if [[ -n "$username" ]]; then
       echo "${username}|${current_time}" > "$cache_file"
     else
@@ -2093,7 +2153,7 @@ function _gh_username_update_ssh() {
 # PERFORMANCE: Avoids 3 subshells by reading cache files directly
 function _compute_gh_username_direct() {
   local gh_user="" ssh_user=""
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
 
   # Read gh username from cache file directly (no function call)
   if [[ -f "$_GH_USERNAME_GH_CACHE_FILE" ]]; then
@@ -2156,7 +2216,8 @@ function _gh_auth_update_background() {
   _acquire_background_lock "$lock_file" || return
 
   (
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
+    umask 077  # SECURITY: Ensure cache files are private
+    local current_time=${EPOCHSECONDS}
     if _run_with_timeout "$net_timeout" gh auth status &>/dev/null; then
       echo "1|${current_time}" > "$_GH_AUTH_CACHE_FILE"
     else
@@ -2170,7 +2231,7 @@ function _gh_auth_update_background() {
 # PERFORMANCE: Never blocks - returns cached result and triggers background update if needed
 # Returns 0 if authenticated, 1 if not (or unknown on first call)
 function _gh_is_authenticated() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
+  local current_time=${EPOCHSECONDS}
 
   # Memory cache first (fastest, no I/O)
   if [[ -n "$_GH_AUTH_MEM_CACHE" ]] && \
@@ -2261,7 +2322,7 @@ _gh_pr_update_cache() {
       fi
     fi
 
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
+    local current_time=${EPOCHSECONDS}
     local cache_key="${remote_key}|${branch}"
     local cache_value="${pr_number}|${ci_status}"
 
@@ -2339,6 +2400,14 @@ function _compute_ai_tool_status() {
 }
 
 function _compute_ai_tools_direct() {
+  # Lazy detection: detect AI tools on first prompt render (after nvm loads)
+  if (( ! _AI_TOOLS_DETECTED )); then
+    command -v claude &>/dev/null && _HAS_CLAUDE=1
+    command -v codex &>/dev/null && _HAS_CODEX=1
+    command -v gemini &>/dev/null && _HAS_GEMINI=1
+    _AI_TOOLS_DETECTED=1
+  fi
+
   local ai_status="" ai_status_long=""
   local tool_result tool_result_long  # Set by _compute_ai_tool_status
   local sep=""
