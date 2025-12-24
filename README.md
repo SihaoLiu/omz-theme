@@ -8,49 +8,69 @@ Ever SSH'd into a machine and wondered *"Wait, am I on the host or in a containe
 
 ## Features
 
-- **Responsive Design** — Automatically adapts to your terminal width (4-tier system)
+- **Responsive Layout** — Adapts to terminal width and uses RPROMPT for sysinfo/AI in tight spaces
 - **Container Detection** — Instantly know if you're in a container (magenta) or on the host (yellow)
-- **OS & Kernel Info** — See your distro and kernel version at a glance
-- **Git Status** — Branch, staged/unstaged changes, and special states (rebase, merge, cherry-pick, bisect)
-- **GitHub PR Status** — Shows PR number and CI status when current branch has an open PR
-- **AI Tools Status** — Track versions of Claude Code, OpenAI Codex, and Gemini CLI
-- **Update Indicators** — Red `*` warns you when updates are available
-- **Emoji/Plaintext Modes** — Toggle between emoji-rich and plaintext display
-- **Smart Caching** — Background version checks with SQLite or file-based cache, zero prompt lag
+- **OS & Kernel Info** — Full or compact, depending on width
+- **SSH + Public IP** — SSH indicator plus external IP (or `(no-internet)`)
+- **Git Status** — Branch, dirty marker, ahead/behind, stash count, and special states
+- **GitHub Integration** — Username badge + PR number + CI status
+- **AI Tools Status** — Claude/Codex/Gemini versions with update indicator
+- **Toggle Modes** — Emoji/plaintext, path separator, and network on/off
+- **Smart Caching** — Memory + SQLite/file caches with background refresh, zero prompt lag
 
 ## Demo
 
-Watch the prompt gracefully adapt as your terminal shrinks:
+Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push system info + AI to RPROMPT (right side):
 
 **Emoji Mode:**
 ```
 # LONG MODE - Full details + AI tools + PR status
-user@host [💻] [09:32:49] [~/project] [main][#42✓] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [🤖1.0.18|🧠0.1.2504302|🔷0.1.9*]
+[✓]user@host(x.x.x.x)[GithubUser] 💻 [09:32:49 PDT] [~/project] [main][#42✓] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [🤖1.0.18|🧠0.1.2504302|🔷0.1.9*]
 -> %
 
-# SHORT+AI MODE - Compact OS info + AI tools + PR status
-user@host [💻] [09:32:53] [~/project] [main][#42✓] [Rhel-9.7, Linux-5.14.0] [🤖1.0.18|🧠0.1.2504302|🔷0.1.9*]
+# SHORT MODE - Sysinfo + AI move to RPROMPT
+[✓]user@host(x.x.x.x)[GithubUser] 💻 [09:32:53 PDT] [~/project] [main][#42✓]
+# RPROMPT: [Rhel-9.7, Linux-5.14.0] [🤖1.0.18|🧠0.1.2504302|🔷0.1.9*]
 -> %
 
-# SHORT MODE - Compact OS info only + PR status
-user@host [💻] [09:33:05] [~/project] [main][#42✓] [Rhel-9.7, Linux-5.14.0]
--> %
-
-# MIN MODE - Just the essentials
-user@host [09:33:11] [~/project] [main]
+# MIN MODE - Truncated path
+[✓]user@host(x.x.x.x)[GithubUser] 💻 [09:33:11 PDT] [~/proj/..] [main]
+# RPROMPT: [Rhel-9.7, Linux-5.14.0]
 -> %
 ```
 
 **Plaintext Mode:**
 ```
 # LONG MODE with long AI names (when width allows)
-user@host [HOST] [09:32:49] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [Claude:1.0.18|Codex:0.1.2504302|Gemini:0.1.9*]
+[OK]user@host(x.x.x.x)[GithubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [Claude:1.0.18|Codex:0.1.2504302|Gemini:0.1.9*]
 
 # LONG MODE with short AI names
-user@host [HOST] [09:32:49] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [Cl:1.0.18|Cx:0.1.2504302|Gm:0.1.9*]
+[OK]user@host(x.x.x.x)[GithubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0-611.13.1.el9_7.x86_64] [Cl:1.0.18|Cx:0.1.2504302|Gm:0.1.9*]
 ```
 
 ## Badge Reference
+
+### Command Status
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[✓]` / `[OK]` | Last command succeeded (exit code 0) |
+| `[✗N]` / `[ERRN]` | Last command failed with exit code N |
+
+### Connection & Environment
+
+| Indicator | Meaning |
+|-----------|---------|
+| `⚡` / `[SSH]` | Connected via SSH |
+| `(x.x.x.x)` | Public IP address (green) |
+| `(no-internet)` | No external connectivity (red) |
+
+### GitHub Identity
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[username]` | GitHub username (from `gh` auth and/or `ssh -T git@github.com`) |
+| `[gh|ssh]` (red) | Mismatch between `gh` and SSH identities |
 
 ### AI Tools
 
@@ -60,14 +80,14 @@ user@host [HOST] [09:32:49] [~/project] [main][#42 OK] [Red Hat Enterprise Linux
 | `🧠` / `Cx:` / `Codex:` | OpenAI Codex CLI | Light Gray |
 | `🔷` / `Gm:` / `Gemini:` | Gemini CLI | Purple |
 
-A red `*` after the version means an update is available!
+A red `*` after the version means an update is available.
 
 ### Container vs Host
 
 | Indicator | Meaning |
 |-----------|---------|
-| `📦` / `[CNTR]` (magenta) | You're inside a container |
-| `💻` / `[HOST]` (yellow) | You're on the physical/VM host |
+| `📦` / `C` (magenta) | You're inside a container |
+| `💻` / `H` (yellow) | You're on the physical/VM host |
 
 Detection uses `/run/.containerenv` — works great with Podman and other OCI runtimes.
 
@@ -81,6 +101,17 @@ Detection uses `/run/.containerenv` — works great with Podman and other OCI ru
 | `⏳` / `...` | CI checks still running |
 
 Example: `#42✓` means PR #42 with all checks passing.
+
+### Git Extended Status
+
+| Indicator | Meaning |
+|-----------|---------|
+| `↑N` / `+N` | N commits ahead of upstream (need to push) |
+| `↓N` / `-N` | N commits behind upstream (need to pull) |
+| `⚑N` / `SN` | N stashed changes |
+| `*` | Uncommitted changes in working directory |
+
+Example: `main ↑2↓1⚑3` means branch `main`, 2 ahead, 1 behind, 3 stashes.
 
 ### Git Special States
 
@@ -107,6 +138,8 @@ Example: `🔀2/5` means interactive rebase at step 2 of 5.
 |---------|--------|
 | `e` | Toggle emoji/plaintext mode |
 | `p` | Toggle path separator (space/slash) |
+| `n` | Toggle network features (IP, GitHub, AI updates) |
+| `t` | Show tool availability status |
 | `u` | Refresh all cached prompt info |
 | `h` | Show help |
 
@@ -114,6 +147,7 @@ Example: `🔀2/5` means interactive rebase at step 2 of 5.
 
 - **Space mode:** `[repo/root submodule relative/path]` — enables double-click to select path segments
 - **Slash mode:** `[repo/root/submodule/relative/path]` — traditional path display
+- **Note:** Space mode auto-disables when the current path contains spaces
 
 ## Installation
 
@@ -135,24 +169,27 @@ Example: `🔀2/5` means interactive rebase at step 2 of 5.
 
 ## Requirements
 
+- Zsh 5.4+ (nameref support)
 - [Oh My Zsh](https://ohmyz.sh/)
 - A terminal with 256-color support (for the pretty colors)
 - Optional: `sqlite3` for faster caching (falls back to file-based cache)
+- Optional: `timeout`/`gtimeout` (coreutils) for network features
+- Optional: `curl` for public IP display and AI update checks
 - Optional: `gh` CLI for GitHub PR status badge
+- Optional: `ssh` for GitHub identity badge
 - Optional: `claude`, `codex`, and/or `gemini` CLI tools for AI status badges
 
 ## How It Works
 
-The theme calculates the visible length of all prompt components and picks the best display tier for your current terminal width:
+The theme calculates the visible length of all prompt components and picks the best layout for your terminal width:
 
 ```
-LONG      → Everything: full OS name, full kernel, AI tools
-SHORT+AI  → Compact: os-id + version, short kernel, AI tools
-SHORT     → Compact: os-id + version, short kernel, no AI
-MIN       → Essential: user@host, time, path, git only
+LONG  → Full OS name + full kernel + AI tools on the left (long AI names when space allows)
+SHORT → Compact OS + kernel + AI tools move to RPROMPT
+MIN   → Truncated path + compact sysinfo/AI on RPROMPT
 ```
 
-Version checks for AI tools run in the background and cache results for 1 hour — your prompt stays snappy.
+Network lookups (public IP, GitHub identity/PR, AI update checks) run in the background and cache results — your prompt stays snappy. Toggle them with `n`.
 
 ## Why "AI Candy"?
 
