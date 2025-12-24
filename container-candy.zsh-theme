@@ -59,14 +59,35 @@ typeset -g _CACHE_TTL_MEDIUM=300      # 5 minutes - git status, GitHub username
 typeset -g _CACHE_TTL_LOW=3600        # 1 hour - system info, AI versions, auth status
 
 # ============================================================================
+# CACHE DIRECTORY SETUP - Secure cache location in user's home directory
+# ============================================================================
+# Cache files are stored in $HOME/.cache/zsh-prompt/ with strict permissions
+# to prevent information leakage on shared systems.
+typeset -g _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh-prompt"
+
+# Initialize cache directory with secure permissions (700)
+if [[ ! -d "$_CACHE_DIR" ]]; then
+  mkdir -p "$_CACHE_DIR" 2>/dev/null
+fi
+chmod 700 "$_CACHE_DIR" 2>/dev/null
+
+# ============================================================================
 # TIMEOUT WRAPPER - Universal timeout command abstraction
 # ============================================================================
-# Provides consistent timeout behavior across Linux (timeout), macOS (gtimeout),
-# and systems without timeout commands. Eliminates repeated pattern throughout file.
+# Provides consistent timeout behavior across Linux (timeout), macOS (gtimeout).
+# SECURITY: If no timeout command is available, network-dependent features are
+# disabled to prevent background process accumulation.
 #
 # Usage: _run_with_timeout <timeout_seconds> <command> [args...]
 # Returns: command output on success, empty string on timeout or error
 # Exit code: mirrors the underlying command's exit code
+
+# Check for timeout command availability
+typeset -g _HAS_TIMEOUT_CMD=0
+if command -v timeout &>/dev/null || command -v gtimeout &>/dev/null; then
+  _HAS_TIMEOUT_CMD=1
+fi
+
 function _run_with_timeout() {
   local timeout_sec="$1"
   shift
@@ -75,8 +96,9 @@ function _run_with_timeout() {
   elif command -v gtimeout &>/dev/null; then
     gtimeout "$timeout_sec" "$@"
   else
-    # Fallback: run without timeout (best effort)
-    "$@"
+    # No timeout available - caller should have checked _HAS_TIMEOUT_CMD
+    # Return failure to signal the command cannot be safely executed
+    return 124  # Same exit code as timeout uses
   fi
 }
 
@@ -162,8 +184,8 @@ function _mem_cache_cleanup() {
 # Uses SQLite for efficient caching when available, falls back to file-based
 # cache on systems without sqlite3 command.
 
-# SQLite database file location
-typeset -g _CACHE_DB_FILE="${TMPDIR:-/tmp}/.zsh_prompt_cache_${USER}.db"
+# SQLite database file location (in secure cache directory)
+typeset -g _CACHE_DB_FILE="${_CACHE_DIR}/prompt_cache.db"
 typeset -g _CACHE_USE_SQLITE=0  # Will be set to 1 if sqlite3 is available
 
 # Check if sqlite3 is available and initialize database
@@ -208,10 +230,10 @@ function _cache_get() {
       LIMIT 1;
     " 2>/dev/null
   else
-    # Fallback to file cache
+    # Fallback to file cache (in secure cache directory)
     # File format is: key<SEP>value<SEP>timestamp (SEP = \x1f to avoid key containing |)
     # Return format must be: value|timestamp (consistent with SQLite path)
-    local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
+    local cache_file="${_CACHE_DIR}/${cache_name}_cache"
     local sep=$'\x1f'
     local prefix="${key}${sep}"
     local line=$(_cache_get_line_by_prefix "$cache_file" "$prefix")
@@ -222,31 +244,6 @@ function _cache_get() {
       local timestamp="${rest#*$sep}" # Get timestamp (after second sep)
       echo "${value}|${timestamp}"
     fi
-  fi
-}
-
-# Generic cache set function - works with both SQLite and file cache
-# Args: $1=cache_name, $2=key, $3=value, $4=timestamp
-function _cache_set() {
-  local cache_name="$1"
-  local key="$2"
-  local value="$3"
-  local timestamp="$4"
-
-  if (( _CACHE_USE_SQLITE )); then
-    # SQLite upsert - escape single quotes in key and value
-    local escaped_key="${key//\'/\'\'}"
-    local escaped_value="${value//\'/\'\'}"
-    sqlite3 "$_CACHE_DB_FILE" "
-      INSERT OR REPLACE INTO cache (key, value, timestamp)
-      VALUES ('${cache_name}:${escaped_key}', '${escaped_value}', ${timestamp});
-    " 2>/dev/null
-  else
-    # Fallback to file cache (use \x1f separator to avoid key containing |)
-    local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
-    local sep=$'\x1f'
-    local prefix="${key}${sep}"
-    _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}${sep}${value}${sep}${timestamp}"
   fi
 }
 
@@ -279,7 +276,7 @@ function _cache_set_async() {
     ) &!
   else
     (
-      local cache_file="${TMPDIR:-/tmp}/.${cache_name}_cache_${USER}"
+      local cache_file="${_CACHE_DIR}/${cache_name}_cache"
       local sep=$'\x1f'
       local prefix="${key}${sep}"
       _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}${sep}${value}${sep}${timestamp}"
@@ -287,46 +284,144 @@ function _cache_set_async() {
   fi
 }
 
-# Batch cache cleanup - removes expired entries (run occasionally)
-# Args: $1=cache_name (optional, cleans all if not specified), $2=max_age_seconds
+# ============================================================================
+# CACHE CLEANUP SYSTEM - Automatic cleanup to prevent unbounded cache growth
+# ============================================================================
+# Cleanup strategy:
+#   - SQLite: Delete entries older than max_age (default 7 days)
+#   - File caches: Remove lines older than max_age
+#   - Memory caches: Handled by _mem_cache_cleanup (called on threshold)
+#   - Periodic: Run cleanup every 100 prompts
+#   - Startup: Run cleanup on shell startup (this file load)
+
+# Cache cleanup constants
+typeset -g _CACHE_CLEANUP_INTERVAL=100      # Run cleanup every N prompts
+typeset -g _CACHE_MAX_AGE=$((7 * 24 * 3600)) # 7 days in seconds
+typeset -g _FILE_CACHE_MAX_LINES=500        # Max lines per file cache
+
+# Batch cache cleanup - removes expired entries
+# Args: $1=max_age_seconds (optional, defaults to _CACHE_MAX_AGE)
 function _cache_cleanup() {
-  local cache_name="$1"
-  local max_age="${2:-3600}"  # Default 1 hour
+  local max_age="${1:-$_CACHE_MAX_AGE}"
   local current_time=${EPOCHSECONDS:-$(date +%s)}
   local cutoff=$((current_time - max_age))
 
+  # SQLite cleanup
   if (( _CACHE_USE_SQLITE )); then
-    if [[ -n "$cache_name" ]]; then
-      sqlite3 "$_CACHE_DB_FILE" "
-        DELETE FROM cache
-        WHERE key LIKE '${cache_name}:%' AND timestamp < ${cutoff};
-      " 2>/dev/null
-    else
-      sqlite3 "$_CACHE_DB_FILE" "
-        DELETE FROM cache WHERE timestamp < ${cutoff};
-      " 2>/dev/null
-    fi
+    sqlite3 "$_CACHE_DB_FILE" "
+      DELETE FROM cache WHERE timestamp < ${cutoff};
+    " 2>/dev/null
   fi
-  # File cache cleanup is handled by individual cache functions
+
+  # File cache cleanup (for each known cache file)
+  local cache_files=(
+    "$_SYSINFO_CACHE_FILE"
+    "$_CLAUDE_CACHE_FILE"
+    "$_CODEX_CACHE_FILE"
+    "$_GEMINI_CACHE_FILE"
+    "$_GH_AUTH_CACHE_FILE"
+    "$_GH_USERNAME_GH_CACHE_FILE"
+    "$_GH_USERNAME_SSH_CACHE_FILE"
+  )
+
+  for cache_file in "${cache_files[@]}"; do
+    [[ -f "$cache_file" ]] || continue
+    # These simple caches have format: value timestamp or value|timestamp
+    # Check if file is older than max_age and remove if so
+    local file_time=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
+    if [[ -n "$file_time" ]] && (( current_time - file_time > max_age )); then
+      rm -f "$cache_file" 2>/dev/null
+    fi
+  done
+
+  # Multi-line file cache cleanup (git_root, git_hierarchy, gh_pr, git_ext)
+  _file_cache_prune "${_CACHE_DIR}/git_root_cache" "$cutoff"
+  _file_cache_prune "${_CACHE_DIR}/git_hierarchy_cache" "$cutoff"
+  _file_cache_prune "${_CACHE_DIR}/gh_pr_cache" "$cutoff"
+  _file_cache_prune "${_CACHE_DIR}/git_ext_cache" "$cutoff"
+
+  # Clean up stale lock files (older than 5 minutes)
+  local lock_cutoff=$((current_time - 300))
+  setopt localoptions null_glob
+  for lock_file in "${_CACHE_DIR}"/*.lock; do
+    [[ -f "$lock_file" ]] || continue
+    local lock_time=$(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null)
+    if [[ -n "$lock_time" ]] && (( lock_time < lock_cutoff )); then
+      rm -f "$lock_file" 2>/dev/null
+    fi
+  done
 }
+
+# Prune a multi-line file cache - removes entries older than cutoff timestamp
+# File format: key<sep>value<sep>timestamp per line
+# Args: $1=cache_file, $2=cutoff_timestamp
+function _file_cache_prune() {
+  local cache_file="$1"
+  local cutoff="$2"
+  local sep=$'\x1f'
+
+  [[ -f "$cache_file" ]] || return
+
+  local -a lines=("${(@f)$(<"$cache_file")}")
+  local -a new_lines_rev=()
+  local count=0
+  local max_lines=${_FILE_CACHE_MAX_LINES:-500}
+
+  # Keep newest entries by walking from the end
+  local i line timestamp
+  for (( i=${#lines[@]}; i>=1; i-- )); do
+    line="${lines[$i]}"
+    [[ -z "$line" ]] && continue
+    # Extract timestamp (last field after separator)
+    timestamp="${line##*$sep}"
+    [[ ! "$timestamp" =~ ^[0-9]+$ ]] && continue
+
+    if (( timestamp >= cutoff )); then
+      new_lines_rev+=("$line")
+      (( count++ ))
+      (( count >= max_lines )) && break
+    fi
+  done
+
+  # Reverse back to chronological order
+  local -a new_lines=()
+  for (( i=${#new_lines_rev[@]}; i>=1; i-- )); do
+    new_lines+=("${new_lines_rev[$i]}")
+  done
+
+  # Rewrite file with valid entries only
+  if (( ${#new_lines[@]} < ${#lines[@]} )); then
+    ( umask 077 && printf '%s\n' "${new_lines[@]}" > "$cache_file" )
+  fi
+}
+
+# Periodic cleanup hook - runs in background every N prompts
+typeset -g _CACHE_CLEANUP_LAST_RUN=0
+
+function _periodic_cache_cleanup() {
+  local current_id="$_PROMPT_RENDER_ID"
+
+  # Only run every _CACHE_CLEANUP_INTERVAL prompts
+  (( current_id - _CACHE_CLEANUP_LAST_RUN < _CACHE_CLEANUP_INTERVAL )) && return
+  _CACHE_CLEANUP_LAST_RUN="$current_id"
+
+  # Run cleanup in background to avoid blocking prompt
+  ( _cache_cleanup ) &!
+}
+
+# Startup cleanup (runs once when theme is loaded)
+# This cleans up any stale cache from previous sessions
+( _cache_cleanup ) &!
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
-# Helper: get visible length of a string with zsh prompt escapes stripped
-_prompt_visible_len() {
-  local str="$1"
-  # Remove %{...%} zsh prompt escape sequences (zero-width markers)
-  str="${(S)str//\%\{*\%\}/}"
-  printf '%d' "${#str}"
-}
-
 zmodload zsh/datetime 2>/dev/null
 
 # Emoji mode toggle (1 = emoji-rich, 0 = plaintext)
 # Persisted to file so it survives shell restarts
-_EMOJI_MODE_FILE="${TMPDIR:-/tmp}/.prompt_emoji_mode_${USER}"
+_EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
 
 # Load emoji mode from file or default to 1 (emoji-rich)
 if [[ -f "$_EMOJI_MODE_FILE" ]]; then
@@ -338,7 +433,7 @@ fi
 # Path separator mode toggle (0 = '/', 1 = ' ' space)
 # Space mode allows double-click selection of path segments in terminal
 # Persisted to file so it survives shell restarts
-_PATH_SEP_MODE_FILE="${TMPDIR:-/tmp}/.prompt_path_sep_mode_${USER}"
+_PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
 
 # Load path separator mode from file or default to 1 (space mode)
 if [[ -f "$_PATH_SEP_MODE_FILE" ]]; then
@@ -346,67 +441,6 @@ if [[ -f "$_PATH_SEP_MODE_FILE" ]]; then
 else
   _PROMPT_PATH_SEP_MODE=1
 fi
-
-# Emoji/text mappings - returns emoji or text based on mode
-# Usage: $(_e exit_ok) returns ✓ or [OK]
-function _e() {
-  local key="$1"
-  if (( _PROMPT_EMOJI_MODE )); then
-    case "$key" in
-      exit_ok)    echo "✓" ;;
-      exit_fail)  echo "✗" ;;
-      ssh)        echo "⚡" ;;
-      host)       echo "💻" ;;  # Use laptop instead of 🖥️ (desktop+variant) for consistent width
-      container)  echo "📦" ;;
-      claude)     echo "🤖" ;;
-      codex)      echo "🧠" ;;
-      gemini)     echo "🔷" ;;
-      ahead)      echo "↑" ;;
-      behind)     echo "↓" ;;
-      stash)      echo "⚑" ;;
-      jobs)       echo "⚙" ;;
-      pending)    echo "⏳" ;;
-      pass)       echo "✓" ;;
-      fail)       echo "✗" ;;
-      update)     echo "*" ;;
-      truncated)  echo ".." ;;
-      # Git special states
-      rebase)     echo "🔀" ;;
-      merge)      echo "🔀" ;;
-      cherry)     echo "🍒" ;;
-      bisect)     echo "🔍" ;;
-      detached)   echo "🔌" ;;
-      *)          echo "$key" ;;  # fallback
-    esac
-  else
-    case "$key" in
-      exit_ok)    echo "OK" ;;
-      exit_fail)  echo "ERR" ;;
-      ssh)        echo "SSH" ;;
-      host)       echo "H" ;;
-      container)  echo "C" ;;
-      claude)     echo "Cl:" ;;
-      codex)      echo "Cx:" ;;
-      gemini)     echo "Gm:" ;;
-      ahead)      echo "+" ;;
-      behind)     echo "-" ;;
-      stash)      echo "S" ;;
-      jobs)       echo "J" ;;
-      pending)    echo "..." ;;
-      pass)       echo "OK" ;;
-      fail)       echo "X" ;;
-      update)     echo "*" ;;
-      truncated)  echo ".." ;;
-      # Git special states
-      rebase)     echo "RB" ;;
-      merge)      echo "MG" ;;
-      cherry)     echo "CP" ;;
-      bisect)     echo "BI" ;;
-      detached)   echo "DT" ;;
-      *)          echo "$key" ;;  # fallback
-    esac
-  fi
-}
 
 # Toggle emoji mode
 function _prompt_toggle_emoji() {
@@ -442,9 +476,6 @@ function _prompt_toggle_path_sep() {
     echo "1" > "$_PATH_SEP_MODE_FILE"
     echo "Space mode: [repo/root submodule path/in/submodule]"
   fi
-  # Clear path cache to force re-render
-  _SMART_PATH_CACHE=""
-  _SMART_PATH_CACHE_KEY=""
 }
 
 # Print emoji help/legend
@@ -513,8 +544,173 @@ function _prompt_emoji_help() {
   echo "║    e         Toggle emoji/plaintext mode                         ║"
   echo "║    p         Toggle path separator (space/slash)                 ║"
   echo "║    h         Show this help                                      ║"
+  echo "║    t         Show tool availability status                       ║"
   echo "╚══════════════════════════════════════════════════════════════════╝"
   echo ""
+}
+
+# Tool availability status - shows which optional tools are installed
+# and what features they enable
+function _prompt_tool_status() {
+  local GREEN=$'\e[32m'
+  local RED=$'\e[31m'
+  local YELLOW=$'\e[33m'
+  local CYAN=$'\e[36m'
+  local RESET=$'\e[0m'
+  local CHECK="${GREEN}✓${RESET}"
+  local CROSS="${RED}✗${RESET}"
+  local WARN="${YELLOW}!${RESET}"
+
+  # Total box width (including borders)
+  local WIDTH=78
+  local INNER=$((WIDTH - 2))  # Content width between ║ borders
+
+  # Helper: print a line with auto-padding
+  # Strips ANSI codes to calculate visible length, then pads to INNER width
+  _tsl() {
+    local content="$1"
+    # Strip ANSI escape codes to get visible text
+    local visible="${content//\$\'\\e\[*m\'/}"  # doesn't work well, use sed
+    visible=$(printf '%s' "$content" | sed 's/\x1b\[[0-9;]*m//g')
+    local vlen=${#visible}
+    local pad=$((INNER - vlen))
+    if (( pad < 0 )); then pad=0; fi
+    printf "║%s%*s║\n" "$content" "$pad" ""
+  }
+
+  # Border lines
+  local TOP="╔$(printf '═%.0s' {1..$INNER})╗"
+  local MID="╠$(printf '═%.0s' {1..$INNER})╣"
+  local BOT="╚$(printf '═%.0s' {1..$INNER})╝"
+
+  echo ""
+  echo "$TOP"
+  _tsl "              Tool Availability Status"
+  echo "$MID"
+  _tsl "  ${CYAN}CORE TOOLS${RESET} (Performance & Caching)"
+  _tsl ""
+
+  # sqlite3
+  if command -v sqlite3 &>/dev/null; then
+    _tsl "    ${CHECK} sqlite3     - Fast SQLite cache (FASTER prompts)"
+  else
+    _tsl "    ${CROSS} sqlite3     - Falling back to file cache (slower)"
+    _tsl "                    Install: apt/brew install sqlite3"
+  fi
+
+  # timeout/gtimeout
+  if command -v timeout &>/dev/null; then
+    _tsl "    ${CHECK} timeout     - Command timeout support (Linux)"
+  elif command -v gtimeout &>/dev/null; then
+    _tsl "    ${CHECK} gtimeout    - Command timeout support (macOS)"
+  else
+    _tsl "    ${CROSS} timeout     - Network features DISABLED (gh, PR status)"
+    _tsl "                    Install: apt install coreutils"
+    _tsl "                             brew install coreutils"
+  fi
+
+  # flock
+  if command -v flock &>/dev/null; then
+    _tsl "    ${CHECK} flock       - File locking for cache safety"
+  else
+    _tsl "    ${WARN} flock       - Cache writes may race (minor issue)"
+  fi
+
+  _tsl ""
+  echo "$MID"
+  _tsl "  ${CYAN}GITHUB INTEGRATION${RESET}"
+  _tsl ""
+
+  # gh CLI
+  if command -v gh &>/dev/null; then
+    local gh_version=$(gh --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    _tsl "    ${CHECK} gh          - GitHub CLI v${gh_version}"
+    if (( _HAS_TIMEOUT_CMD )); then
+      if [[ -f "$_GH_AUTH_CACHE_FILE" ]]; then
+        local auth_data=$(<"$_GH_AUTH_CACHE_FILE")
+        if [[ "${auth_data%%|*}" == "1" ]]; then
+          _tsl "                    Authenticated: PR status, CI checks"
+        else
+          _tsl "                    ${WARN} Not authenticated (run: gh auth login)"
+        fi
+      else
+        _tsl "                    ${WARN} Auth status unknown (checking...)"
+      fi
+    else
+      _tsl "                    ${WARN} Disabled (no timeout command)"
+    fi
+  else
+    _tsl "    ${CROSS} gh          - No PR/CI status in prompt"
+    _tsl "                    Install: https://cli.github.com"
+  fi
+
+  # ssh
+  if command -v ssh &>/dev/null; then
+    _tsl "    ${CHECK} ssh         - GitHub SSH identity detection"
+  else
+    _tsl "    ${CROSS} ssh         - No SSH identity in prompt"
+  fi
+
+  # curl
+  if command -v curl &>/dev/null; then
+    _tsl "    ${CHECK} curl        - AI tool update checks from NPM"
+  else
+    _tsl "    ${WARN} curl        - No update notifications for AI tools"
+  fi
+
+  _tsl ""
+  echo "$MID"
+  _tsl "  ${CYAN}AI CODING TOOLS${RESET} (Version display in prompt)"
+  _tsl ""
+
+  # Claude Code
+  if command -v claude &>/dev/null; then
+    local claude_ver=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    _tsl "    ${CHECK} claude      - Claude Code v${claude_ver:-?}"
+  else
+    _tsl "    ${CROSS} claude      - Not installed"
+    _tsl "                    Install: npm i -g @anthropic-ai/claude-code"
+  fi
+
+  # Codex
+  if command -v codex &>/dev/null; then
+    local codex_ver=$(codex --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    _tsl "    ${CHECK} codex       - OpenAI Codex v${codex_ver:-?}"
+  else
+    _tsl "    ${CROSS} codex       - Not installed"
+    _tsl "                    Install: npm i -g @openai/codex"
+  fi
+
+  # Gemini
+  if command -v gemini &>/dev/null; then
+    local gemini_ver=$(gemini --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    _tsl "    ${CHECK} gemini      - Google Gemini v${gemini_ver:-?}"
+  else
+    _tsl "    ${CROSS} gemini      - Not installed"
+    _tsl "                    Install: npm i -g @google/gemini-cli"
+  fi
+
+  _tsl ""
+  echo "$MID"
+  _tsl "  ${CYAN}CACHE STATUS${RESET}"
+  _tsl ""
+  _tsl "    Cache directory: ${_CACHE_DIR}"
+
+  if (( _CACHE_USE_SQLITE )); then
+    local db_size=$(du -h "$_CACHE_DB_FILE" 2>/dev/null | cut -f1)
+    _tsl "    SQLite cache:   ${CHECK} Active (${db_size:-0K})"
+  else
+    _tsl "    SQLite cache:   ${CROSS} Disabled (using file cache)"
+  fi
+
+  local cache_count=$(ls -1 "$_CACHE_DIR" 2>/dev/null | wc -l | tr -d ' ')
+  _tsl "    Cache files:    ${cache_count} files"
+
+  _tsl ""
+  echo "$BOT"
+  echo ""
+
+  unfunction _tsl
 }
 
 # Aliases for quick commands
@@ -527,13 +723,19 @@ fi
 if (( ! $+aliases[h] && ! $+functions[h] )); then
   alias h='_prompt_emoji_help'
 fi
+if (( ! $+aliases[t] && ! $+functions[t] )); then
+  alias t='_prompt_tool_status'
+fi
 
 # Manual cache refresh function - clears all prompt caches
 # Call this to force refresh of all cached data (system info, git, PR, AI tools)
 function _prompt_refresh_all_caches() {
   # Clear SQLite cache if available
   if (( _CACHE_USE_SQLITE )); then
-    sqlite3 "$_CACHE_DB_FILE" "DELETE FROM cache;" 2>/dev/null
+    sqlite3 "$_CACHE_DB_FILE" "
+      DELETE FROM cache;
+      VACUUM;
+    " 2>/dev/null
   fi
 
   # Clear file-based caches by removing cache files (fallback mode)
@@ -566,8 +768,6 @@ function _prompt_refresh_all_caches() {
   _PROMPT_GIT_SPECIAL_CACHE_ID=-1
   _GIT_REMOTE_BRANCH_CACHE=""
   _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _SMART_PATH_CACHE=""
-  _SMART_PATH_CACHE_KEY=""
 
   echo "Prompt caches refreshed."
 }
@@ -787,6 +987,7 @@ function _precmd_compute_prompt() {
 
 # Add to precmd hooks (runs after _prompt_bump_render_id)
 add-zsh-hook precmd _precmd_compute_prompt
+add-zsh-hook precmd _periodic_cache_cleanup
 
 # Per-prompt caches for git/PR segments
 _PROMPT_GIT_INFO_CACHE=""
@@ -797,10 +998,10 @@ _PROMPT_GH_PR_CACHE=""
 _PROMPT_GH_PR_CACHE_ID=-1
 
 # Git extended status cache (file-based, uses _CACHE_TTL_MEDIUM)
-_GIT_EXT_CACHE_FILE="${TMPDIR:-/tmp}/.git_ext_cache_${USER}"
+_GIT_EXT_CACHE_FILE="${_CACHE_DIR}/git_ext_cache"
 
 # System info cache (file-based, uses _CACHE_TTL_LOW - rarely changes)
-_SYSINFO_CACHE_FILE="${TMPDIR:-/tmp}/.sysinfo_cache_${USER}"
+_SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
 
 # Global variables for direct sysinfo assignment (avoids subshell)
 typeset -g _PP_SYSINFO_OS_LONG=""
@@ -884,12 +1085,8 @@ function _compute_sysinfo_direct() {
   _PP_SYSINFO_KERNEL_SHORT="$kernel_short"
 }
 
-# Smart path cache (in-memory per-prompt)
-_SMART_PATH_CACHE=""
-_SMART_PATH_CACHE_KEY=""
-
 # Git root cache (file-based, uses _CACHE_TTL_MEDIUM)
-_GIT_ROOT_CACHE_FILE="${TMPDIR:-/tmp}/.git_root_cache_${USER}"
+_GIT_ROOT_CACHE_FILE="${_CACHE_DIR}/git_root_cache"
 
 # Cache helpers (literal prefix match to avoid regex/glob key issues)
 # Optimized: use zsh native file reading instead of while-read loop
@@ -993,7 +1190,7 @@ function _get_cached_git_root() {
 }
 
 # Git hierarchy cache (file-based, uses _CACHE_TTL_MEDIUM)
-_GIT_HIERARCHY_CACHE_FILE="${TMPDIR:-/tmp}/.git_hierarchy_cache_${USER}"
+_GIT_HIERARCHY_CACHE_FILE="${_CACHE_DIR}/git_hierarchy_cache"
 
 # Path background colors defined in COLOR CONSTANTS section at file top
 
@@ -1302,9 +1499,9 @@ function _compute_pr_status_direct() {
   local remote_branch=$(_get_cached_git_remote_branch)
   [[ -z "$remote_branch" ]] && return
 
-  local remote_url="${remote_branch%%|*}"
+  local remote_key="${remote_branch%%|*}"
   local branch="${remote_branch#*|}"
-  local cache_key="${remote_url}|${branch}"
+  local cache_key="${remote_key}|${branch}"
   local pr_number="" ci_status="none" cache_time=0
   local current_time=${EPOCHSECONDS:-$(date +%s)}
 
@@ -1319,7 +1516,7 @@ function _compute_pr_status_direct() {
   fi
 
   # Refresh if expired
-  (( current_time - cache_time > _CACHE_TTL_HIGH )) && _gh_pr_update_cache "$remote_url" "$branch"
+  (( current_time - cache_time > _CACHE_TTL_HIGH )) && _gh_pr_update_cache "$remote_key" "$branch"
 
   # Display PR if valid
   if [[ -n "$pr_number" && "$pr_number" != "-1" ]]; then
@@ -1466,19 +1663,45 @@ function _compute_smart_path_direct() {
 # AI Coding Tools version status for prompt
 # Uses cache to avoid network requests on every prompt
 # Shared across all terminals for better efficiency (uses _CACHE_TTL_LOW)
-_CLAUDE_CACHE_FILE="${TMPDIR:-/tmp}/.claude_version_cache_${USER}"
-_CODEX_CACHE_FILE="${TMPDIR:-/tmp}/.codex_version_cache_${USER}"
-_GEMINI_CACHE_FILE="${TMPDIR:-/tmp}/.gemini_version_cache_${USER}"
+_CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
+_CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
+_GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
 
 # GitHub PR cache (uses _CACHE_TTL_HIGH for fast-changing CI status)
-_GH_PR_CACHE_FILE="${TMPDIR:-/tmp}/.gh_pr_cache_${USER}"
+_GH_PR_CACHE_FILE="${_CACHE_DIR}/gh_pr_cache"
 
 # Git remote/branch cache (in-memory per-prompt, avoids repeated git calls)
 _GIT_REMOTE_BRANCH_CACHE=""
 _GIT_REMOTE_BRANCH_CACHE_ID=-1
 
-# Get cached git remote URL and branch (per-prompt cache)
-# Returns: remote_url|branch or empty if not in git repo
+# Hash sensitive strings (e.g., remote URLs) for cache keys.
+# Args: $1=input string
+# Returns: hash string
+function _hash_string() {
+  local input="$1"
+  local hash=""
+
+  if command -v sha256sum &>/dev/null; then
+    hash=$(printf '%s' "$input" | sha256sum 2>/dev/null)
+    hash="${hash%% *}"
+  elif command -v shasum &>/dev/null; then
+    hash=$(printf '%s' "$input" | shasum -a 256 2>/dev/null)
+    hash="${hash%% *}"
+  elif command -v openssl &>/dev/null; then
+    hash=$(printf '%s' "$input" | openssl dgst -sha256 2>/dev/null)
+    hash="${hash##* }"
+  elif command -v cksum &>/dev/null; then
+    hash=$(printf '%s' "$input" | cksum 2>/dev/null)
+    hash="${hash%% *}"
+  else
+    hash="${#input}"
+  fi
+
+  print -r -- "$hash"
+}
+
+# Get cached git remote key and branch (per-prompt cache)
+# Returns: remote_key|branch or empty if not in git repo
 function _get_cached_git_remote_branch() {
   local current_id="$_PROMPT_RENDER_ID"
   if [[ "$_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" ]]; then
@@ -1497,43 +1720,14 @@ function _get_cached_git_remote_branch() {
   local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
 
   if [[ -n "$remote_url" && -n "$branch" ]]; then
-    _GIT_REMOTE_BRANCH_CACHE="${remote_url}|${branch}"
+    local remote_key=$(_hash_string "$remote_url")
+    [[ -z "$remote_key" ]] && remote_key="${#remote_url}"
+    _GIT_REMOTE_BRANCH_CACHE="${remote_key}|${branch}"
   else
     _GIT_REMOTE_BRANCH_CACHE=""
   fi
   _GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
   echo "$_GIT_REMOTE_BRANCH_CACHE"
-}
-
-# Helper: compare semantic versions, returns 0 if $1 > $2
-_prompt_version_gt() {
-  local v1="$1"
-  local v2="$2"
-  [[ -z "$v1" || -z "$v2" ]] && return 1
-
-  local -a a1 a2
-  a1=("${(@s:.:)v1}")
-  a2=("${(@s:.:)v2}")
-
-  local max=${#a1[@]}
-  (( ${#a2[@]} > max )) && max=${#a2[@]}
-
-  local i
-  for (( i=1; i<=max; i++ )); do
-    local n1="${a1[$i]:-0}"
-    local n2="${a2[$i]:-0}"
-    n1="${n1%%[^0-9]*}"
-    n2="${n2%%[^0-9]*}"
-    [[ -z "$n1" ]] && n1=0
-    [[ -z "$n2" ]] && n2=0
-    if (( n1 > n2 )); then
-      return 0
-    elif (( n1 < n2 )); then
-      return 1
-    fi
-  done
-
-  return 1
 }
 
 # Helper: determine update type (major, minor, or patch)
@@ -1623,91 +1817,20 @@ _ai_tool_update_cache() {
   # &! immediately disowns, suppressing both start and end job notifications
 }
 
-# Generic AI tool status function
-# Args: $1=command_name, $2=cache_file, $3=npm_url, $4=icon_key, $5=color_var
-# Returns formatted version string with update indicator
-function _ai_tool_status() {
-  local cmd="$1"
-  local cache_file="$2"
-  local npm_url="$3"
-  local icon_key="$4"
-  local color_num="$5"
-
-  # Check if command exists
-  if ! command -v "$cmd" &>/dev/null; then
-    return
-  fi
-
-  local installed_version=""
-  local remote_version=""
-  local cache_time=0
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  # Check cache for both local and remote versions
-  if [[ -f "$cache_file" ]]; then
-    read -r installed_version remote_version cache_time < "$cache_file"
-    # Validate cache_time is a number
-    if [[ ! "$cache_time" =~ ^[0-9]+$ ]]; then
-      cache_time=0
-    fi
-    # Check if cache is still valid
-    if (( current_time - cache_time > _CACHE_TTL_LOW )); then
-      # Cache expired, trigger background refresh
-      _ai_tool_update_cache "$cache_file" "$cmd" "$npm_url"
-    fi
-  else
-    # No cache, trigger background refresh
-    _ai_tool_update_cache "$cache_file" "$cmd" "$npm_url"
-  fi
-
-  # If cache is empty or invalid, return nothing (background update in progress)
-  if [[ -z "$installed_version" ]]; then
-    return
-  fi
-
-  # Check update type and determine indicator
-  local update_indicator=""
-  if _version_update_type "$installed_version" "$remote_version"; then
-    update_indicator="%{$fg[red]%}*"
-  fi
-
-  # Output: icon+version or icon+version* (brackets added by caller)
-  # Inline icon selection to avoid _e subshell
-  local icon=""
-  if (( _PROMPT_EMOJI_MODE )); then
-    case "$icon_key" in
-      claude) icon="🤖" ;;
-      codex)  icon="🧠" ;;
-      gemini) icon="🔷" ;;
-      *)      icon="$icon_key" ;;
-    esac
-  else
-    case "$icon_key" in
-      claude) icon="Cl:" ;;
-      codex)  icon="Cx:" ;;
-      gemini) icon="Gm:" ;;
-      *)      icon="$icon_key" ;;
-    esac
-  fi
-
-  if [[ -n "$update_indicator" ]]; then
-    echo "%{$FG[$color_num]%}${icon}${installed_version}${update_indicator}%{$reset_color%}"
-  else
-    echo "%{$FG[$color_num]%}${icon}${installed_version}%{$reset_color%}"
-  fi
-}
-
 # GitHub CLI authentication status cache (uses _CACHE_TTL_LOW)
-typeset -g _GH_AUTH_CACHE_FILE="${TMPDIR:-/tmp}/.gh_auth_status_${USER}"
+typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
 
 # GitHub username cache files (uses _CACHE_TTL_MEDIUM)
-typeset -g _GH_USERNAME_GH_CACHE_FILE="${TMPDIR:-/tmp}/.gh_username_gh_${USER}"
-typeset -g _GH_USERNAME_SSH_CACHE_FILE="${TMPDIR:-/tmp}/.gh_username_ssh_${USER}"
-typeset -g _GH_USERNAME_UPDATING_GH="${TMPDIR:-/tmp}/.gh_username_updating_gh_${USER}"
-typeset -g _GH_USERNAME_UPDATING_SSH="${TMPDIR:-/tmp}/.gh_username_updating_ssh_${USER}"
+typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
+typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
+typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
+typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
 
 # Get GitHub username via gh auth status (background update)
 function _gh_username_update_gh() {
+  # Requires timeout command to prevent gh from hanging indefinitely
+  (( _HAS_TIMEOUT_CMD )) || return
+
   local lock_file="$_GH_USERNAME_UPDATING_GH"
   local cache_file="$_GH_USERNAME_GH_CACHE_FILE"
   local net_timeout="${_NETWORK_TIMEOUT:-5}"
@@ -1747,6 +1870,7 @@ function _gh_username_update_gh() {
 }
 
 # Get GitHub username via ssh -T git@github.com (background update)
+# Note: ssh has built-in timeout support via ConnectTimeout, no external timeout needed
 function _gh_username_update_ssh() {
   local lock_file="$_GH_USERNAME_UPDATING_SSH"
   local cache_file="$_GH_USERNAME_SSH_CACHE_FILE"
@@ -1769,8 +1893,8 @@ function _gh_username_update_ssh() {
     local username=""
     local ssh_output
 
-    # Parse username from ssh output (use ssh's ConnectTimeout for reliability)
-    ssh_output=$(_run_with_timeout "$net_timeout" ssh -o ConnectTimeout="$net_timeout" -T git@github.com 2>&1)
+    # Parse username from ssh output (ssh has built-in timeout via ConnectTimeout)
+    ssh_output=$(ssh -o ConnectTimeout="$net_timeout" -o BatchMode=yes -T git@github.com 2>&1)
 
     # Extract username from "Hi USERNAME! You've successfully authenticated..."
     username=$(echo "$ssh_output" | grep -oE 'Hi [^!]+!' | head -n1 | sed 's/Hi //; s/!//')
@@ -1784,54 +1908,6 @@ function _gh_username_update_ssh() {
 
     rm -f "$lock_file" 2>/dev/null
   ) &>/dev/null &!
-}
-
-# Get cached GitHub username from gh auth
-# Returns: username or empty
-function _get_gh_username_gh() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  if [[ -f "$_GH_USERNAME_GH_CACHE_FILE" ]]; then
-    local cache_data=$(<"$_GH_USERNAME_GH_CACHE_FILE")
-    local cached_username="${cache_data%%|*}"
-    local cache_time="${cache_data#*|}"
-
-    if [[ "$cache_time" =~ ^[0-9]+$ ]]; then
-      if (( current_time - cache_time > _CACHE_TTL_MEDIUM )); then
-        # Cache expired, trigger background refresh
-        command -v gh &>/dev/null && _gh_username_update_gh
-      fi
-      echo "$cached_username"
-      return
-    fi
-  fi
-
-  # No cache, trigger background refresh
-  command -v gh &>/dev/null && _gh_username_update_gh
-}
-
-# Get cached GitHub username from ssh
-# Returns: username or empty
-function _get_gh_username_ssh() {
-  local current_time=${EPOCHSECONDS:-$(date +%s)}
-
-  if [[ -f "$_GH_USERNAME_SSH_CACHE_FILE" ]]; then
-    local cache_data=$(<"$_GH_USERNAME_SSH_CACHE_FILE")
-    local cached_username="${cache_data%%|*}"
-    local cache_time="${cache_data#*|}"
-
-    if [[ "$cache_time" =~ ^[0-9]+$ ]]; then
-      if (( current_time - cache_time > _CACHE_TTL_MEDIUM )); then
-        # Cache expired, trigger background refresh
-        _gh_username_update_ssh
-      fi
-      echo "$cached_username"
-      return
-    fi
-  fi
-
-  # No cache, trigger background refresh
-  _gh_username_update_ssh
 }
 
 # Direct-assignment version: writes result to _PP_GH_USER global variable
@@ -1887,10 +1963,13 @@ function _compute_gh_username_direct() {
 # Memory cache for gh authentication status (fastest, no I/O)
 typeset -g _GH_AUTH_MEM_CACHE=""
 typeset -g _GH_AUTH_MEM_CACHE_TIME=0
-typeset -g _GH_AUTH_UPDATING="${TMPDIR:-/tmp}/.gh_auth_updating_${USER}"
+typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
 
 # Background update for gh authentication status
 function _gh_auth_update_background() {
+  # Requires timeout command to prevent gh from hanging indefinitely
+  (( _HAS_TIMEOUT_CMD )) || return
+
   local lock_file="$_GH_AUTH_UPDATING"
   local net_timeout="${_NETWORK_TIMEOUT:-5}"
 
@@ -1960,9 +2039,12 @@ function _gh_is_authenticated() {
 # ci_status: "pass", "fail", "pending", or "none"
 # Uses lock file to prevent multiple simultaneous background processes
 _gh_pr_update_cache() {
-  local remote_url="$1"
+  # Requires timeout command to prevent gh from hanging indefinitely
+  (( _HAS_TIMEOUT_CMD )) || return
+
+  local remote_key="$1"
   local branch="$2"
-  local lock_file="${TMPDIR:-/tmp}/.gh_pr_updating_${USER}"
+  local lock_file="${_CACHE_DIR}/gh_pr_updating.lock"
   local net_timeout="${_NETWORK_TIMEOUT:-5}"
 
   # Check if update is already in progress (prevents process accumulation)
@@ -1997,25 +2079,32 @@ _gh_pr_update_cache() {
     if [[ -z "$pr_number" ]]; then
       pr_number="-1"
     else
-      # Get CI status using gh pr checks
+      # Get CI status using gh pr checks --json for reliable parsing
       local checks_output
-      checks_output=$(_run_with_timeout "$net_timeout" gh pr checks 2>/dev/null)
-      if [[ -n "$checks_output" ]]; then
-        # Check for failures first
-        if echo "$checks_output" | grep -q "fail\|X"; then
+      # Use JSON output for reliable status detection
+      checks_output=$(_run_with_timeout "$net_timeout" gh pr checks --json name,state 2>/dev/null)
+      if [[ -n "$checks_output" && "$checks_output" != "[]" ]]; then
+        # JSON format: [{"name":"...","state":"SUCCESS|FAILURE|PENDING|..."},...]
+        # Possible states: SUCCESS, FAILURE, PENDING, CANCELLED, SKIPPED, QUEUED, ERROR
+        if echo "$checks_output" | grep -qE '"state":"(FAILURE|ERROR)"'; then
           ci_status="fail"
-        # Then check for pending
-        elif echo "$checks_output" | grep -q "pending\|-"; then
+        elif echo "$checks_output" | grep -qE '"state":"(PENDING|QUEUED)"'; then
           ci_status="pending"
-        # All passed
-        elif echo "$checks_output" | grep -q "pass\|✓"; then
+        elif echo "$checks_output" | grep -qE '"state":"(CANCELLED|SKIPPED)"'; then
+          # If only cancelled/skipped, treat as pending (not conclusive)
+          if echo "$checks_output" | grep -qE '"state":"SUCCESS"'; then
+            ci_status="pass"  # Has some successes
+          else
+            ci_status="pending"  # No clear pass/fail
+          fi
+        elif echo "$checks_output" | grep -qE '"state":"SUCCESS"'; then
           ci_status="pass"
         fi
       fi
     fi
 
     local current_time=${EPOCHSECONDS:-$(date +%s)}
-    local cache_key="${remote_url}|${branch}"
+    local cache_key="${remote_key}|${branch}"
     local cache_value="${pr_number}|${ci_status}"
 
     # Use the unified cache system
@@ -2027,7 +2116,7 @@ _gh_pr_update_cache() {
         VALUES ('gh_pr:${escaped_key}', '${escaped_value}', ${current_time});
       " 2>/dev/null
     else
-      local cache_file="${TMPDIR:-/tmp}/.gh_pr_cache_${USER}"
+      local cache_file="${_CACHE_DIR}/gh_pr_cache"
       local sep=$'\x1f'
       local prefix="${cache_key}${sep}"
       _cache_update_line_by_prefix "$cache_file" "$prefix" "${cache_key}${sep}${cache_value}${sep}${current_time}"
