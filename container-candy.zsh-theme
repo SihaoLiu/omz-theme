@@ -8,6 +8,41 @@ if ! is-at-least 5.4; then
 fi
 
 # ============================================================================
+# COMMAND AVAILABILITY - Checked once at load time for performance
+# ============================================================================
+# These flags avoid repeated `command -v` calls throughout the file.
+# Each flag is set to 1 if the command is available, 0 otherwise.
+
+typeset -g _HAS_SQLITE3=0
+typeset -g _HAS_TIMEOUT=0
+typeset -g _TIMEOUT_CMD=""
+typeset -g _HAS_FLOCK=0
+typeset -g _HAS_XXD=0
+typeset -g _HAS_GH=0
+typeset -g _HAS_SSH=0
+typeset -g _HAS_CURL=0
+typeset -g _HAS_CLAUDE=0
+typeset -g _HAS_CODEX=0
+typeset -g _HAS_GEMINI=0
+
+command -v sqlite3 &>/dev/null && _HAS_SQLITE3=1
+if command -v timeout &>/dev/null; then
+  _HAS_TIMEOUT=1
+  _TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+  _HAS_TIMEOUT=1
+  _TIMEOUT_CMD="gtimeout"
+fi
+command -v flock &>/dev/null && _HAS_FLOCK=1
+command -v xxd &>/dev/null && _HAS_XXD=1
+command -v gh &>/dev/null && _HAS_GH=1
+command -v ssh &>/dev/null && _HAS_SSH=1
+command -v curl &>/dev/null && _HAS_CURL=1
+command -v claude &>/dev/null && _HAS_CLAUDE=1
+command -v codex &>/dev/null && _HAS_CODEX=1
+command -v gemini &>/dev/null && _HAS_GEMINI=1
+
+# ============================================================================
 # COLOR CONSTANTS - Centralized color definitions for easy customization
 # ============================================================================
 # 256-color palette (FG[N] format)
@@ -91,6 +126,29 @@ fi
 chmod 700 "$_CACHE_DIR" 2>/dev/null
 
 # ============================================================================
+# CACHE FILE PATHS - Centralized definitions for all cache files
+# ============================================================================
+# System and prompt state caches
+typeset -g _SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
+typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
+typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
+
+# AI tool version caches
+typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
+typeset -g _CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
+typeset -g _GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
+
+# GitHub integration caches
+typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
+typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
+typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
+
+# Lock file patterns (used with .d suffix for atomic mkdir locks)
+typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
+typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
+typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
+
+# ============================================================================
 # TIMEOUT WRAPPER - Universal timeout command abstraction
 # ============================================================================
 # Provides consistent timeout behavior across Linux (timeout), macOS (gtimeout).
@@ -100,22 +158,15 @@ chmod 700 "$_CACHE_DIR" 2>/dev/null
 # Usage: _run_with_timeout <timeout_seconds> <command> [args...]
 # Returns: command output on success, empty string on timeout or error
 # Exit code: mirrors the underlying command's exit code
-
-# Check for timeout command availability
-typeset -g _HAS_TIMEOUT_CMD=0
-if command -v timeout &>/dev/null || command -v gtimeout &>/dev/null; then
-  _HAS_TIMEOUT_CMD=1
-fi
+# Note: _HAS_TIMEOUT and _TIMEOUT_CMD are set in COMMAND AVAILABILITY section
 
 function _run_with_timeout() {
   local timeout_sec="$1"
   shift
-  if command -v timeout &>/dev/null; then
-    timeout "$timeout_sec" "$@"
-  elif command -v gtimeout &>/dev/null; then
-    gtimeout "$timeout_sec" "$@"
+  if (( _HAS_TIMEOUT )); then
+    "$_TIMEOUT_CMD" "$timeout_sec" "$@"
   else
-    # No timeout available - caller should have checked _HAS_TIMEOUT_CMD
+    # No timeout available - caller should have checked _HAS_TIMEOUT
     # Return failure to signal the command cannot be safely executed
     return 124  # Same exit code as timeout uses
   fi
@@ -205,7 +256,7 @@ typeset -g _CACHE_DB_FILE="${_CACHE_DIR}/prompt_cache.db"
 typeset -g _CACHE_USE_SQLITE=0  # Will be set to 1 if sqlite3 is available
 
 # Check if sqlite3 is available and initialize database
-if command -v sqlite3 &>/dev/null; then
+if (( _HAS_SQLITE3 )); then
   # Initialize database schema (only creates if not exists)
   # Enable WAL mode for better concurrent write handling across multiple shells
   if sqlite3 "$_CACHE_DB_FILE" "
@@ -223,22 +274,12 @@ if command -v sqlite3 &>/dev/null; then
   fi
 fi
 
-# Check if flock is available for file-based cache locking (fallback mode)
-typeset -g _CACHE_HAS_FLOCK=0
-if command -v flock &>/dev/null; then
-  _CACHE_HAS_FLOCK=1
-fi
-
-# Check if xxd is available for hex encoding
-typeset -g _CACHE_HAS_XXD=0
-if command -v xxd &>/dev/null; then
-  _CACHE_HAS_XXD=1
-fi
+# Note: _HAS_FLOCK and _HAS_XXD are set in COMMAND AVAILABILITY section
 
 # Check if sqlite3 supports .parameter command (requires sqlite 3.32+)
 # This enables secure hex parameter binding for SQL injection prevention
 typeset -g _CACHE_HAS_PARAM_BINDING=0
-if (( _CACHE_USE_SQLITE && _CACHE_HAS_XXD )); then
+if (( _CACHE_USE_SQLITE && _HAS_XXD )); then
   # Robust validation: verify hex literal X'00' produces exactly 1-byte blob
   # This catches builds where .parameter exits 0 but doesn't accept X'..' literals
   if [[ "$(echo ".parameter init
@@ -250,19 +291,26 @@ fi
 
 # Use hex binding only if both xxd and .parameter are available
 typeset -g _CACHE_USE_HEX_BINDING=0
-(( _CACHE_USE_SQLITE && _CACHE_HAS_XXD && _CACHE_HAS_PARAM_BINDING )) && _CACHE_USE_HEX_BINDING=1
+(( _CACHE_USE_SQLITE && _HAS_XXD && _CACHE_HAS_PARAM_BINDING )) && _CACHE_USE_HEX_BINDING=1
 
 # SECURITY: Safe SQL string escaping for SQLite fallback mode
-# Uses SQLite's own quote() function to generate properly escaped string literals
-# This prevents SQL injection by handling all special characters correctly
+# Uses hex encoding when xxd is available for injection-proof escaping.
+# Falls back to manual quote escaping when xxd is unavailable.
 # Args: $1=string to escape
 # Returns: SQL-safe quoted string (including outer quotes)
 # Example: _sql_quote "it's a test" -> "'it''s a test'"
 function _sql_quote() {
   local input="$1"
-  # Use SQLite's quote() function for bulletproof escaping
-  # This handles all edge cases: quotes, backslashes, NUL bytes, etc.
-  sqlite3 :memory: "SELECT quote('${input//\'/\'\'}');" 2>/dev/null
+  if (( _HAS_XXD )); then
+    # SECURITY: Hex encoding prevents all SQL injection vectors
+    # Convert input to hex, use X'' blob literal, then cast to TEXT
+    local hex=$(printf '%s' "$input" | xxd -p | tr -d '\n')
+    sqlite3 :memory: "SELECT quote(CAST(X'${hex}' AS TEXT));" 2>/dev/null
+  else
+    # Fallback: escape single quotes manually before passing to quote()
+    # This is acceptable for typical filesystem paths but not fully injection-proof
+    sqlite3 :memory: "SELECT quote('${input//\'/\'\'}');" 2>/dev/null
+  fi
 }
 
 # Generic cache get function - works with both SQLite and file cache
@@ -419,14 +467,15 @@ function _cache_cleanup() {
   _file_cache_prune "${_CACHE_DIR}/gh_pr_cache" "$cutoff"
   _file_cache_prune "${_CACHE_DIR}/git_ext_cache" "$cutoff"
 
-  # Clean up stale lock files (older than 5 minutes)
+  # Clean up stale lock directories (older than 5 minutes)
+  # Lock directories use .lock.d suffix for atomic mkdir-based locking
   local lock_cutoff=$((current_time - 300))
   setopt localoptions null_glob
-  for lock_file in "${_CACHE_DIR}"/*.lock; do
-    [[ -f "$lock_file" ]] || continue
-    local lock_time=$(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null)
+  for lock_dir in "${_CACHE_DIR}"/*.lock.d; do
+    [[ -d "$lock_dir" ]] || continue
+    local lock_time=$(stat -c %Y "$lock_dir" 2>/dev/null || stat -f %m "$lock_dir" 2>/dev/null)
     if [[ -n "$lock_time" ]] && (( lock_time < lock_cutoff )); then
-      rm -f "$lock_file" 2>/dev/null
+      rmdir "$lock_dir" 2>/dev/null
     fi
   done
 }
@@ -492,32 +541,37 @@ function _periodic_cache_cleanup() {
 
 zmodload zsh/datetime 2>/dev/null
 
-# Acquire a background lock file to prevent process accumulation
+# Acquire a background lock using atomic mkdir to prevent TOCTOU race conditions
 # Returns 0 if lock acquired, 1 if already locked (another process is running)
-# Args: $1=lock_file, $2=timeout (optional, defaults to _NETWORK_TIMEOUT)
+# Args: $1=lock_name (base path, will use .d suffix for directory lock)
+# Args: $2=timeout (optional, defaults to _NETWORK_TIMEOUT)
 # Lock is considered stale if older than 2x timeout
+# SECURITY: Uses mkdir which is atomic on POSIX systems, preventing race conditions
 function _acquire_background_lock() {
-  local lock_file="$1"
+  local lock_name="$1"
   local timeout="${2:-${_NETWORK_TIMEOUT:-5}}"
+  local lock_dir="${lock_name}.d"
 
-  if [[ -f "$lock_file" ]]; then
+  # Check for existing lock directory
+  if [[ -d "$lock_dir" ]]; then
     # Check if lock is stale (older than 2x timeout)
-    local lock_time=$(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null)
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
+    local lock_time=$(stat -c %Y "$lock_dir" 2>/dev/null || stat -f %m "$lock_dir" 2>/dev/null)
+    local current_time=${EPOCHSECONDS}
     if [[ -n "$lock_time" ]] && (( current_time - lock_time < timeout * 2 )); then
       return 1  # Lock held by another process
     fi
     # Stale lock, remove it
-    rm -f "$lock_file" 2>/dev/null
+    rmdir "$lock_dir" 2>/dev/null
   fi
 
-  touch "$lock_file" 2>/dev/null || return 1
+  # Atomic lock acquisition via mkdir (POSIX guarantees atomicity)
+  mkdir "$lock_dir" 2>/dev/null || return 1
   return 0
 }
 
 # Emoji mode toggle (1 = emoji-rich, 0 = plaintext)
 # Persisted to file so it survives shell restarts
-_EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
+# (_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load emoji mode from file or default to 1 (emoji-rich)
 if [[ -f "$_EMOJI_MODE_FILE" ]]; then
@@ -529,7 +583,7 @@ fi
 # Path separator mode toggle (0 = '/', 1 = ' ' space)
 # Space mode allows double-click selection of path segments in terminal
 # Persisted to file so it survives shell restarts
-_PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
+# (_PATH_SEP_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load path separator mode from file or default to 1 (space mode)
 if [[ -f "$_PATH_SEP_MODE_FILE" ]]; then
@@ -687,7 +741,7 @@ function _prompt_tool_status() {
   _tsl ""
 
   # sqlite3
-  if command -v sqlite3 &>/dev/null; then
+  if (( _HAS_SQLITE3 )); then
     _tsl "    ${CHECK} sqlite3     - Fast SQLite cache (FASTER prompts)"
   else
     _tsl "    ${CROSS} sqlite3     - Falling back to file cache (slower)"
@@ -695,10 +749,8 @@ function _prompt_tool_status() {
   fi
 
   # timeout/gtimeout
-  if command -v timeout &>/dev/null; then
-    _tsl "    ${CHECK} timeout     - Command timeout support (Linux)"
-  elif command -v gtimeout &>/dev/null; then
-    _tsl "    ${CHECK} gtimeout    - Command timeout support (macOS)"
+  if (( _HAS_TIMEOUT )); then
+    _tsl "    ${CHECK} ${_TIMEOUT_CMD}     - Command timeout support"
   else
     _tsl "    ${CROSS} timeout     - Network features DISABLED (gh, PR status)"
     _tsl "                    Install: apt install coreutils"
@@ -706,7 +758,7 @@ function _prompt_tool_status() {
   fi
 
   # flock
-  if command -v flock &>/dev/null; then
+  if (( _HAS_FLOCK )); then
     _tsl "    ${CHECK} flock       - File locking for cache safety"
   else
     _tsl "    ${WARN} flock       - Cache writes may race (minor issue)"
@@ -718,10 +770,10 @@ function _prompt_tool_status() {
   _tsl ""
 
   # gh CLI
-  if command -v gh &>/dev/null; then
+  if (( _HAS_GH )); then
     local gh_version=$(gh --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
     _tsl "    ${CHECK} gh          - GitHub CLI v${gh_version}"
-    if (( _HAS_TIMEOUT_CMD )); then
+    if (( _HAS_TIMEOUT )); then
       local auth_status=""
       local current_time=${EPOCHSECONDS:-$(date +%s)}
       # Check cache first
@@ -757,14 +809,14 @@ function _prompt_tool_status() {
   fi
 
   # ssh
-  if command -v ssh &>/dev/null; then
+  if (( _HAS_SSH )); then
     _tsl "    ${CHECK} ssh         - GitHub SSH identity detection"
   else
     _tsl "    ${CROSS} ssh         - No SSH identity in prompt"
   fi
 
   # curl
-  if command -v curl &>/dev/null; then
+  if (( _HAS_CURL )); then
     _tsl "    ${CHECK} curl        - AI tool update checks from NPM"
   else
     _tsl "    ${WARN} curl        - No update notifications for AI tools"
@@ -776,7 +828,7 @@ function _prompt_tool_status() {
   _tsl ""
 
   # Claude Code
-  if command -v claude &>/dev/null; then
+  if (( _HAS_CLAUDE )); then
     local claude_ver=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
     _tsl "    ${CHECK} claude      - Claude Code v${claude_ver:-?}"
   else
@@ -785,7 +837,7 @@ function _prompt_tool_status() {
   fi
 
   # Codex
-  if command -v codex &>/dev/null; then
+  if (( _HAS_CODEX )); then
     local codex_ver=$(codex --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
     _tsl "    ${CHECK} codex       - OpenAI Codex v${codex_ver:-?}"
   else
@@ -794,7 +846,7 @@ function _prompt_tool_status() {
   fi
 
   # Gemini
-  if command -v gemini &>/dev/null; then
+  if (( _HAS_GEMINI )); then
     local gemini_ver=$(gemini --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
     _tsl "    ${CHECK} gemini      - Google Gemini v${gemini_ver:-?}"
   else
@@ -1128,7 +1180,7 @@ _PROMPT_GH_PR_CACHE=""
 _PROMPT_GH_PR_CACHE_ID=-1
 
 # System info cache (file-based, uses _CACHE_TTL_LOW - rarely changes)
-_SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
+# (_SYSINFO_CACHE_FILE defined in CACHE FILE PATHS section)
 
 # Global variables for direct sysinfo assignment (avoids subshell)
 typeset -g _PP_SYSINFO_OS_LONG=""
@@ -1262,7 +1314,7 @@ function _cache_update_line_by_prefix() {
   new_content+="${new_line}"
 
   # Use flock for atomic write if available
-  if (( _CACHE_HAS_FLOCK )); then
+  if (( _HAS_FLOCK )); then
     # Hold the lock fd for the duration of the write.
     (
       exec {lock_fd}>"$lock_file" || exit 1
@@ -1621,7 +1673,7 @@ function _compute_pr_status_direct() {
   _PP_PR=""
 
   # Check if gh command exists
-  command -v gh &>/dev/null || return
+  (( _HAS_GH )) || return
 
   # Check if gh is authenticated
   _gh_is_authenticated || return
@@ -1825,9 +1877,7 @@ function _compute_smart_path_direct() {
 # AI Coding Tools version status for prompt
 # Uses cache to avoid network requests on every prompt
 # Shared across all terminals for better efficiency (uses _CACHE_TTL_LOW)
-_CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
-_CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
-_GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
+# (Cache file paths defined in CACHE FILE PATHS section)
 
 # Git remote/branch cache (in-memory per-prompt, avoids repeated git calls)
 _GIT_REMOTE_BRANCH_CACHE=""
@@ -1950,7 +2000,7 @@ _ai_tool_update_cache() {
     installed_version=$($cmd --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
 
     # Get remote latest version from NPM registry
-    if command -v curl &>/dev/null; then
+    if (( _HAS_CURL )); then
       remote_version=$(curl -s --max-time "$net_timeout" "$npm_url" 2>/dev/null | grep -o '"version":"[^"]*"' | sed 's/"version":"//; s/"//')
     fi
 
@@ -1960,25 +2010,20 @@ _ai_tool_update_cache() {
       echo "$installed_version $remote_version $current_time" > "$cache_file"
     fi
 
-    # Remove lock file when done
-    rm -f "$lock_file" 2>/dev/null
+    # Remove lock directory when done
+    rmdir "${lock_file}.d" 2>/dev/null
   ) &>/dev/null &!
   # &! immediately disowns, suppressing both start and end job notifications
 }
 
 # GitHub CLI authentication status cache (uses _CACHE_TTL_LOW)
-typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
-
 # GitHub username cache files (uses _CACHE_TTL_MEDIUM)
-typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
-typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
-typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
-typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
+# (All cache file paths defined in CACHE FILE PATHS section)
 
 # Get GitHub username via gh auth status (background update)
 function _gh_username_update_gh() {
   # Requires timeout command to prevent gh from hanging indefinitely
-  (( _HAS_TIMEOUT_CMD )) || return
+  (( _HAS_TIMEOUT )) || return
 
   local lock_file="$_GH_USERNAME_UPDATING_GH"
   local cache_file="$_GH_USERNAME_GH_CACHE_FILE"
@@ -2005,7 +2050,7 @@ function _gh_username_update_gh() {
       echo "|${current_time}" > "$cache_file"
     fi
 
-    rm -f "$lock_file" 2>/dev/null
+    rmdir "${lock_file}.d" 2>/dev/null
   ) &>/dev/null &!
 }
 
@@ -2013,7 +2058,7 @@ function _gh_username_update_gh() {
 # Note: ssh has built-in timeout support via ConnectTimeout, no external timeout needed
 function _gh_username_update_ssh() {
   # SECURITY: Exit early if ssh command is not available to prevent background process accumulation
-  command -v ssh &>/dev/null || return
+  (( _HAS_SSH )) || return
 
   local lock_file="$_GH_USERNAME_UPDATING_SSH"
   local cache_file="$_GH_USERNAME_SSH_CACHE_FILE"
@@ -2040,7 +2085,7 @@ function _gh_username_update_ssh() {
       echo "|${current_time}" > "$cache_file"
     fi
 
-    rm -f "$lock_file" 2>/dev/null
+    rmdir "${lock_file}.d" 2>/dev/null
   ) &>/dev/null &!
 }
 
@@ -2057,11 +2102,11 @@ function _compute_gh_username_direct() {
     local cache_gh_time="${cache_gh_data#*|}"
     # Trigger background refresh if expired
     if [[ "$cache_gh_time" =~ ^[0-9]+$ ]] && (( current_time - cache_gh_time > _CACHE_TTL_MEDIUM )); then
-      command -v gh &>/dev/null && _gh_username_update_gh
+      (( _HAS_GH )) && _gh_username_update_gh
     fi
   else
     # No cache, trigger background refresh
-    command -v gh &>/dev/null && _gh_username_update_gh
+    (( _HAS_GH )) && _gh_username_update_gh
   fi
 
   # Read ssh username from cache file directly (no function call)
@@ -2097,12 +2142,12 @@ function _compute_gh_username_direct() {
 # Memory cache for gh authentication status (fastest, no I/O)
 typeset -g _GH_AUTH_MEM_CACHE=""
 typeset -g _GH_AUTH_MEM_CACHE_TIME=0
-typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
+# (_GH_AUTH_UPDATING defined in CACHE FILE PATHS section)
 
 # Background update for gh authentication status
 function _gh_auth_update_background() {
   # Requires timeout command to prevent gh from hanging indefinitely
-  (( _HAS_TIMEOUT_CMD )) || return
+  (( _HAS_TIMEOUT )) || return
 
   local lock_file="$_GH_AUTH_UPDATING"
   local net_timeout="${_NETWORK_TIMEOUT:-5}"
@@ -2117,7 +2162,7 @@ function _gh_auth_update_background() {
     else
       echo "0|${current_time}" > "$_GH_AUTH_CACHE_FILE"
     fi
-    rm -f "$lock_file" 2>/dev/null
+    rmdir "${lock_file}.d" 2>/dev/null
   ) &>/dev/null &!
 }
 
@@ -2165,7 +2210,7 @@ function _gh_is_authenticated() {
 # Uses lock file to prevent multiple simultaneous background processes
 _gh_pr_update_cache() {
   # Requires timeout command to prevent gh from hanging indefinitely
-  (( _HAS_TIMEOUT_CMD )) || return
+  (( _HAS_TIMEOUT )) || return
 
   local remote_key="$1"
   local branch="$2"
@@ -2179,7 +2224,7 @@ _gh_pr_update_cache() {
   (
     # Check gh authentication first (uses cached result)
     if ! _gh_is_authenticated; then
-      rm -f "$lock_file" 2>/dev/null
+      rmdir "${lock_file}.d" 2>/dev/null
       return 0
     fi
 
@@ -2248,8 +2293,8 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
       _cache_update_line_by_prefix "$cache_file" "$prefix" "${cache_key}${sep}${cache_value}${sep}${current_time}"
     fi
 
-    # Remove lock file when done
-    rm -f "$lock_file" 2>/dev/null
+    # Remove lock directory when done
+    rmdir "${lock_file}.d" 2>/dev/null
   ) &>/dev/null &!
 }
 
@@ -2260,118 +2305,72 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
 typeset -g _PP_AI_STATUS=""
 typeset -g _PP_AI_STATUS_LONG=""
 
+# Generic AI tool status computation
+# Sets caller-scoped variables: tool_result, tool_result_long
+# Args: $1=has_flag (0/1), $2=cache_file, $3=cmd_name, $4=npm_url,
+#       $5=short_icon, $6=long_icon, $7=color_code
+function _compute_ai_tool_status() {
+  local has_flag="$1" cache_file="$2" cmd_name="$3" npm_url="$4"
+  local short_icon="$5" long_icon="$6" color_code="$7"
+
+  tool_result=""
+  tool_result_long=""
+
+  (( has_flag )) || return
+
+  local installed_version="" remote_version="" cache_time=0
+  local current_time=${EPOCHSECONDS}
+
+  if [[ -f "$cache_file" ]]; then
+    read -r installed_version remote_version cache_time < "$cache_file"
+    [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
+    (( current_time - cache_time > _CACHE_TTL_LOW )) && \
+      _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+  else
+    _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+  fi
+
+  if [[ -n "$installed_version" ]]; then
+    local update_ind=""
+    _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
+    tool_result="%{$FG[$color_code]%}${short_icon}${installed_version}${update_ind}%{$reset_color%}"
+    tool_result_long="%{$FG[$color_code]%}${long_icon}${installed_version}${update_ind}%{$reset_color%}"
+  fi
+}
+
 function _compute_ai_tools_direct() {
-  local ai_status=""
-  local ai_status_long=""
-  local tool_result=""
-  local tool_result_long=""
+  local ai_status="" ai_status_long=""
+  local tool_result tool_result_long  # Set by _compute_ai_tool_status
+  local sep=""
+  (( ! _PROMPT_EMOJI_MODE )) && sep="|"
 
-  # Claude Code - direct computation without subshell
-  tool_result=""
-  tool_result_long=""
-  if command -v claude &>/dev/null; then
-    local installed_version="" remote_version="" cache_time=0
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
-    if [[ -f "$_CLAUDE_CACHE_FILE" ]]; then
-      read -r installed_version remote_version cache_time < "$_CLAUDE_CACHE_FILE"
-      [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
-      (( current_time - cache_time > _CACHE_TTL_LOW )) && \
-        _ai_tool_update_cache "$_CLAUDE_CACHE_FILE" "claude" "https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
-    else
-      _ai_tool_update_cache "$_CLAUDE_CACHE_FILE" "claude" "https://registry.npmjs.org/@anthropic-ai/claude-code/latest"
+  # Helper to append tool result to accumulated status
+  _append_ai_tool() {
+    if [[ -n "$tool_result" ]]; then
+      [[ -n "$ai_status" ]] && ai_status="${ai_status}${sep}" && ai_status_long="${ai_status_long}${sep}"
+      ai_status="${ai_status}${tool_result}"
+      ai_status_long="${ai_status_long}${tool_result_long}"
     fi
-    if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon="" icon_long=""
-      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then
-        icon="🤖"
-        icon_long="🤖"
-      else
-        icon="Cl:"
-        icon_long="Claude:"
-      fi
-      tool_result="%{$FG[$_CLR_CLAUDE]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
-      tool_result_long="%{$FG[$_CLR_CLAUDE]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
-    fi
-  fi
-  if [[ -n "$tool_result" ]]; then
-    ai_status="$tool_result"
-    ai_status_long="$tool_result_long"
-  fi
+  }
 
-  # Codex - direct computation without subshell
-  tool_result=""
-  tool_result_long=""
-  if command -v codex &>/dev/null; then
-    local installed_version="" remote_version="" cache_time=0
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
-    if [[ -f "$_CODEX_CACHE_FILE" ]]; then
-      read -r installed_version remote_version cache_time < "$_CODEX_CACHE_FILE"
-      [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
-      (( current_time - cache_time > _CACHE_TTL_LOW )) && \
-        _ai_tool_update_cache "$_CODEX_CACHE_FILE" "codex" "https://registry.npmjs.org/@openai/codex/latest"
-    else
-      _ai_tool_update_cache "$_CODEX_CACHE_FILE" "codex" "https://registry.npmjs.org/@openai/codex/latest"
-    fi
-    if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon="" icon_long=""
-      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then
-        icon="🧠"
-        icon_long="🧠"
-      else
-        icon="Cx:"
-        icon_long="Codex:"
-      fi
-      tool_result="%{$FG[$_CLR_CODEX]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
-      tool_result_long="%{$FG[$_CLR_CODEX]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
-    fi
-  fi
-  if [[ -n "$tool_result" ]]; then
-    local sep=""
-    (( ! _PROMPT_EMOJI_MODE )) && sep="|"
-    [[ -n "$ai_status" ]] && ai_status="${ai_status}${sep}"
-    [[ -n "$ai_status_long" ]] && ai_status_long="${ai_status_long}${sep}"
-    ai_status="${ai_status}${tool_result}"
-    ai_status_long="${ai_status_long}${tool_result_long}"
-  fi
+  # Claude Code
+  local icon_s icon_l
+  (( _PROMPT_EMOJI_MODE )) && icon_s="🤖" icon_l="🤖" || { icon_s="Cl:"; icon_l="Claude:"; }
+  _compute_ai_tool_status "$_HAS_CLAUDE" "$_CLAUDE_CACHE_FILE" "claude" \
+    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE"
+  _append_ai_tool
 
-  # Gemini - direct computation without subshell
-  tool_result=""
-  tool_result_long=""
-  if command -v gemini &>/dev/null; then
-    local installed_version="" remote_version="" cache_time=0
-    local current_time=${EPOCHSECONDS:-$(date +%s)}
-    if [[ -f "$_GEMINI_CACHE_FILE" ]]; then
-      read -r installed_version remote_version cache_time < "$_GEMINI_CACHE_FILE"
-      [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
-      (( current_time - cache_time > _CACHE_TTL_LOW )) && \
-        _ai_tool_update_cache "$_GEMINI_CACHE_FILE" "gemini" "https://registry.npmjs.org/@google/gemini-cli/latest"
-    else
-      _ai_tool_update_cache "$_GEMINI_CACHE_FILE" "gemini" "https://registry.npmjs.org/@google/gemini-cli/latest"
-    fi
-    if [[ -n "$installed_version" ]]; then
-      local update_ind="" icon="" icon_long=""
-      _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-      if (( _PROMPT_EMOJI_MODE )); then
-        icon="🔷"
-        icon_long="🔷"
-      else
-        icon="Gm:"
-        icon_long="Gemini:"
-      fi
-      tool_result="%{$FG[$_CLR_GEMINI]%}${icon}${installed_version}${update_ind}%{$reset_color%}"
-      tool_result_long="%{$FG[$_CLR_GEMINI]%}${icon_long}${installed_version}${update_ind}%{$reset_color%}"
-    fi
-  fi
-  if [[ -n "$tool_result" ]]; then
-    local sep=""
-    (( ! _PROMPT_EMOJI_MODE )) && sep="|"
-    [[ -n "$ai_status" ]] && ai_status="${ai_status}${sep}"
-    [[ -n "$ai_status_long" ]] && ai_status_long="${ai_status_long}${sep}"
-    ai_status="${ai_status}${tool_result}"
-    ai_status_long="${ai_status_long}${tool_result_long}"
-  fi
+  # Codex
+  (( _PROMPT_EMOJI_MODE )) && icon_s="🧠" icon_l="🧠" || { icon_s="Cx:"; icon_l="Codex:"; }
+  _compute_ai_tool_status "$_HAS_CODEX" "$_CODEX_CACHE_FILE" "codex" \
+    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX"
+  _append_ai_tool
+
+  # Gemini
+  (( _PROMPT_EMOJI_MODE )) && icon_s="🔷" icon_l="🔷" || { icon_s="Gm:"; icon_l="Gemini:"; }
+  _compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
+    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI"
+  _append_ai_tool
 
   # Wrap in brackets if any tools are present
   if [[ -n "$ai_status" ]]; then
