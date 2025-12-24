@@ -168,10 +168,14 @@ typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
 typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
 typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
 
+# Public IP cache (refreshes every 5 minutes)
+typeset -g _PUBLIC_IP_CACHE_FILE="${_CACHE_DIR}/public_ip_cache"
+
 # Lock file patterns (used with .d suffix for atomic mkdir locks)
 typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
 typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
 typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
+typeset -g _PUBLIC_IP_UPDATING="${_CACHE_DIR}/public_ip_updating.lock"
 
 # ============================================================================
 # TIMEOUT WRAPPER - Universal timeout command abstraction
@@ -854,9 +858,10 @@ function _prompt_tool_status() {
 
   # curl
   if (( _HAS_CURL )); then
-    _tsl "    ${CHECK} curl        - AI tool update checks from NPM"
+    _tsl "    ${CHECK} curl        - AI tool update checks, public IP display"
   else
     _tsl "    ${WARN} curl        - No update notifications for AI tools"
+    _tsl "                    Public IP display disabled"
   fi
 
   _tsl ""
@@ -1010,6 +1015,7 @@ add-zsh-hook precmd _prompt_bump_render_id
 typeset -g _PP_EXIT=""           # Exit status indicator
 typeset -g _PP_SSH=""            # SSH indicator
 typeset -g _PP_USER_HOST=""      # user@host with color
+typeset -g _PP_PUBLIC_IP=""      # Public IP address (cached)
 typeset -g _PP_GH_USER=""        # GitHub username badge [Username]
 typeset -g _PP_BADGE=""          # Host/container badge
 typeset -g _PP_TIME=""           # Time with dynamic color
@@ -1048,6 +1054,7 @@ function _compute_exit_status_direct() {
 
 # Compute time with dynamic color based on hour
 # Sets: _PP_TIME
+# Format: [HH:MM:SS TZ] where TZ is timezone abbreviation (e.g., PST, UTC)
 function _compute_time_direct() {
   local hour=""
   if (( ${+EPOCHSECONDS} )); then
@@ -1065,7 +1072,7 @@ function _compute_time_direct() {
   else
     time_color="%{$FG[$_CLR_TIME_NIGHT]%}"
   fi
-  _PP_TIME="${time_color}[%D{%H:%M:%S}]%{$reset_color%}"
+  _PP_TIME="${time_color}[%D{%H:%M:%S %Z}]%{$reset_color%}"
 }
 
 # Compute layout mode based on terminal width
@@ -1113,12 +1120,20 @@ function _compute_layout_mode() {
   local actual_host="${HOST:-${HOSTNAME:-$(hostname -s 2>/dev/null)}}"
   user_host_len=$(( ${#actual_user} + 1 + ${#actual_host} ))  # +1 for @
 
-  # time_len=10 for [HH:MM:SS], badge_len accounts for space + icon
+  # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (no-internet) 13 chars, or empty
+  local public_ip_len=0
+  if [[ -n "$_PP_PUBLIC_IP" ]]; then
+    # Strip ANSI codes and count visible length
+    local ip_visible="${_PP_PUBLIC_IP//\%\{*\%\}/}"
+    public_ip_len=${#ip_visible}
+  fi
+
+  # time_len=14 for [HH:MM:SS TZ] (e.g., [11:16:06 PST]), badge_len accounts for space + icon
   # fixed_len covers: spaces between segments (approximately 5-6 spaces in PROMPT)
-  local time_len=10 fixed_len=6 badge_len=2
+  local time_len=14 fixed_len=6 badge_len=2
 
   # min_len: base length without sysinfo/AI (badge_len already included)
-  local min_len=$((exit_len + ssh_len + user_host_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_len + fixed_len))
+  local min_len=$((exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_len + fixed_len))
 
   # Calculate lengths for different layout modes
   local short_version="${os_short}${kernel_short}"
@@ -1197,6 +1212,9 @@ function _precmd_compute_prompt() {
 
   # User@host
   _PP_USER_HOST="%{$FG[$_CLR_USER_HOST]%}%n@%m%{$reset_color%}"
+
+  # Public IP address (cached)
+  _compute_public_ip_direct
 
   # GitHub username badge
   _compute_gh_username_direct
@@ -2199,6 +2217,98 @@ function _compute_gh_username_direct() {
   fi
 }
 
+# ============================================================================
+# PUBLIC IP ADDRESS - Cached detection with fallback providers
+# ============================================================================
+# Uses curl to fetch public IP from multiple providers with failover.
+# Cache refreshes every 5 minutes (_CACHE_TTL_MEDIUM).
+# Shows green (IP) if successful, red (no-internet) if all providers fail.
+# Hidden if curl is not available.
+
+# Background update for public IP address
+function _public_ip_update_background() {
+  # Requires curl command
+  (( _HAS_CURL )) || return
+  # Requires timeout command to prevent hanging
+  (( _HAS_TIMEOUT )) || return
+
+  local lock_file="$_PUBLIC_IP_UPDATING"
+  local cache_file="$_PUBLIC_IP_CACHE_FILE"
+  local net_timeout="${_NETWORK_TIMEOUT:-5}"
+
+  # Acquire lock or return if another update is in progress
+  _acquire_background_lock "$lock_file" || return
+
+  (
+    umask 077  # SECURITY: Ensure cache files are private
+    local ip=""
+
+    # Try primary provider first, then fallbacks
+    # checkip.amazonaws.com is fastest and most reliable
+    local providers=(
+      "checkip.amazonaws.com"
+      "ifconfig.me"
+      "icanhazip.com"
+      "api.ipify.org"
+    )
+
+    for provider in "${providers[@]}"; do
+      ip=$(_run_with_timeout "$net_timeout" curl -4 -s "$provider" 2>/dev/null)
+      # Validate IP format (basic check: contains dots and only digits/dots)
+      if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        break
+      fi
+      ip=""
+    done
+
+    local current_time=${EPOCHSECONDS}
+    # Store result (empty means no internet)
+    echo "${ip}|${current_time}" > "$cache_file"
+
+    rmdir "${lock_file}.d" 2>/dev/null
+  ) &>/dev/null &!
+}
+
+# Direct-assignment version: writes result to _PP_PUBLIC_IP global variable
+# PERFORMANCE: Reads cache file directly without subshells
+function _compute_public_ip_direct() {
+  # Skip if curl is not available
+  if (( ! _HAS_CURL )); then
+    _PP_PUBLIC_IP=""
+    return
+  fi
+
+  local ip=""
+  local current_time=${EPOCHSECONDS}
+
+  # Read from cache file directly
+  if [[ -f "$_PUBLIC_IP_CACHE_FILE" ]]; then
+    local cache_data=$(<"$_PUBLIC_IP_CACHE_FILE")
+    ip="${cache_data%%|*}"
+    local cache_time="${cache_data#*|}"
+
+    # Trigger background refresh if expired (every 5 minutes)
+    if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time > _CACHE_TTL_MEDIUM )); then
+      _public_ip_update_background
+    fi
+  else
+    # No cache, trigger background refresh
+    _public_ip_update_background
+  fi
+
+  # Build display string
+  if [[ -n "$ip" ]]; then
+    # Valid IP - show in green
+    _PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
+  elif [[ -f "$_PUBLIC_IP_CACHE_FILE" ]]; then
+    # Cache exists but IP is empty - no internet, show in red
+    _PP_PUBLIC_IP="%{$fg[red]%}(no-internet)%{$reset_color%}"
+  else
+    # No cache yet - still loading
+    _PP_PUBLIC_IP=""
+  fi
+}
+
 # Memory cache for gh authentication status (fastest, no I/O)
 typeset -g _GH_AUTH_MEM_CACHE=""
 typeset -g _GH_AUTH_MEM_CACHE_TIME=0
@@ -2454,9 +2564,10 @@ function _compute_ai_tools_direct() {
 # Enhanced PROMPT with all new features:
 # - Exit status indicator (✓/OK or ✗N/ERRN)
 # - SSH indicator (⚡/SSH)
+# - Public IP address (green if online, red "no-internet" if offline, hidden if no curl)
 # - GitHub username badge [Username] (white bg, black text; red if mismatch)
 # - Container/Host badge (💻/H or 📦/C)
-# - Time with dynamic color
+# - Time with timezone [HH:MM:SS TZ]
 # - Smart path with git-aware coloring and submodule support
 # - Git status with extended info (ahead/behind/stash) + special states (rebase/merge/bisect)
 # - PR status with CI indicator
@@ -2464,12 +2575,12 @@ function _compute_ai_tools_direct() {
 # - Adaptive RPROMPT for system info and AI tools
 # - Toggle emoji/plaintext with 'e', help with 'h', refresh with 'u'
 #
-# Order: [exit][ssh]user@host[GHUser] [container] [time] [path] [git+ext+special][PR+CI] [sysinfo] [AI] [jobs]
+# Order: [exit][ssh]user@host(IP)[GHUser] [container] [time+TZ] [path] [git+ext+special][PR+CI] [sysinfo] [AI] [jobs]
 # Second line: -> %#
 #
 # PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
 # All segments are computed once in _precmd_compute_prompt before prompt display
-PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and AI tools in SHORT/MIN modes
