@@ -950,14 +950,30 @@ function _prompt_tool_status() {
 
   _tsl ""
   echo "$MID"
-  _tsl "  ${CYAN}NETWORK MODE${RESET}"
+  _tsl "  ${CYAN}TOGGLE MODES${RESET} (use single letter to toggle)"
   _tsl ""
-  if (( _PROMPT_NETWORK_MODE )); then
-    _tsl "    ${CHECK} Network features: ENABLED"
-    _tsl "        Public IP, GitHub username/PR, AI update checks"
+
+  # Emoji mode (e)
+  # Note: ⚡🤖 are 2-wide but count as 1 char; add zero-width spaces to fix alignment
+  local ZWS=$'\u200b'  # Zero-width space: adds to strlen but not display width
+  if (( _PROMPT_EMOJI_MODE )); then
+    _tsl "    ${CHECK} e  Emoji mode      [✓] ⚡ 🤖 ↑↓ ⚑${ZWS}${ZWS}"
   else
-    _tsl "    ${CROSS} Network features: DISABLED"
-    _tsl "        Use 'n' to toggle network mode on"
+    _tsl "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
+  fi
+
+  # Path separator mode (p)
+  if (( _PROMPT_PATH_SEP_MODE )); then
+    _tsl "    ${CHECK} p  Space separator [repo submodule path]"
+  else
+    _tsl "    ${CROSS} p  Slash separator [repo/submodule/path]"
+  fi
+
+  # Network mode (n)
+  if (( _PROMPT_NETWORK_MODE )); then
+    _tsl "    ${CHECK} n  Network enabled (IP, GitHub, AI updates)"
+  else
+    _tsl "    ${CROSS} n  Network disabled"
   fi
 
   _tsl ""
