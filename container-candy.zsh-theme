@@ -2401,7 +2401,7 @@ function _compute_ai_tools_direct() {
 #
 # PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
 # All segments are computed once in _precmd_compute_prompt before prompt display
-PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH} ${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and AI tools in SHORT/MIN modes
