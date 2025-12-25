@@ -1053,6 +1053,8 @@ function _capture_exit_status() {
 # Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
 # This ensures we capture $? before other hooks (like zsh-syntax-highlighting) can modify it
 autoload -Uz add-zsh-hook
+# Ensure precmd_functions exists (for set -u compatibility)
+typeset -ga precmd_functions
 precmd_functions=(_capture_exit_status ${precmd_functions[@]:#_capture_exit_status})
 
 # Per-prompt render id to avoid recomputing expensive segments multiple times
