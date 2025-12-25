@@ -54,15 +54,22 @@ command -v ssh &>/dev/null && _HAS_SSH=1
 command -v curl &>/dev/null && _HAS_CURL=1
 
 # Hash command detection (for _hash_string performance)
+# Used only for PR cache key generation - if unavailable, PR caching is disabled.
+# Supported commands (in order of preference): sha256sum, shasum, openssl, cksum
 typeset -g _HASH_CMD=""
+typeset -g _HAS_HASH_CMD=0
 if command -v sha256sum &>/dev/null; then
   _HASH_CMD="sha256sum"
+  _HAS_HASH_CMD=1
 elif command -v shasum &>/dev/null; then
   _HASH_CMD="shasum"
+  _HAS_HASH_CMD=1
 elif command -v openssl &>/dev/null; then
   _HASH_CMD="openssl"
+  _HAS_HASH_CMD=1
 elif command -v cksum &>/dev/null; then
   _HASH_CMD="cksum"
+  _HAS_HASH_CMD=1
 fi
 
 # AI tools detected lazily in _compute_ai_tools_direct()
@@ -331,34 +338,25 @@ fi
 # This enables secure hex parameter binding for SQL injection prevention
 # Robust validation: verify hex literal X'00' produces exactly 1-byte blob
 # This catches builds where .parameter exits 0 but doesn't accept X'..' literals
-typeset -g _CACHE_USE_HEX_BINDING=0
-if (( _CACHE_USE_SQLITE && _HAS_XXD )); then
-  if [[ "$(echo ".parameter init
+#
+# SECURITY: SQLite cache REQUIRES hex binding for SQL injection protection.
+# If hex binding is not supported, fallback to file-based cache (slower but safe).
+# Required for SQLite cache: sqlite3 3.32+, xxd command
+if (( _CACHE_USE_SQLITE )); then
+  if (( ! _HAS_XXD )); then
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f SQLite cache disabled: 'xxd' command not found."
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f Install xxd (usually part of vim package) for faster SQLite cache."
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f Falling back to file-based cache."
+    _CACHE_USE_SQLITE=0
+  elif [[ "$(echo ".parameter init
 .parameter set @test X'00'
-SELECT length(@test);" | sqlite3 :memory: 2>/dev/null)" == "1" ]]; then
-    _CACHE_USE_HEX_BINDING=1
+SELECT length(@test);" | sqlite3 :memory: 2>/dev/null)" != "1" ]]; then
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f SQLite cache disabled: version $(sqlite3 --version 2>/dev/null | cut -d' ' -f1) lacks hex binding support."
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f Upgrade to sqlite3 3.32+ for faster SQLite cache."
+    print -P "%F{yellow}[ai-candy.zsh-theme]%f Falling back to file-based cache."
+    _CACHE_USE_SQLITE=0
   fi
 fi
-
-# SECURITY: Safe SQL string escaping for SQLite fallback mode
-# Uses hex encoding when xxd is available for injection-proof escaping.
-# Falls back to manual quote escaping when xxd is unavailable.
-# Args: $1=string to escape
-# Returns: SQL-safe quoted string (including outer quotes)
-# Example: _sql_quote "it's a test" -> "'it''s a test'"
-function _sql_quote() {
-  local input="$1"
-  if (( _HAS_XXD )); then
-    # SECURITY: Hex encoding prevents all SQL injection vectors
-    # Convert input to hex, use X'' blob literal, then cast to TEXT
-    local hex=$(printf '%s' "$input" | xxd -p | tr -d '\n')
-    sqlite3 :memory: "SELECT quote(CAST(X'${hex}' AS TEXT));" 2>/dev/null
-  else
-    # Fallback: escape single quotes manually before passing to quote()
-    # This is acceptable for typical filesystem paths but not fully injection-proof
-    sqlite3 :memory: "SELECT quote('${input//\'/\'\'}');" 2>/dev/null
-  fi
-}
 
 # Generic cache get function - works with both SQLite and file cache
 # Args: $1=cache_name (e.g., "git_root"), $2=key
@@ -370,23 +368,13 @@ function _cache_get() {
   local key="$2"
 
   if (( _CACHE_USE_SQLITE )); then
-    if (( _CACHE_USE_HEX_BINDING )); then
-      # SECURITY: Hex parameter binding prevents SQL injection
-      # Use print -rn -- for safe string handling (handles - prefix and backslashes)
-      # .parameter set only accepts literals, CAST must be in SQL statement
-      local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
-      echo ".parameter init
+    # SECURITY: Hex parameter binding prevents SQL injection
+    # Use print -rn -- for safe string handling (handles - prefix and backslashes)
+    # .parameter set only accepts literals, CAST must be in SQL statement
+    local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
+    echo ".parameter init
 .parameter set @key X'${hex_key}'
 SELECT value || '|' || timestamp FROM cache WHERE key = CAST(@key AS TEXT) LIMIT 1;" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
-    else
-      # Fallback: use SQLite's quote() for safe escaping (works without xxd/.parameter)
-      local safe_key=$(_sql_quote "${cache_name}:${key}")
-      sqlite3 "$_CACHE_DB_FILE" "
-        SELECT value || '|' || timestamp FROM cache
-        WHERE key = ${safe_key}
-        LIMIT 1;
-      " 2>/dev/null
-    fi
   else
     # Fallback to file cache (in secure cache directory)
     # File format is: key<SEP>value<SEP>timestamp (SEP = \x1f to avoid key containing |)
@@ -415,39 +403,27 @@ function _cache_set_async() {
   local timestamp="$4"
 
   # 1. Immediately update memory cache (synchronous, very fast)
+  # Note: gh_pr uses direct writes in _compute_pr_status_direct, not this function
   case "$cache_name" in
     git_root)     _MEM_CACHE_GIT_ROOT[$key]="${value}|${timestamp}" ;;
     git_hierarchy) _MEM_CACHE_GIT_HIERARCHY[$key]="${value}|${timestamp}" ;;
     git_ext)      _MEM_CACHE_GIT_EXT[$key]="${value}|${timestamp}" ;;
-    gh_pr)        _MEM_CACHE_GH_PR[$key]="${value}|${timestamp}" ;;
   esac
 
   # 2. Background write to persistent cache (non-blocking)
   if (( _CACHE_USE_SQLITE )); then
-    if (( _CACHE_USE_HEX_BINDING )); then
-      (
-        # SECURITY: Hex parameter binding prevents SQL injection
-        # Use print -rn -- for safe string handling
-        # .parameter set only accepts literals, CAST must be in SQL statement
-        local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
-        local hex_value=$(print -rn -- "$value" | xxd -p | tr -d '\n')
-        echo ".parameter init
+    (
+      # SECURITY: Hex parameter binding prevents SQL injection
+      # Use print -rn -- for safe string handling
+      # .parameter set only accepts literals, CAST must be in SQL statement
+      local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
+      local hex_value=$(print -rn -- "$value" | xxd -p | tr -d '\n')
+      echo ".parameter init
 .parameter set @key X'${hex_key}'
 .parameter set @val X'${hex_value}'
 .parameter set @ts ${timestamp}
 INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT), CAST(@val AS TEXT), @ts);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
-      ) &!
-    else
-      (
-        # Fallback: use SQLite's quote() for safe escaping
-        local safe_key=$(_sql_quote "${cache_name}:${key}")
-        local safe_value=$(_sql_quote "$value")
-        sqlite3 "$_CACHE_DB_FILE" "
-          INSERT OR REPLACE INTO cache (key, value, timestamp)
-          VALUES (${safe_key}, ${safe_value}, ${timestamp});
-        " 2>/dev/null
-      ) &!
-    fi
+    ) &!
   else
     (
       local cache_file="${_CACHE_DIR}/${cache_name}_cache"
@@ -496,6 +472,7 @@ function _cache_cleanup() {
     "$_GH_AUTH_CACHE_FILE"
     "$_GH_USERNAME_GH_CACHE_FILE"
     "$_GH_USERNAME_SSH_CACHE_FILE"
+    "$_PUBLIC_IP_CACHE_FILE"
   )
 
   for cache_file in "${cache_files[@]}"; do
@@ -720,6 +697,9 @@ function _prompt_emoji_help() {
   echo "║    ⚡ / [SSH] Connected via SSH                                  ║"
   echo "║    💻 / H     Running on host machine                            ║"
   echo "║    📦 / C     Running inside a container                         ║"
+  echo "║    (x.x.x.x)  Public IP address (green=online, red=offline)      ║"
+  echo "║               ⚠ Privacy: IP is sent to external services        ║"
+  echo "║               Use 'n' to disable network features if concerned   ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GITHUB IDENTITY                                                 ║"
   echo "║    [Username]   GitHub username (white bg, black text)           ║"
@@ -736,11 +716,12 @@ function _prompt_emoji_help() {
   echo "║             1 behind, 3 stashes                                  ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GIT SPECIAL STATES                                              ║"
-  echo "║    🔀 / RB   Rebase in progress (with step/total if interactive) ║"
-  echo "║    🔀 / MG   Merge in progress                                   ║"
-  echo "║    🍒 / CP   Cherry-pick in progress                             ║"
-  echo "║    🔍 / BI   Bisect in progress                                  ║"
-  echo "║    🔌 / DT   Detached HEAD state                                 ║"
+  echo "║    🔀 / [RB] Rebase in progress (with step/total if interactive) ║"
+  echo "║    🔀 / [MG] Merge in progress                                   ║"
+  echo "║    🍒 / [CP] Cherry-pick in progress                             ║"
+  echo "║    ⏪ / [RV] Revert in progress                                  ║"
+  echo "║    🔍 / [BI] Bisect in progress                                  ║"
+  echo "║    🔌 / [DT] Detached HEAD state                                 ║"
   echo "║    Example: 🔀2/5 means interactive rebase at step 2 of 5        ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GITHUB PR STATUS                                                ║"
@@ -883,6 +864,13 @@ function _prompt_tool_status() {
   else
     _tsl "    ${CROSS} gh          - No PR/CI status in prompt"
     _tsl "                    Install: https://cli.github.com"
+  fi
+
+  # hash command (for PR cache key generation)
+  if (( _HAS_HASH_CMD )); then
+    _tsl "    ${CHECK} ${_HASH_CMD}    - PR cache key generation"
+  else
+    _tsl "    ${WARN} hash        - PR caching disabled (no sha256sum/shasum/openssl/cksum)"
   fi
 
   # ssh
@@ -1187,7 +1175,7 @@ function _compute_layout_mode() {
   local actual_host="${HOST:-${HOSTNAME:-$(hostname -s 2>/dev/null)}}"
   user_host_len=$(( ${#actual_user} + 1 + ${#actual_host} ))  # +1 for @
 
-  # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (no-internet) 13 chars, or empty
+  # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (offline) 9 chars, or empty
   local public_ip_len=0
   if [[ -n "$_PP_PUBLIC_IP" ]]; then
     # Strip ANSI codes and count visible length (use (S) for shortest match)
@@ -1246,11 +1234,11 @@ function _compute_layout_mode() {
   elif (( short_len <= COLUMNS )); then
     mode="short"
     system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
-    [[ -n "$_PP_AI_STATUS" ]] && ai_output=" $_PP_AI_STATUS"
+    # AI doesn't fit - don't add it (would cause overflow)
   else
     mode="min"
     system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
-    [[ -n "$_PP_AI_STATUS" ]] && ai_output=" $_PP_AI_STATUS"
+    # Min mode - no AI, truncate path
     _compute_smart_path_direct "short"
   fi
 
@@ -1736,11 +1724,21 @@ function _compute_git_special_direct() {
   [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]] && return
 
   local git_dir="${_PP_CACHED_GIT_ROOT}/.git"
-  # Handle worktrees
+  # Handle worktrees: .git is a file containing "gitdir: <path>"
+  # Path may be relative (e.g., "../.git/worktrees/branch") and must be
+  # resolved against the repo root, not the current working directory
   if [[ -f "$git_dir" ]]; then
     local git_link=$(<"$git_dir")
-    git_dir="${git_link#gitdir: }"
-    git_dir="${git_dir%%[[:space:]]}"
+    git_link="${git_link#gitdir: }"
+    git_link="${git_link%%[[:space:]]}"
+    # Resolve relative paths against the repo root
+    if [[ "$git_link" != /* ]]; then
+      git_dir="${_PP_CACHED_GIT_ROOT}/${git_link}"
+    else
+      git_dir="$git_link"
+    fi
+    # Normalize path (resolve .. components and symlinks)
+    git_dir="${git_dir:A}"
   fi
 
   local state="" step="" total=""
@@ -1784,7 +1782,8 @@ function _compute_git_special_direct() {
       case "$state" in
         rebase*|am*) icon="🔀"; color="%{$fg[yellow]%}" ;;
         merge)       icon="🔀"; color="%{$fg[cyan]%}" ;;
-        cherry|revert) icon="🍒"; color="%{$fg[red]%}" ;;
+        cherry)      icon="🍒"; color="%{$fg[red]%}" ;;
+        revert)      icon="⏪"; color="%{$fg[magenta]%}" ;;
         bisect)      icon="🔍"; color="%{$fg[blue]%}" ;;
         detached)    icon="🔌"; color="%{$fg[red]%}" ;;
       esac
@@ -1792,10 +1791,12 @@ function _compute_git_special_direct() {
       case "$state" in
         rebase*|am*) icon="RB"; color="%{$fg[yellow]%}" ;;
         merge)       icon="MG"; color="%{$fg[cyan]%}" ;;
-        cherry|revert) icon="CP"; color="%{$fg[red]%}" ;;
+        cherry)      icon="CP"; color="%{$fg[red]%}" ;;
+        revert)      icon="RV"; color="%{$fg[magenta]%}" ;;
         bisect)      icon="BI"; color="%{$fg[blue]%}" ;;
         detached)    icon="DT"; color="%{$fg[red]%}" ;;
       esac
+      icon="[${icon}]"  # Wrap in brackets for plaintext mode
     fi
 
     if [[ -n "$step" && -n "$total" ]]; then
@@ -1823,6 +1824,9 @@ function _compute_pr_status_direct() {
 
   # Skip if network mode is disabled
   (( _PROMPT_NETWORK_MODE )) || return
+
+  # Skip if no hash command available (needed for cache key generation)
+  (( _HAS_HASH_CMD )) || return
 
   # Check if gh command exists
   (( _HAS_GH )) || return
@@ -1870,6 +1874,8 @@ function _compute_pr_status_direct() {
       # Update memory cache from persistent cache
       if [[ -n "$pr_number" ]]; then
         _MEM_CACHE_GH_PR[$cache_key]="${pr_number}|${ci_status}|${cache_time}"
+        # Cleanup memory cache if it grows too large
+        (( ${#_MEM_CACHE_GH_PR} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _mem_cache_cleanup "gh_pr"
       fi
     fi
   fi
@@ -2037,6 +2043,7 @@ _GIT_REMOTE_BRANCH_CACHE_ID=-1
 # Args: $1=input string
 # Returns: hash string
 # PERFORMANCE: Uses _HASH_CMD detected at load time (no repeated command -v calls)
+# NOTE: Caller must check _HAS_HASH_CMD before calling this function
 function _hash_string() {
   local input="$1"
   local hash=""
@@ -2057,9 +2064,6 @@ function _hash_string() {
     cksum)
       hash=$(printf '%s' "$input" | cksum 2>/dev/null)
       hash="${hash%% *}"
-      ;;
-    *)
-      hash="${#input}"
       ;;
   esac
 
@@ -2087,7 +2091,6 @@ function _get_cached_git_remote_branch() {
 
   if [[ -n "$remote_url" && -n "$branch" ]]; then
     local remote_key=$(_hash_string "$remote_url")
-    [[ -z "$remote_key" ]] && remote_key="${#remote_url}"
     _GIT_REMOTE_BRANCH_CACHE="${remote_key}|${branch}"
   else
     _GIT_REMOTE_BRANCH_CACHE=""
@@ -2310,7 +2313,7 @@ function _compute_gh_username_direct() {
 # ============================================================================
 # Uses curl to fetch public IP from multiple providers with failover.
 # Cache refreshes every 5 minutes (_CACHE_TTL_MEDIUM).
-# Shows green (IP) if successful, red (no-internet) if all providers fail.
+# Shows green (IP) if successful, red (offline) if all providers fail.
 # Hidden if curl is not available.
 
 # Background update for public IP address
@@ -2332,12 +2335,14 @@ function _public_ip_update_background() {
     local ip=""
 
     # Try primary provider first, then fallbacks
-    # checkip.amazonaws.com is fastest and most reliable
+    # SECURITY: Use HTTPS to prevent MITM attacks on displayed IP
+    # PRIVACY: These requests reveal your IP to third-party services
+    #          Use 'n' command to disable if this is a concern
     local providers=(
-      "checkip.amazonaws.com"
-      "ifconfig.me"
-      "icanhazip.com"
-      "api.ipify.org"
+      "https://checkip.amazonaws.com"
+      "https://ifconfig.me"
+      "https://icanhazip.com"
+      "https://api.ipify.org"
     )
 
     for provider in "${providers[@]}"; do
@@ -2396,7 +2401,7 @@ function _compute_public_ip_direct() {
     _PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
   elif [[ -f "$_PUBLIC_IP_CACHE_FILE" ]]; then
     # Cache exists but IP is empty - no internet, show in red
-    _PP_PUBLIC_IP="%{$fg[red]%}(no-internet)%{$reset_color%}"
+    _PP_PUBLIC_IP="%{$fg[red]%}(offline)%{$reset_color%}"
   else
     # No cache yet - still loading
     _PP_PUBLIC_IP=""
@@ -2532,25 +2537,15 @@ _gh_pr_update_cache() {
 
     # Use the unified cache system
     if (( _CACHE_USE_SQLITE )); then
-      if (( _CACHE_USE_HEX_BINDING )); then
-        # SECURITY: Hex parameter binding prevents SQL injection
-        # .parameter set only accepts literals, CAST must be in SQL statement
-        local hex_key=$(print -rn -- "gh_pr:${cache_key}" | xxd -p | tr -d '\n')
-        local hex_value=$(print -rn -- "$cache_value" | xxd -p | tr -d '\n')
-        echo ".parameter init
+      # SECURITY: Hex parameter binding prevents SQL injection
+      # .parameter set only accepts literals, CAST must be in SQL statement
+      local hex_key=$(print -rn -- "gh_pr:${cache_key}" | xxd -p | tr -d '\n')
+      local hex_value=$(print -rn -- "$cache_value" | xxd -p | tr -d '\n')
+      echo ".parameter init
 .parameter set @key X'${hex_key}'
 .parameter set @val X'${hex_value}'
 .parameter set @ts ${current_time}
 INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT), CAST(@val AS TEXT), @ts);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
-      else
-        # Fallback: use SQLite's quote() for safe escaping
-        local safe_key=$(_sql_quote "gh_pr:${cache_key}")
-        local safe_value=$(_sql_quote "$cache_value")
-        sqlite3 "$_CACHE_DB_FILE" "
-          INSERT OR REPLACE INTO cache (key, value, timestamp)
-          VALUES (${safe_key}, ${safe_value}, ${current_time});
-        " 2>/dev/null
-      fi
     else
       local cache_file="${_CACHE_DIR}/gh_pr_cache"
       local sep=$'\x1f'
@@ -2648,6 +2643,8 @@ function _compute_ai_tools_direct() {
     "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI"
   _append_ai_tool
 
+  unfunction _append_ai_tool
+
   # Wrap in brackets if any tools are present
   if [[ -n "$ai_status" ]]; then
     _PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
@@ -2661,7 +2658,7 @@ function _compute_ai_tools_direct() {
 # Enhanced PROMPT with all new features:
 # - Exit status indicator (✓/OK or ✗N/ERRN)
 # - SSH indicator (⚡/SSH)
-# - Public IP address (green if online, red "no-internet" if offline, hidden if no curl)
+# - Public IP address (green if online, red "offline" if offline, hidden if no curl)
 # - GitHub username badge [Username] (white bg, black text; red if mismatch)
 # - Container/Host badge (💻/H or 📦/C)
 # - Time with timezone [HH:MM:SS TZ]
