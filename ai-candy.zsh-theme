@@ -2099,42 +2099,15 @@ function _get_cached_git_remote_branch() {
   echo "$_GIT_REMOTE_BRANCH_CACHE"
 }
 
-# Helper: determine update type (major, minor, or patch)
-# Returns: "major", "minor", "patch", or "" if no update
-_version_update_type() {
+# Helper: check if versions differ (indicates update available or version changed)
+# Returns: 0 if versions differ, 1 if same or missing
+# Simplified logic: any difference triggers indicator, avoids semver parsing issues
+_version_differs() {
   local installed="$1"
   local remote="$2"
-  REPLY=""
 
   [[ -z "$installed" || -z "$remote" ]] && return 1
-
-  # Parse version components
-  local inst_major inst_minor inst_patch
-  local rem_major rem_minor rem_patch
-
-  inst_major=${installed%%.*}
-  inst_minor=${installed#*.}
-  inst_minor=${inst_minor%%.*}
-  inst_patch=${installed##*.}
-
-  rem_major=${remote%%.*}
-  rem_minor=${remote#*.}
-  rem_minor=${rem_minor%%.*}
-  rem_patch=${remote##*.}
-
-  # Compare versions with proper semantic versioning logic
-  # Must check equality of higher components before comparing lower ones
-  if (( rem_major > inst_major )); then
-    REPLY="major"
-    return 0
-  elif (( rem_major == inst_major && rem_minor > inst_minor )); then
-    REPLY="minor"
-    return 0
-  elif (( rem_major == inst_major && rem_minor == inst_minor && rem_patch > inst_patch )); then
-    REPLY="patch"
-    return 0
-  fi
-
+  [[ "$installed" != "$remote" ]] && return 0
   return 1
 }
 
@@ -2595,7 +2568,7 @@ function _compute_ai_tool_status() {
 
   if [[ -n "$installed_version" ]]; then
     local update_ind=""
-    _version_update_type "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
+    _version_differs "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
     tool_result="%{$FG[$color_code]%}${short_icon}${installed_version}${update_ind}%{$reset_color%}"
     tool_result_long="%{$FG[$color_code]%}${long_icon}${installed_version}${update_ind}%{$reset_color%}"
   fi
