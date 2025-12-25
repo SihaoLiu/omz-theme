@@ -1045,13 +1045,15 @@ if (( ! $+aliases[u] && ! $+functions[u] )); then
 fi
 
 # Capture exit status before any other precmd runs
+# IMPORTANT: Must be FIRST in precmd_functions to capture $? before other hooks modify it
 _LAST_EXIT_STATUS=0
 function _capture_exit_status() {
   _LAST_EXIT_STATUS=$?
 }
-# Add as first precmd hook
+# Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
+# This ensures we capture $? before other hooks (like zsh-syntax-highlighting) can modify it
 autoload -Uz add-zsh-hook
-add-zsh-hook precmd _capture_exit_status
+precmd_functions=(_capture_exit_status ${precmd_functions[@]:#_capture_exit_status})
 
 # Per-prompt render id to avoid recomputing expensive segments multiple times
 _PROMPT_RENDER_ID=0
@@ -1311,10 +1313,14 @@ add-zsh-hook precmd _precmd_compute_prompt
 add-zsh-hook precmd _periodic_cache_cleanup
 
 # Per-prompt caches for git/PR segments
+# IMPORTANT: These must be initialized here (not just in _prompt_refresh_all_caches)
+# to avoid "unset variable" errors when set -u (nounset) is enabled
 _PROMPT_GIT_EXT_CACHE=""
 _PROMPT_GIT_EXT_CACHE_ID=-1
 _PROMPT_GH_PR_CACHE=""
 _PROMPT_GH_PR_CACHE_ID=-1
+_PROMPT_GIT_SPECIAL_CACHE=""
+_PROMPT_GIT_SPECIAL_CACHE_ID=-1
 
 # System info cache (file-based, uses _CACHE_TTL_LOW - rarely changes)
 # (_SYSINFO_CACHE_FILE defined in CACHE FILE PATHS section)
@@ -1388,6 +1394,14 @@ function _compute_sysinfo_direct() {
       fi
     fi
   fi
+
+  # SECURITY: Escape % to %% to prevent zsh prompt escape interpretation
+  # If /etc/os-release or uname output contains %, it would otherwise be
+  # interpreted as a prompt escape sequence (e.g., %F, %B, %n)
+  os_long="${os_long//\%/%%}"
+  os_short="${os_short//\%/%%}"
+  kernel_long="${kernel_long//\%/%%}"
+  kernel_short="${kernel_short//\%/%%}"
 
   # Save to cache
   local result="${os_long}|${os_short}|${kernel_long}|${kernel_short}"
@@ -2139,9 +2153,12 @@ _ai_tool_update_cache() {
     fi
 
     # Only update cache if we got the local version
+    # Format: installed_version<SEP>remote_version<SEP>timestamp (SEP = \x1f Unit Separator)
+    # Using \x1f avoids issues with empty fields that space-separated format had
     if [[ -n "$installed_version" ]]; then
       local current_time=${EPOCHSECONDS}
-      echo "$installed_version $remote_version $current_time" > "$cache_file"
+      local sep=$'\x1f'
+      echo "${installed_version}${sep}${remote_version}${sep}${current_time}" > "$cache_file"
     fi
 
     # Remove lock directory when done
@@ -2555,7 +2572,9 @@ function _compute_ai_tool_status() {
   local current_time=${EPOCHSECONDS}
 
   if [[ -f "$cache_file" ]]; then
-    read -r installed_version remote_version cache_time < "$cache_file"
+    # Format: installed_version<SEP>remote_version<SEP>timestamp (SEP = \x1f Unit Separator)
+    local sep=$'\x1f'
+    IFS="$sep" read -r installed_version remote_version cache_time < "$cache_file"
     [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
     # Only trigger background update if network mode is enabled
     if (( _PROMPT_NETWORK_MODE )) && (( current_time - cache_time > _CACHE_TTL_LOW )); then
