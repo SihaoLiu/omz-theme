@@ -698,14 +698,15 @@ function _prompt_emoji_help() {
   echo "║    💻 / H     Running on host machine                            ║"
   echo "║    📦 / C     Running inside a container                         ║"
   echo "║    (x.x.x.x)  Public IP address (green=online, red=offline)      ║"
-  echo "║               ⚠ Privacy: IP is sent to external services        ║"
+  echo "║               ⚠ Privacy: IP is sent to external services         ║"
   echo "║               Use 'n' to disable network features if concerned   ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GITHUB IDENTITY                                                 ║"
-  echo "║    [Username]   GitHub username (white bg, black text)           ║"
+  echo "║    User /     GitHub username (white bg, black text)            ║"
+  echo "║    [Username]   Emoji mode: icon, Plaintext mode: brackets       ║"
   echo "║                 Detected via gh auth and ssh -T git@github.com   ║"
-  echo "║    [A|B]        Mismatch warning (red) - gh and ssh differ       ║"
-  echo "║                 Check your GitHub authentication config!         ║"
+  echo "║    A|B /      Mismatch warning (red) - gh and ssh differ        ║"
+  echo "║    [A|B]        Check your GitHub authentication config!         ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GIT STATUS                                                      ║"
   echo "║    ↑N / +N   N commits ahead of upstream (need to push)          ║"
@@ -2286,17 +2287,33 @@ function _compute_gh_username_direct() {
 
   # Build badge and assign directly to _PP_GH_USER
   # NOTE: Use $'\e' for escape character in direct assignment (not \\e which is for echo)
+  # Emoji mode:  Username (icon, no brackets), Plaintext mode: [Username] (brackets, no icon)
   local ESC=$'\e'
+  local badge_content=""
   if [[ -z "$gh_user" && -z "$ssh_user" ]]; then
     _PP_GH_USER=""
+    return
   elif [[ -z "$gh_user" ]]; then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${ssh_user}]%{$reset_color%}"
+    badge_content="${ssh_user}"
   elif [[ -z "$ssh_user" ]]; then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${gh_user}]%{$reset_color%}"
+    badge_content="${gh_user}"
   elif [[ "$gh_user" == "$ssh_user" ]]; then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${gh_user}]%{$reset_color%}"
+    badge_content="${gh_user}"
   else
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
+    # Mismatch case - use red background
+    if (( _PROMPT_EMOJI_MODE )); then
+      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${gh_user}|${ssh_user}%{$reset_color%}"
+    else
+      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
+    fi
+    return
+  fi
+
+  # Normal case - white background
+  if (( _PROMPT_EMOJI_MODE )); then
+    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}${badge_content}%{$reset_color%}"
+  else
+    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
   fi
 }
 
