@@ -739,6 +739,13 @@ function _prompt_emoji_help() {
   echo "║    *         Update available (shown after version)              ║"
   echo "║    Example: 🤖2.0.76* means Claude v2.0.76 with update available ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
+  echo "║  SYSTEM INFO (shown in brackets at end of prompt)                ║"
+  echo "║    [OS, kernel] shows operating system and kernel version        ║"
+  echo "║    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ║"
+  echo $'║    \uef5d RHEL  \uef72 Ubuntu  \uef3d CentOS  \uf30a Fedora  \uf31d AlmaLinux             ║'
+  echo $'║    \uf179 macOS/Darwin kernel    \uf17c Linux kernel                       ║'
+  echo $'║    Example: [\uef5d 9.5, \uf17c-5.14.0] for RHEL 9.5 on Linux kernel       ║'
+  echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  OTHER                                                           ║"
   echo "║    ⚙N / JN   N background jobs running                           ║"
   echo "║    ..        Path truncated (in narrow terminal)                 ║"
@@ -1140,10 +1147,19 @@ function _compute_time_direct() {
 # May recompute: _PP_PATH (in min mode)
 function _compute_layout_mode() {
   # Use precomputed sysinfo from global variables
-  local os_long="$_PP_SYSINFO_OS_LONG"
-  local os_short="$_PP_SYSINFO_OS_SHORT"
-  local kernel_long="$_PP_SYSINFO_KERNEL_LONG"
-  local kernel_short="$_PP_SYSINFO_KERNEL_SHORT"
+  # In emoji mode, use versions with distro/kernel icons (, , , , )
+  local os_long os_short kernel_long kernel_short
+  if (( _PROMPT_EMOJI_MODE )); then
+    os_long="$_PP_SYSINFO_OS_LONG_EMOJI"
+    os_short="$_PP_SYSINFO_OS_SHORT_EMOJI"
+    kernel_long="$_PP_SYSINFO_KERNEL_LONG_EMOJI"
+    kernel_short="$_PP_SYSINFO_KERNEL_SHORT_EMOJI"
+  else
+    os_long="$_PP_SYSINFO_OS_LONG"
+    os_short="$_PP_SYSINFO_OS_SHORT"
+    kernel_long="$_PP_SYSINFO_KERNEL_LONG"
+    kernel_short="$_PP_SYSINFO_KERNEL_SHORT"
+  fi
 
   # Container/host badge
   local container_icon badge_color
@@ -1331,8 +1347,39 @@ _PROMPT_GIT_SPECIAL_CACHE_ID=-1
 # Global variables for direct sysinfo assignment (avoids subshell)
 typeset -g _PP_SYSINFO_OS_LONG=""
 typeset -g _PP_SYSINFO_OS_SHORT=""
+typeset -g _PP_SYSINFO_OS_LONG_EMOJI=""
+typeset -g _PP_SYSINFO_OS_SHORT_EMOJI=""
 typeset -g _PP_SYSINFO_KERNEL_LONG=""
 typeset -g _PP_SYSINFO_KERNEL_SHORT=""
+typeset -g _PP_SYSINFO_KERNEL_LONG_EMOJI=""
+typeset -g _PP_SYSINFO_KERNEL_SHORT_EMOJI=""
+
+# Helper: Apply OS/distro icon replacements for emoji mode
+# Nerd Font icons: Red Hat (ef5d), Ubuntu (ef72), CentOS (ef3d), Fedora (f30a), AlmaLinux (f31d)
+_sysinfo_apply_os_icons() {
+  local input="$1"
+  local icon_redhat=$'\uef5d' icon_ubuntu=$'\uef72' icon_centos=$'\uef3d'
+  local icon_fedora=$'\uf30a' icon_alma=$'\uf31d'
+  # Distro replacements (order matters - more specific first)
+  input="${input//Red Hat Enterprise Linux/${icon_redhat}}"
+  input="${input//Rhel/${icon_redhat}}"
+  input="${input//Ubuntu/${icon_ubuntu}}"
+  input="${input//CentOS/${icon_centos}}"
+  input="${input//Centos/${icon_centos}}"
+  input="${input//Fedora/${icon_fedora}}"
+  input="${input//AlmaLinux/${icon_alma}}"
+  input="${input//Almalinux/${icon_alma}}"
+  echo "$input"
+}
+
+# Kernel icons: Apple/Darwin (f179), Linux (f17c)
+_sysinfo_apply_kernel_icons() {
+  local input="$1"
+  local icon_apple=$'\uf179' icon_linux=$'\uf17c'
+  input="${input//Darwin/${icon_apple}}"
+  input="${input//Linux/${icon_linux}}"
+  echo "$input"
+}
 
 # Direct-assignment version: writes result to _PP_SYSINFO_* global variables
 # PERFORMANCE: Avoids 1 subshell by parsing cache directly into variables
@@ -1351,6 +1398,11 @@ function _compute_sysinfo_direct() {
       rest="${rest#*|}"
       _PP_SYSINFO_KERNEL_LONG="${rest%%|*}"
       _PP_SYSINFO_KERNEL_SHORT="${rest#*|}"
+      # Generate emoji versions with OS/distro and kernel icons
+      _PP_SYSINFO_OS_LONG_EMOJI="$(_sysinfo_apply_os_icons "$_PP_SYSINFO_OS_LONG")"
+      _PP_SYSINFO_OS_SHORT_EMOJI="$(_sysinfo_apply_os_icons "$_PP_SYSINFO_OS_SHORT")"
+      _PP_SYSINFO_KERNEL_LONG_EMOJI="$(_sysinfo_apply_kernel_icons "$_PP_SYSINFO_KERNEL_LONG")"
+      _PP_SYSINFO_KERNEL_SHORT_EMOJI="$(_sysinfo_apply_kernel_icons "$_PP_SYSINFO_KERNEL_SHORT")"
       return
     fi
   fi
@@ -1416,6 +1468,11 @@ function _compute_sysinfo_direct() {
   _PP_SYSINFO_OS_SHORT="$os_short"
   _PP_SYSINFO_KERNEL_LONG="$kernel_long"
   _PP_SYSINFO_KERNEL_SHORT="$kernel_short"
+  # Generate emoji versions with OS/distro and kernel icons
+  _PP_SYSINFO_OS_LONG_EMOJI="$(_sysinfo_apply_os_icons "$os_long")"
+  _PP_SYSINFO_OS_SHORT_EMOJI="$(_sysinfo_apply_os_icons "$os_short")"
+  _PP_SYSINFO_KERNEL_LONG_EMOJI="$(_sysinfo_apply_kernel_icons "$kernel_long")"
+  _PP_SYSINFO_KERNEL_SHORT_EMOJI="$(_sysinfo_apply_kernel_icons "$kernel_short")"
 }
 
 # Cache helpers (literal prefix match to avoid regex/glob key issues)
