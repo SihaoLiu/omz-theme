@@ -704,7 +704,7 @@ function _prompt_emoji_help() {
   echo "║  GITHUB IDENTITY                                                 ║"
   echo "║    User /     GitHub username (white bg, black text)            ║"
   echo "║    [Username]   Emoji mode: icon, Plaintext mode: brackets       ║"
-  echo "║                 Detected via gh auth and ssh -T git@github.com   ║"
+  echo "║                 Detected via gh auth (active) & ssh -T github    ║"
   echo "║    A|B /      Mismatch warning (red) - gh and ssh differ        ║"
   echo "║    [A|B]        Check your GitHub authentication config!         ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
@@ -2195,8 +2195,25 @@ function _gh_username_update_gh() {
     # Parse username from gh auth status output
     auth_output=$(_run_with_timeout "$net_timeout" gh auth status 2>&1)
 
-    # Extract username from "Logged in to github.com account USERNAME"
-    username=$(echo "$auth_output" | grep -oE 'account [^ ]+' | head -n1 | sed 's/account //')
+    # Extract the ACTIVE account (when multiple accounts exist)
+    # Format: "account USERNAME (keyring)" followed by "Active account: true/false"
+    # Use awk to find the username where "Active account: true" follows
+    username=$(echo "$auth_output" | awk '
+      /account [^ ]+/ {
+        sub(/.*account /, "")
+        sub(/ .*/, "")
+        candidate = $0
+      }
+      /Active account: true/ && candidate {
+        print candidate
+        exit
+      }
+    ')
+
+    # Fallback: if no "Active account" lines found (older gh versions or single account), use first match
+    if [[ -z "$username" ]]; then
+      username=$(echo "$auth_output" | grep -oE 'account [^ ]+' | head -n1 | sed 's/account //')
+    fi
 
     local current_time=${EPOCHSECONDS}
     if [[ -n "$username" ]]; then
