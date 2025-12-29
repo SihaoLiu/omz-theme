@@ -742,9 +742,9 @@ function _prompt_emoji_help() {
   echo "║  SYSTEM INFO (shown in brackets at end of prompt)                ║"
   echo "║    [OS, kernel] shows operating system and kernel version        ║"
   echo "║    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ║"
-  echo $'║    \uef5d RHEL  \uef72 Ubuntu  \uef3d CentOS  \uf30a Fedora  \uf31d AlmaLinux             ║'
-  echo $'║    \uf179 macOS/Darwin kernel    \uf17c Linux kernel                       ║'
-  echo $'║    Example: [\uef5d 9.5, \uf17c-5.14.0] for RHEL 9.5 on Linux kernel       ║'
+  echo "║    ${_NF_REDHAT} RHEL  ${_NF_UBUNTU} Ubuntu  ${_NF_CENTOS} CentOS  ${_NF_FEDORA} Fedora  ${_NF_ALMA} AlmaLinux  ${_NF_MACOS} macOS    ║"
+  echo "║    ${_NF_APPLE} Darwin kernel    ${_NF_LINUX} Linux kernel                             ║"
+  echo "║    Example: [${_NF_REDHAT} 9.5, ${_NF_LINUX}-5.14.0] for RHEL 9.5 on Linux kernel       ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  OTHER                                                           ║"
   echo "║    ⚙N / JN   N background jobs running                           ║"
@@ -1354,30 +1354,39 @@ typeset -g _PP_SYSINFO_KERNEL_SHORT=""
 typeset -g _PP_SYSINFO_KERNEL_LONG_EMOJI=""
 typeset -g _PP_SYSINFO_KERNEL_SHORT_EMOJI=""
 
+# Nerd Font icons for OS/distro (using hex byte escapes for portability)
+# macOS U+F0036 (nf-md-apple_finder), Darwin U+F179, Red Hat U+EF5D, Ubuntu U+EF72
+# CentOS U+EF3D, Fedora U+F30A, AlmaLinux U+F31D, Linux U+F17C
+typeset -g _NF_MACOS=$'\xf3\xb0\x80\xb6'  # U+F0036 nf-md-apple_finder
+typeset -g _NF_APPLE=$'\xef\x85\xb9'      # U+F179 nf-fa-apple (for Darwin kernel)
+typeset -g _NF_REDHAT=$'\xee\xbd\x9d'     # U+EF5D
+typeset -g _NF_UBUNTU=$'\xee\xbd\xb2'     # U+EF72
+typeset -g _NF_CENTOS=$'\xee\xbc\xbd'     # U+EF3D
+typeset -g _NF_FEDORA=$'\xef\x8c\x8a'     # U+F30A
+typeset -g _NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
+typeset -g _NF_LINUX=$'\xef\x85\xbc'      # U+F17C
+
 # Helper: Apply OS/distro icon replacements for emoji mode
-# Nerd Font icons: Red Hat (ef5d), Ubuntu (ef72), CentOS (ef3d), Fedora (f30a), AlmaLinux (f31d)
 _sysinfo_apply_os_icons() {
   local input="$1"
-  local icon_redhat=$'\uef5d' icon_ubuntu=$'\uef72' icon_centos=$'\uef3d'
-  local icon_fedora=$'\uf30a' icon_alma=$'\uf31d'
   # Distro replacements (order matters - more specific first)
-  input="${input//Red Hat Enterprise Linux/${icon_redhat}}"
-  input="${input//Rhel/${icon_redhat}}"
-  input="${input//Ubuntu/${icon_ubuntu}}"
-  input="${input//CentOS/${icon_centos}}"
-  input="${input//Centos/${icon_centos}}"
-  input="${input//Fedora/${icon_fedora}}"
-  input="${input//AlmaLinux/${icon_alma}}"
-  input="${input//Almalinux/${icon_alma}}"
+  input="${input//macOS/${_NF_MACOS}}"
+  input="${input//Red Hat Enterprise Linux/${_NF_REDHAT}}"
+  input="${input//Rhel/${_NF_REDHAT}}"
+  input="${input//Ubuntu/${_NF_UBUNTU}}"
+  input="${input//CentOS/${_NF_CENTOS}}"
+  input="${input//Centos/${_NF_CENTOS}}"
+  input="${input//Fedora/${_NF_FEDORA}}"
+  input="${input//AlmaLinux/${_NF_ALMA}}"
+  input="${input//Almalinux/${_NF_ALMA}}"
   echo "$input"
 }
 
-# Kernel icons: Apple/Darwin (f179), Linux (f17c)
+# Kernel icons
 _sysinfo_apply_kernel_icons() {
   local input="$1"
-  local icon_apple=$'\uf179' icon_linux=$'\uf17c'
-  input="${input//Darwin/${icon_apple}}"
-  input="${input//Linux/${icon_linux}}"
+  input="${input//Darwin/${_NF_APPLE}}"
+  input="${input//Linux/${_NF_LINUX}}"
   echo "$input"
 }
 
