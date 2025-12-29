@@ -317,7 +317,8 @@ typeset -g _CACHE_USE_SQLITE=0  # Will be set to 1 if sqlite3 is available
 if (( _HAS_SQLITE3 )); then
   # Initialize database schema (only creates if not exists)
   # Enable WAL mode for better concurrent write handling across multiple shells
-  if sqlite3 "$_CACHE_DB_FILE" "
+  # Set busy_timeout to wait up to 1 second for locks instead of failing immediately
+  if sqlite3 -cmd ".timeout 1000" "$_CACHE_DB_FILE" "
       PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS cache (
         key TEXT PRIMARY KEY,
@@ -372,7 +373,8 @@ function _cache_get() {
     # Use print -rn -- for safe string handling (handles - prefix and backslashes)
     # .parameter set only accepts literals, CAST must be in SQL statement
     local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
-    echo ".parameter init
+    echo ".timeout 1000
+.parameter init
 .parameter set @key X'${hex_key}'
 SELECT value || '|' || timestamp FROM cache WHERE key = CAST(@key AS TEXT) LIMIT 1;" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
   else
@@ -418,12 +420,13 @@ function _cache_set_async() {
       # .parameter set only accepts literals, CAST must be in SQL statement
       local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
       local hex_value=$(print -rn -- "$value" | xxd -p | tr -d '\n')
-      echo ".parameter init
+      echo ".timeout 1000
+.parameter init
 .parameter set @key X'${hex_key}'
 .parameter set @val X'${hex_value}'
 .parameter set @ts ${timestamp}
 INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT), CAST(@val AS TEXT), @ts);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
-    ) &!
+    ) &>/dev/null &!
   else
     (
       local cache_file="${_CACHE_DIR}/${cache_name}_cache"
@@ -458,9 +461,9 @@ function _cache_cleanup() {
 
   # SQLite cleanup
   if (( _CACHE_USE_SQLITE )); then
-    sqlite3 "$_CACHE_DB_FILE" "
+    sqlite3 -cmd ".timeout 1000" "$_CACHE_DB_FILE" "
       DELETE FROM cache WHERE timestamp < ${cutoff};
-    " 2>/dev/null
+    " &>/dev/null
   fi
 
   # File cache cleanup (for each known cache file)
@@ -694,18 +697,23 @@ function _prompt_emoji_help() {
   echo "║    Example: [✗127] means 'command not found'                     ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  CONNECTION & ENVIRONMENT                                        ║"
-  echo "║    ⚡ / [SSH] Connected via SSH                                  ║"
-  echo "║    💻 / H     Running on host machine                            ║"
-  echo "║    📦 / C     Running inside a container                         ║"
+  echo "║    ${_NF_SSH}/ [SSH] Connected via SSH                                 ║"
+  echo "║    ${_NF_CONTAINER} / C     Running inside a container                        ║"
+  echo "║    ${_NF_TTY} / T     TTY session                                       ║"
+  echo "║    ${_NF_GNOME}/ G     GNOME desktop                                      ║"
+  echo "║    ${_NF_KDE} / K     KDE Plasma desktop                                 ║"
+  echo "║    ${_NF_XFCE} / X     XFCE desktop                                       ║"
+  echo "║    ${_NF_XORG} / O     Xorg session (generic X11)                        ║"
+  echo "║    💻 / H     Other host environment                             ║"
   echo "║    (x.x.x.x)  Public IP address (green=online, red=offline)      ║"
   echo "║               ⚠ Privacy: IP is sent to external services         ║"
   echo "║               Use 'n' to disable network features if concerned   ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GITHUB IDENTITY                                                 ║"
-  echo "║    User /     GitHub username (white bg, black text)            ║"
+  echo "║    ${_NF_GITHUB}User /     GitHub username (white bg, black text)            ║"
   echo "║    [Username]   Emoji mode: icon, Plaintext mode: brackets       ║"
   echo "║                 Detected via gh auth (active) & ssh -T github    ║"
-  echo "║    A|B /      Mismatch warning (red) - gh and ssh differ        ║"
+  echo "║    ${_NF_GITHUB}A|B /      Mismatch warning (red) - gh and ssh differ        ║"
   echo "║    [A|B]        Check your GitHub authentication config!         ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GIT STATUS                                                      ║"
@@ -733,11 +741,11 @@ function _prompt_emoji_help() {
   echo "║    Example: #42✓ means PR #42 with all checks passing            ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  AI CODING TOOLS                                                 ║"
-  echo "║    $_NF_CLAUDE / Cl:   Claude Code version                                 ║"
-  echo "║    $_NF_CODEX / Cx:   OpenAI Codex version                                ║"
-  echo "║    $_NF_GEMINI / Gm:   Google Gemini CLI version                           ║"
+  echo "║    $_NF_CLAUDE / Cl:   Claude Code version                                ║"
+  echo "║    $_NF_CODEX / Cx:   OpenAI Codex version                               ║"
+  echo "║    $_NF_GEMINI / Gm:   Google Gemini CLI version                          ║"
   echo "║    *         Update available (shown after version)              ║"
-  echo "║    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available  ║"
+  echo "║    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  SYSTEM INFO (shown in brackets at end of prompt)                ║"
   echo "║    [OS, kernel] shows operating system and kernel version        ║"
@@ -950,10 +958,9 @@ function _prompt_tool_status() {
   _tsl ""
 
   # Emoji mode (e)
-  # Note: ⚡ are 2-wide but count as 1 char; add zero-width spaces to fix alignment
   local ZWS=$'\u200b'  # Zero-width space: adds to strlen but not display width
   if (( _PROMPT_EMOJI_MODE )); then
-    _tsl "    ${CHECK} e  Emoji mode      [✓] ⚡ $_NF_CLAUDE ↑↓ ⚑${ZWS}"
+    _tsl "    ${CHECK} e  Emoji mode      [✓] ${_NF_SSH}$_NF_CLAUDE ↑↓ ⚑${ZWS}"
   else
     _tsl "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
   fi
@@ -1009,10 +1016,10 @@ function _prompt_refresh_all_caches() {
 
   # Clear SQLite cache if available
   if (( _CACHE_USE_SQLITE )); then
-    sqlite3 "$_CACHE_DB_FILE" "
+    sqlite3 -cmd ".timeout 1000" "$_CACHE_DB_FILE" "
       DELETE FROM cache;
       VACUUM;
-    " 2>/dev/null
+    " &>/dev/null
   fi
 
   # Clear file-based caches by removing cache files (fallback mode)
@@ -1161,16 +1168,39 @@ function _compute_layout_mode() {
     kernel_short="$_PP_SYSINFO_KERNEL_SHORT"
   fi
 
-  # Container/host badge
-  local container_icon badge_color
+  # Container/host/session badge (priority: Container > TTY > GNOME > KDE > XFCE > Xorg > Host)
+  local badge_icon badge_color
+  local _desktop_lower="${(L)XDG_SESSION_DESKTOP}"  # lowercase for case-insensitive matching
   if [[ -f /run/.containerenv ]]; then
-    (( _PROMPT_EMOJI_MODE )) && container_icon="📦" || container_icon="C"
+    # Container environment
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_CONTAINER" || badge_icon="C"
     badge_color="%{$fg[magenta]%}"
+  elif [[ "$XDG_SESSION_TYPE" == "tty" ]]; then
+    # TTY session
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_TTY" || badge_icon="T"
+    badge_color="%{$fg[yellow]%}"
+  elif [[ "$_desktop_lower" == *gnome* ]]; then
+    # GNOME desktop (matches gnome, gnome-xorg, gnome-wayland, etc.)
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_GNOME" || badge_icon="G"
+    badge_color="%{$fg[yellow]%}"
+  elif [[ "$_desktop_lower" == *kde* || "$_desktop_lower" == *plasma* ]]; then
+    # KDE Plasma desktop
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_KDE" || badge_icon="K"
+    badge_color="%{$fg[yellow]%}"
+  elif [[ "$_desktop_lower" == *xfce* ]]; then
+    # XFCE desktop
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_XFCE" || badge_icon="X"
+    badge_color="%{$fg[yellow]%}"
+  elif [[ "$_desktop_lower" == *xorg* ]]; then
+    # Xorg session (generic X11)
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_XORG" || badge_icon="O"
+    badge_color="%{$fg[yellow]%}"
   else
-    (( _PROMPT_EMOJI_MODE )) && container_icon="💻" || container_icon="H"
+    # Default: Host
+    (( _PROMPT_EMOJI_MODE )) && badge_icon="💻" || badge_icon="H"
     badge_color="%{$fg[yellow]%}"
   fi
-  _PP_BADGE=" ${badge_color}${container_icon}%{$reset_color%}"
+  _PP_BADGE=" ${badge_color}${badge_icon}%{$reset_color%}"
 
   # Compute FULL path first to get accurate length
   _compute_smart_path_direct "full"
@@ -1293,7 +1323,7 @@ function _precmd_compute_prompt() {
 
   # SSH indicator
   if [[ -n "$SSH_CONNECTION" ]]; then
-    (( _PROMPT_EMOJI_MODE )) && _PP_SSH="%{$fg[cyan]%}⚡%{$reset_color%}" || _PP_SSH="%{$fg[cyan]%}[SSH]%{$reset_color%} "
+    (( _PROMPT_EMOJI_MODE )) && _PP_SSH="%{$fg[cyan]%}${_NF_SSH}%{$reset_color%}" || _PP_SSH="%{$fg[cyan]%}[SSH]%{$reset_color%} "
   else
     _PP_SSH=""
   fi
@@ -1367,10 +1397,18 @@ typeset -g _NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
 typeset -g _NF_LINUX=$'\xef\x85\xbc'      # U+F17C
 
 # AI tool icons for emoji mode (using Nerd Font icons with hex byte escapes for portability)
-# Claude Code U+F069 (nf-fa-asterisk), Gemini U+F1A0 (nf-fa-google), Codex U+E764 (nf-dev-atom)
-typeset -g _NF_CLAUDE=$'\xef\x81\xa9'     # U+F069 nf-fa-asterisk
-typeset -g _NF_GEMINI=$'\xef\x86\xa0'     # U+F1A0 nf-fa-google
-typeset -g _NF_CODEX=$'\xee\x9d\xa4'      # U+E764 nf-dev-atom
+# Claude Code U+F069 (nf-fa-asterisk), Gemini U+F1A0 (nf-fa-google), Codex U+E27F (nf-fae-atom)
+typeset -g _NF_CLAUDE=$'\xef\x81\xa9 '    # U+F069 nf-fa-asterisk (+ space for 2-char width)
+typeset -g _NF_GEMINI=$'\xef\x86\xa0 '    # U+F1A0 nf-fa-google (+ space for 2-char width)
+typeset -g _NF_CODEX=$'\xee\x89\xbf '     # U+E27F nf-fae-atom (+ space for 2-char width)
+typeset -g _NF_CONTAINER=$'\xef\x88\x9f'  # U+F21F nf-fa-docker
+typeset -g _NF_SSH=$'\xf3\xb0\xa3\x80 '   # U+F08C0 nf-md-ssh (+ space for 2-char width)
+typeset -g _NF_GITHUB=$'\xef\x82\x9b '    # U+F09B nf-fa-github (+ space for 2-char width)
+typeset -g _NF_TTY=$'\xef\x87\xa4'        # U+F1E4 nf-fa-tty
+typeset -g _NF_GNOME=$'\xef\x8d\xa1 '     # U+F361 nf-linux-gnome (+ space for 2-char width)
+typeset -g _NF_KDE=$'\xef\x8c\xb2'        # U+F332 nf-linux-kde_plasma
+typeset -g _NF_XFCE=$'\xef\x8d\xa8'       # U+F368 nf-linux-xfce
+typeset -g _NF_XORG=$'\xef\x8d\xa9'       # U+F369 nf-linux-xorg
 
 # Helper: Apply OS/distro icon replacements for emoji mode
 _sysinfo_apply_os_icons() {
@@ -2391,7 +2429,7 @@ function _compute_gh_username_direct() {
   else
     # Mismatch case - use red background
     if (( _PROMPT_EMOJI_MODE )); then
-      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${gh_user}|${ssh_user}%{$reset_color%}"
+      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${_NF_GITHUB}${gh_user}|${ssh_user}%{$reset_color%}"
     else
       _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
     fi
@@ -2400,7 +2438,7 @@ function _compute_gh_username_direct() {
 
   # Normal case - white background
   if (( _PROMPT_EMOJI_MODE )); then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}${badge_content}%{$reset_color%}"
+    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}${_NF_GITHUB}${badge_content}%{$reset_color%}"
   else
     _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
   fi
@@ -2639,7 +2677,8 @@ _gh_pr_update_cache() {
       # .parameter set only accepts literals, CAST must be in SQL statement
       local hex_key=$(print -rn -- "gh_pr:${cache_key}" | xxd -p | tr -d '\n')
       local hex_value=$(print -rn -- "$cache_value" | xxd -p | tr -d '\n')
-      echo ".parameter init
+      echo ".timeout 1000
+.parameter init
 .parameter set @key X'${hex_key}'
 .parameter set @val X'${hex_value}'
 .parameter set @ts ${current_time}
@@ -2757,10 +2796,10 @@ function _compute_ai_tools_direct() {
 
 # Enhanced PROMPT with all new features:
 # - Exit status indicator (✓/OK or ✗N/ERRN)
-# - SSH indicator (⚡/SSH)
+# - SSH indicator (nf-md-ssh/[SSH])
 # - Public IP address (green if online, red "offline" if offline, hidden if no curl)
 # - GitHub username badge [Username] (white bg, black text; red if mismatch)
-# - Container/Host badge (💻/H or 📦/C)
+# - Session badge (Container/TTY/GNOME/KDE/XFCE/Xorg/Host with NF icons or C/T/G/K/X/O/H)
 # - Time with timezone [HH:MM:SS TZ]
 # - Smart path with git-aware coloring and submodule support
 # - Git status with extended info (ahead/behind/stash) + special states (rebase/merge/bisect)
