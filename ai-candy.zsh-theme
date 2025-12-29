@@ -733,11 +733,11 @@ function _prompt_emoji_help() {
   echo "║    Example: #42✓ means PR #42 with all checks passing            ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  AI CODING TOOLS                                                 ║"
-  echo "║    🤖 / Cl:   Claude Code version                                ║"
-  echo "║    🧠 / Cx:   OpenAI Codex version                               ║"
-  echo "║    🔷 / Gm:   Google Gemini CLI version                          ║"
+  echo "║    $_NF_CLAUDE / Cl:   Claude Code version                                 ║"
+  echo "║    $_NF_CODEX / Cx:   OpenAI Codex version                                ║"
+  echo "║    $_NF_GEMINI / Gm:   Google Gemini CLI version                           ║"
   echo "║    *         Update available (shown after version)              ║"
-  echo "║    Example: 🤖2.0.76* means Claude v2.0.76 with update available ║"
+  echo "║    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available  ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  SYSTEM INFO (shown in brackets at end of prompt)                ║"
   echo "║    [OS, kernel] shows operating system and kernel version        ║"
@@ -950,10 +950,10 @@ function _prompt_tool_status() {
   _tsl ""
 
   # Emoji mode (e)
-  # Note: ⚡🤖 are 2-wide but count as 1 char; add zero-width spaces to fix alignment
+  # Note: ⚡ are 2-wide but count as 1 char; add zero-width spaces to fix alignment
   local ZWS=$'\u200b'  # Zero-width space: adds to strlen but not display width
   if (( _PROMPT_EMOJI_MODE )); then
-    _tsl "    ${CHECK} e  Emoji mode      [✓] ⚡ 🤖 ↑↓ ⚑${ZWS}${ZWS}"
+    _tsl "    ${CHECK} e  Emoji mode      [✓] ⚡ $_NF_CLAUDE ↑↓ ⚑${ZWS}"
   else
     _tsl "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
   fi
@@ -1365,6 +1365,12 @@ typeset -g _NF_CENTOS=$'\xee\xbc\xbd'     # U+EF3D
 typeset -g _NF_FEDORA=$'\xef\x8c\x8a'     # U+F30A
 typeset -g _NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
 typeset -g _NF_LINUX=$'\xef\x85\xbc'      # U+F17C
+
+# AI tool icons for emoji mode (using Nerd Font icons with hex byte escapes for portability)
+# Claude Code U+F069 (nf-fa-asterisk), Gemini U+F1A0 (nf-fa-google), Codex U+E764 (nf-dev-atom)
+typeset -g _NF_CLAUDE=$'\xef\x81\xa9'     # U+F069 nf-fa-asterisk
+typeset -g _NF_GEMINI=$'\xef\x86\xa0'     # U+F1A0 nf-fa-google
+typeset -g _NF_CODEX=$'\xee\x9d\xa4'      # U+E764 nf-dev-atom
 
 # Helper: Apply OS/distro icon replacements for emoji mode
 _sysinfo_apply_os_icons() {
@@ -2690,8 +2696,8 @@ function _compute_ai_tool_status() {
   if [[ -n "$installed_version" ]]; then
     local update_ind=""
     _version_differs "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-    tool_result="%{$FG[$color_code]%}${short_icon}${installed_version}${update_ind}%{$reset_color%}"
-    tool_result_long="%{$FG[$color_code]%}${long_icon}${installed_version}${update_ind}%{$reset_color%}"
+    tool_result="%{$FG[$color_code]%}%B${short_icon}${installed_version}${update_ind}%b%{$reset_color%}"
+    tool_result_long="%{$FG[$color_code]%}%B${long_icon}${installed_version}${update_ind}%b%{$reset_color%}"
   fi
 }
 
@@ -2720,19 +2726,19 @@ function _compute_ai_tools_direct() {
 
   # Claude Code
   local icon_s icon_l
-  (( _PROMPT_EMOJI_MODE )) && icon_s="🤖" icon_l="🤖" || { icon_s="Cl:"; icon_l="Claude:"; }
+  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CLAUDE" icon_l="$_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
   _compute_ai_tool_status "$_HAS_CLAUDE" "$_CLAUDE_CACHE_FILE" "claude" \
     "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE"
   _append_ai_tool
 
   # Codex
-  (( _PROMPT_EMOJI_MODE )) && icon_s="🧠" icon_l="🧠" || { icon_s="Cx:"; icon_l="Codex:"; }
+  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CODEX" icon_l="$_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
   _compute_ai_tool_status "$_HAS_CODEX" "$_CODEX_CACHE_FILE" "codex" \
     "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX"
   _append_ai_tool
 
   # Gemini
-  (( _PROMPT_EMOJI_MODE )) && icon_s="🔷" icon_l="🔷" || { icon_s="Gm:"; icon_l="Gemini:"; }
+  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_GEMINI" icon_l="$_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
   _compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
     "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI"
   _append_ai_tool
