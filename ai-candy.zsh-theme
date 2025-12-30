@@ -697,23 +697,23 @@ function _prompt_emoji_help() {
   echo "║    Example: [✗127] means 'command not found'                     ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  CONNECTION & ENVIRONMENT                                        ║"
-  echo "║    ${_NF_SSH}/ [SSH] Connected via SSH                                 ║"
-  echo "║    ${_NF_CONTAINER} / C     Running inside a container                        ║"
-  echo "║    ${_NF_TTY} / T     TTY session                                       ║"
-  echo "║    ${_NF_GNOME}/ G     GNOME desktop                                      ║"
-  echo "║    ${_NF_KDE} / K     KDE Plasma desktop                                 ║"
-  echo "║    ${_NF_XFCE} / X     XFCE desktop                                       ║"
-  echo "║    ${_NF_XORG} / O     Xorg session (generic X11)                        ║"
+  echo "║    ${_NF_SSH}/ [SSH] Connected via SSH                                   ║"
+  echo "║    ${_NF_CONTAINER} / C     Running inside a container                          ║"
+  echo "║    ${_NF_TTY} / T     TTY session                                         ║"
+  echo "║    ${_NF_GNOME}/ G     GNOME desktop                                       ║"
+  echo "║    ${_NF_KDE} / K     KDE Plasma desktop                                  ║"
+  echo "║    ${_NF_XFCE} / X     XFCE desktop                                        ║"
+  echo "║    ${_NF_XORG} / O     Xorg session (generic X11)                          ║"
   echo "║    💻 / H     Other host environment                             ║"
   echo "║    (x.x.x.x)  Public IP address (green=online, red=offline)      ║"
   echo "║               ⚠ Privacy: IP is sent to external services         ║"
   echo "║               Use 'n' to disable network features if concerned   ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GITHUB IDENTITY                                                 ║"
-  echo "║    ${_NF_GITHUB}User /     GitHub username (white bg, black text)            ║"
+  echo "║    ${_NF_GITHUB}User /     GitHub username (white bg, black text)           ║"
   echo "║    [Username]   Emoji mode: icon, Plaintext mode: brackets       ║"
   echo "║                 Detected via gh auth (active) & ssh -T github    ║"
-  echo "║    ${_NF_GITHUB}A|B /      Mismatch warning (red) - gh and ssh differ        ║"
+  echo "║    ${_NF_GITHUB}A|B /      Mismatch warning (red) - gh and ssh differ       ║"
   echo "║    [A|B]        Check your GitHub authentication config!         ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
   echo "║  GIT STATUS                                                      ║"
@@ -960,7 +960,7 @@ function _prompt_tool_status() {
   # Emoji mode (e)
   local ZWS=$'\u200b'  # Zero-width space: adds to strlen but not display width
   if (( _PROMPT_EMOJI_MODE )); then
-    _tsl "    ${CHECK} e  Emoji mode      [✓] ${_NF_SSH}$_NF_CLAUDE ↑↓ ⚑${ZWS}"
+    _tsl "    ${CHECK} e  Emoji mode      [✓] ${_NF_SSH}$_NF_CLAUDE ↑↓ ⚑"
   else
     _tsl "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
   fi
@@ -1205,20 +1205,22 @@ function _compute_layout_mode() {
   # Compute FULL path first to get accurate length
   _compute_smart_path_direct "full"
 
-  # Calculate visible lengths (remove %{...%} escape sequences)
+  # Calculate visible lengths (remove all prompt escape sequences)
   # NOTE: For segments containing %n, %m, %j etc., we must use actual values
+  # Strips: %{...%}, %B/%b (bold), %U/%u (underline), %S/%s (standout),
+  #         %F{...}/%f (fg color), %K{...}/%k (bg color)
   local _tmp git_len git_ext_len git_special_len ai_len ai_len_long pr_len path_len
   local user_host_len gh_user_len exit_len ssh_len
-  _tmp="${_PP_GIT_INFO}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; git_len=${#_tmp}
-  _tmp="${_PP_GIT_EXT}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; git_ext_len=${#_tmp}
-  _tmp="${_PP_GIT_SPECIAL}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; git_special_len=${#_tmp}
-  _tmp="${_PP_AI_STATUS}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; ai_len=${#_tmp}
-  _tmp="${_PP_AI_STATUS_LONG}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; ai_len_long=${#_tmp}
-  _tmp="${_PP_PR}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; pr_len=${#_tmp}
-  _tmp="${_PP_PATH}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; path_len=${#_tmp}
-  _tmp="${_PP_GH_USER}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; gh_user_len=${#_tmp}
-  _tmp="${_PP_EXIT}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; exit_len=${#_tmp}
-  _tmp="${_PP_SSH}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; ssh_len=${#_tmp}
+  _tmp="${_PP_GIT_INFO}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; git_len=${#_tmp}
+  _tmp="${_PP_GIT_EXT}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; git_ext_len=${#_tmp}
+  _tmp="${_PP_GIT_SPECIAL}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; git_special_len=${#_tmp}
+  _tmp="${_PP_AI_STATUS}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; ai_len=${#_tmp}
+  _tmp="${_PP_AI_STATUS_LONG}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; ai_len_long=${#_tmp}
+  _tmp="${_PP_PR}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; pr_len=${#_tmp}
+  _tmp="${_PP_PATH}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; path_len=${#_tmp}
+  _tmp="${_PP_GH_USER}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; gh_user_len=${#_tmp}
+  _tmp="${_PP_EXIT}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; exit_len=${#_tmp}
+  _tmp="${_PP_SSH}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; ssh_len=${#_tmp}
 
   # user@host: %n@%m expands to actual username and hostname
   # Use actual values instead of literal "%n@%m" (4 chars)
@@ -1227,10 +1229,11 @@ function _compute_layout_mode() {
   user_host_len=$(( ${#actual_user} + 1 + ${#actual_host} ))  # +1 for @
 
   # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (offline) 9 chars, or empty
+  # NOTE: IPv4 only - see _public_ip_update_background for rationale
   local public_ip_len=0
   if [[ -n "$_PP_PUBLIC_IP" ]]; then
-    # Strip ANSI codes and count visible length (use (S) for shortest match)
-    _tmp="${_PP_PUBLIC_IP}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; public_ip_len=${#_tmp}
+    # Strip prompt escapes and count visible length
+    _tmp="${_PP_PUBLIC_IP}"; _tmp="${(S)_tmp//\%\{*\%\}/}"; _tmp="${_tmp//\%[BbUuSsfk]/}"; _tmp="${(S)_tmp//\%[FK]\{*\}/}"; public_ip_len=${#_tmp}
   fi
 
   # time_len: compute dynamically based on actual timezone abbreviation
@@ -2474,6 +2477,11 @@ function _public_ip_update_background() {
     # SECURITY: Use HTTPS to prevent MITM attacks on displayed IP
     # PRIVACY: These requests reveal your IP to third-party services
     #          Use 'n' command to disable if this is a concern
+    # DESIGN: IPv4 only (-4 flag) for consistent prompt width calculations.
+    #         IPv4: max 15 chars (255.255.255.255) -> (xxx.xxx.xxx.xxx) = 17 chars
+    #         IPv6: max 39 chars -> would be 41 chars in parentheses
+    #         IPv6-only environments will show (offline). If IPv6 support is needed,
+    #         remove -4 flag and update regex + width calculation in _precmd_compute_prompt.
     local providers=(
       "https://checkip.amazonaws.com"
       "https://ifconfig.me"
@@ -2483,7 +2491,7 @@ function _public_ip_update_background() {
 
     for provider in "${providers[@]}"; do
       ip=$(_run_with_timeout "$net_timeout" curl -4 -s "$provider" 2>/dev/null)
-      # Validate IP format (basic check: contains dots and only digits/dots)
+      # Validate IPv4 format (basic check: contains dots and only digits/dots)
       if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         break
       fi
