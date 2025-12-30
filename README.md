@@ -1,5 +1,7 @@
 # AI Candy
 
+![AI Candy Demo](demo.png)
+
 **A responsive Oh My Zsh theme for the AI-assisted developer who works across containers, VMs, and bare metal.**
 
 *Author: Sihao Liu <sihao@cs.ucla.edu>*
@@ -22,8 +24,6 @@ Ever SSH'd into a machine and wondered *"Wait, am I on the host or in a containe
 ## Demo
 
 Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push system info + AI to RPROMPT (right side):
-
-![AI Candy Demo](demo.png)
 
 **Emoji Mode (Requires Nerd Font):**
 ```
