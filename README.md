@@ -23,6 +23,8 @@ Ever SSH'd into a machine and wondered *"Wait, am I on the host or in a containe
 
 Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push system info + AI to RPROMPT (right side):
 
+![AI Candy Demo](demo.png)
+
 **Emoji Mode (Requires Nerd Font):**
 ```
 # LONG MODE - Full details + AI tools + PR status
