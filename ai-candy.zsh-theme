@@ -1200,6 +1200,8 @@ function _compute_layout_mode() {
     (( _PROMPT_EMOJI_MODE )) && badge_icon="💻" || badge_icon="H"
     badge_color="%{$fg[yellow]%}"
   fi
+  # In emoji mode, strip trailing space from Nerd Font environment icons
+  (( _PROMPT_EMOJI_MODE )) && badge_icon="${badge_icon% }"
   _PP_BADGE=" ${badge_color}${badge_icon}%{$reset_color%}"
 
   # Compute FULL path first to get accurate length
