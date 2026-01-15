@@ -1256,7 +1256,10 @@ function _compute_layout_mode() {
   local fixed_len=$((2 + _LAYOUT_MARGIN)) badge_len=2
 
   # min_len: base length without sysinfo/AI (badge_len already included)
-  local min_len=$((exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_len + fixed_len))
+  # pr_space: 1 space before PR if PR is present
+  local pr_space=0
+  (( pr_len > 0 )) && pr_space=1
+  local min_len=$((exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_space + pr_len + fixed_len))
 
   # Calculate lengths for different layout modes
   local short_version="${os_short}${kernel_short}"
@@ -2818,12 +2821,12 @@ function _compute_ai_tools_direct() {
 # - Adaptive RPROMPT for system info and AI tools
 # - Toggle emoji/plaintext with 'e', network with 'n', help with 'h', refresh with 'u'
 #
-# Order: [exit][ssh]user@host(IP)[GHUser] [container] [time+TZ] [path] [git+ext+special][PR+CI] [sysinfo] [AI] [jobs]
+# Order: [exit][ssh]user@host(IP)[GHUser] [container] [time+TZ] [path] [git+ext+special] [PR+CI] [sysinfo] [AI] [jobs]
 # Second line: -> %#
 #
 # PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
 # All segments are computed once in _precmd_compute_prompt before prompt display
-PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR:+ }${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and AI tools in SHORT/MIN modes
