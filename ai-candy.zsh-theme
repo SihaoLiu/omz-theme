@@ -1121,7 +1121,7 @@ typeset -g _PP_RPROMPT=""        # Right prompt content
 function _compute_venv_direct() {
   if [[ -n "$VIRTUAL_ENV" ]]; then
     local venv_name="${VIRTUAL_ENV:t}"  # Get basename of the path
-    _PP_VENV="%{$fg[yellow]%}(${venv_name})%{$reset_color%} "
+    _PP_VENV="%{$fg[yellow]%}(${venv_name})%{$reset_color%}"
   else
     _PP_VENV=""
   fi
