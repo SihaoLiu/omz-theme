@@ -5,6 +5,12 @@
 # ============================================================================
 
 # ============================================================================
+# PYTHON VIRTUAL ENVIRONMENT - Disable default prompt modification
+# ============================================================================
+# We handle venv display ourselves in _compute_venv_direct() for consistent styling
+export VIRTUAL_ENV_DISABLE_PROMPT=1
+
+# ============================================================================
 # ZSH VERSION CHECK - This theme requires zsh 5.4+ for nameref support
 # ============================================================================
 autoload -Uz is-at-least
@@ -1086,6 +1092,7 @@ add-zsh-hook precmd _prompt_bump_render_id
 # in PROMPT to avoid creating subshells for each prompt segment
 
 # Precomputed prompt segment variables
+typeset -g _PP_VENV=""           # Python virtual environment indicator
 typeset -g _PP_EXIT=""           # Exit status indicator
 typeset -g _PP_SSH=""            # SSH indicator
 typeset -g _PP_USER_HOST=""      # user@host with color
@@ -1107,6 +1114,18 @@ typeset -g _PP_RPROMPT=""        # Right prompt content
 # ============================================================================
 # PROMPT COMPONENT FUNCTIONS - Extracted for maintainability
 # ============================================================================
+
+# Compute Python virtual environment indicator
+# Sets: _PP_VENV
+# Displays: (venv_name) in yellow when a virtual environment is active
+function _compute_venv_direct() {
+  if [[ -n "$VIRTUAL_ENV" ]]; then
+    local venv_name="${VIRTUAL_ENV:t}"  # Get basename of the path
+    _PP_VENV="%{$fg[yellow]%}(${venv_name})%{$reset_color%} "
+  else
+    _PP_VENV=""
+  fi
+}
 
 # Compute exit status indicator
 # Sets: _PP_EXIT
@@ -1327,6 +1346,7 @@ function _precmd_compute_prompt() {
   _PP_CACHED_GIT_ROOT=$(_get_cached_git_root)
 
   # === Status indicators ===
+  _compute_venv_direct
   _compute_exit_status_direct
 
   # SSH indicator
@@ -2826,7 +2846,7 @@ function _compute_ai_tools_direct() {
 #
 # PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
 # All segments are computed once in _precmd_compute_prompt before prompt display
-PROMPT='${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR:+ }${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_PP_VENV}${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}${_PP_GIT_SPECIAL}${_PP_PR:+ }${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and AI tools in SHORT/MIN modes
