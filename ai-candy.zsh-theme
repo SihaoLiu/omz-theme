@@ -2746,15 +2746,17 @@ function _count_ai_instances() {
   case "$method" in
     pgrep_exact)
       # Exact process name match (for claude, codex)
-      count=$(pgrep -xc "$pattern" 2>/dev/null || echo 0)
+      count=$(pgrep -xc "$pattern" 2>/dev/null) || count=0
       ;;
     ps_grep)
       # Use ps + grep for complex patterns (for gemini)
       # Pattern like '^node .*/bin/gemini' counts only first process per instance
-      count=$(ps -eo args 2>/dev/null | grep -c "$pattern")
+      count=$(ps -eo args 2>/dev/null | grep -c "$pattern") || count=0
       ;;
   esac
 
+  # Ensure count is a valid number
+  [[ "$count" =~ ^[0-9]+$ ]] || count=0
   echo "$count"
 }
 
@@ -2796,6 +2798,7 @@ function _compute_ai_tool_status() {
 
     # Count running instances
     local instance_count=$(_count_ai_instances "$count_method" "$count_pattern")
+    [[ "$instance_count" =~ ^[0-9]+$ ]] || instance_count=0
     local count_str=""
     (( instance_count > 0 )) && count_str="(x${instance_count})"
 
