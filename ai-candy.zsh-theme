@@ -2735,13 +2735,38 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
 typeset -g _PP_AI_STATUS=""
 typeset -g _PP_AI_STATUS_LONG=""
 
+# Count running instances of an AI tool
+# Args: $1=method (pgrep_exact|ps_grep), $2=pattern
+# Returns: instance count via stdout
+function _count_ai_instances() {
+  local method="$1"
+  local pattern="$2"
+  local count=0
+
+  case "$method" in
+    pgrep_exact)
+      # Exact process name match (for claude, codex)
+      count=$(pgrep -xc "$pattern" 2>/dev/null || echo 0)
+      ;;
+    ps_grep)
+      # Use ps + grep for complex patterns (for gemini)
+      # Pattern like '^node .*/bin/gemini' counts only first process per instance
+      count=$(ps -eo args 2>/dev/null | grep -c "$pattern")
+      ;;
+  esac
+
+  echo "$count"
+}
+
 # Generic AI tool status computation
 # Sets caller-scoped variables: tool_result, tool_result_long
 # Args: $1=has_flag (0/1), $2=cache_file, $3=cmd_name, $4=npm_url,
-#       $5=short_icon, $6=long_icon, $7=color_code
+#       $5=short_icon, $6=long_icon, $7=color_code, $8=long_name,
+#       $9=count_method (pgrep_exact|ps_grep), $10=count_pattern
 function _compute_ai_tool_status() {
   local has_flag="$1" cache_file="$2" cmd_name="$3" npm_url="$4"
   local short_icon="$5" long_icon="$6" color_code="$7"
+  local long_name="$8" count_method="$9" count_pattern="${10}"
 
   tool_result=""
   tool_result_long=""
@@ -2768,8 +2793,23 @@ function _compute_ai_tool_status() {
   if [[ -n "$installed_version" ]]; then
     local update_ind=""
     _version_differs "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
-    tool_result="%{$FG[$color_code]%}%B${short_icon}${installed_version}${update_ind}%b%{$reset_color%}"
-    tool_result_long="%{$FG[$color_code]%}%B${long_icon}${installed_version}${update_ind}%b%{$reset_color%}"
+
+    # Count running instances
+    local instance_count=$(_count_ai_instances "$count_method" "$count_pattern")
+    local count_str=""
+    (( instance_count > 0 )) && count_str="(x${instance_count})"
+
+    if (( _PROMPT_EMOJI_MODE )); then
+      # Emoji mode: icon version*(xN)
+      tool_result="%{$FG[$color_code]%}%B${short_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
+      tool_result_long="%{$FG[$color_code]%}%B${long_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
+    else
+      # Text mode: Name(N):version*
+      local count_suffix=""
+      (( instance_count > 0 )) && count_suffix="(${instance_count})"
+      tool_result="%{$FG[$color_code]%}%B${short_icon}${count_suffix}${installed_version}${update_ind}%b%{$reset_color%}"
+      tool_result_long="%{$FG[$color_code]%}%B${long_name}${count_suffix}:${installed_version}${update_ind}%b%{$reset_color%}"
+    fi
   fi
 }
 
@@ -2796,23 +2836,26 @@ function _compute_ai_tools_direct() {
     fi
   }
 
-  # Claude Code
+  # Claude Code (pgrep -x claude works directly)
   local icon_s icon_l
   (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CLAUDE" icon_l="$_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
   _compute_ai_tool_status "$_HAS_CLAUDE" "$_CLAUDE_CACHE_FILE" "claude" \
-    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE"
+    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE" \
+    "Claude" "pgrep_exact" "claude"
   _append_ai_tool
 
-  # Codex
+  # Codex (pgrep -x codex works directly)
   (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CODEX" icon_l="$_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
   _compute_ai_tool_status "$_HAS_CODEX" "$_CODEX_CACHE_FILE" "codex" \
-    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX"
+    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX" \
+    "Codex" "pgrep_exact" "codex"
   _append_ai_tool
 
-  # Gemini
+  # Gemini (use ps_grep to count only first process per instance)
   (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_GEMINI" icon_l="$_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
   _compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
-    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI"
+    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI" \
+    "Gemini" "ps_grep" "^node .*/bin/gemini"
   _append_ai_tool
 
   unfunction _append_ai_tool
