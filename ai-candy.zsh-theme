@@ -2796,9 +2796,11 @@ function _compute_ai_tool_status() {
     local update_ind=""
     _version_differs "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
 
-    # Count running instances
-    local instance_count=$(_count_ai_instances "$count_method" "$count_pattern")
-    [[ "$instance_count" =~ ^[0-9]+$ ]] || instance_count=0
+    # Count running instances (strip whitespace, default to 0)
+    local instance_count
+    instance_count=$(_count_ai_instances "$count_method" "$count_pattern")
+    instance_count="${instance_count//[^0-9]/}"  # Keep only digits
+    : "${instance_count:=0}"  # Default to 0 if empty
     local count_str=""
     (( instance_count > 0 )) && count_str="(x${instance_count})"
 
