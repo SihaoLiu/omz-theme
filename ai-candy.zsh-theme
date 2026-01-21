@@ -1045,6 +1045,13 @@ function _prompt_tool_status() {
     _tsl "    ${CROSS} a  AI tools display hidden"
   fi
 
+  # OS/kernel display mode (o)
+  if (( _PROMPT_OS_MODE )); then
+    _tsl "    ${CHECK} o  OS/kernel display enabled"
+  else
+    _tsl "    ${CROSS} o  OS/kernel display hidden"
+  fi
+
   _tsl ""
   echo "$BOT"
   echo ""
