@@ -176,6 +176,7 @@ typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
 typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
 typeset -g _NETWORK_MODE_FILE="${_CACHE_DIR}/network_mode"
 typeset -g _AI_MODE_FILE="${_CACHE_DIR}/ai_mode"
+typeset -g _OS_MODE_FILE="${_CACHE_DIR}/os_mode"
 
 # AI tool version caches
 typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
@@ -651,6 +652,18 @@ else
   _PROMPT_AI_MODE=1
 fi
 
+# OS/kernel display mode toggle (1 = show, 0 = hide)
+# Controls whether OS and kernel info is displayed in prompt
+# Persisted to file so it survives shell restarts
+# (_OS_MODE_FILE defined in CACHE FILE PATHS section)
+
+# Load OS mode from file or default to 1 (show)
+if [[ -f "$_OS_MODE_FILE" ]]; then
+  _PROMPT_OS_MODE=$(<"$_OS_MODE_FILE")
+else
+  _PROMPT_OS_MODE=1
+fi
+
 # Toggle emoji mode
 function _prompt_toggle_emoji() {
   if (( _PROMPT_EMOJI_MODE )); then
@@ -714,6 +727,19 @@ function _prompt_toggle_ai() {
     _PROMPT_AI_MODE=1
     _cache_write "$_AI_MODE_FILE" "1"
     echo "AI tools display: ON"
+  fi
+}
+
+# Toggle OS/kernel display mode (show/hide)
+function _prompt_toggle_os() {
+  if (( _PROMPT_OS_MODE )); then
+    _PROMPT_OS_MODE=0
+    _cache_write "$_OS_MODE_FILE" "0"
+    echo "OS/kernel display: OFF"
+  else
+    _PROMPT_OS_MODE=1
+    _cache_write "$_OS_MODE_FILE" "1"
+    echo "OS/kernel display: ON"
   fi
 }
 
@@ -1045,6 +1071,9 @@ fi
 if (( ! $+aliases[a] && ! $+functions[a] )); then
   alias a='_prompt_toggle_ai'
 fi
+if (( ! $+aliases[o] && ! $+functions[o] )); then
+  alias o='_prompt_toggle_os'
+fi
 
 # Manual cache refresh function - clears all prompt caches
 # Call this to force refresh of all cached data (system info, git, PR, AI tools)
@@ -1356,6 +1385,9 @@ function _compute_layout_mode() {
     # Min mode - no AI, truncate path
     _compute_smart_path_direct "short"
   fi
+
+  # Hide OS/kernel info if OS mode is disabled
+  (( ! _PROMPT_OS_MODE )) && system_info=""
 
   # Set output based on mode
   if [[ "$mode" == "long" ]]; then
