@@ -175,6 +175,7 @@ typeset -g _SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
 typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
 typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
 typeset -g _NETWORK_MODE_FILE="${_CACHE_DIR}/network_mode"
+typeset -g _AI_MODE_FILE="${_CACHE_DIR}/ai_mode"
 
 # AI tool version caches
 typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
@@ -638,6 +639,18 @@ else
   _PROMPT_NETWORK_MODE=1
 fi
 
+# AI tools display mode toggle (1 = show, 0 = hide)
+# Controls whether AI tools section is displayed in prompt
+# Persisted to file so it survives shell restarts
+# (_AI_MODE_FILE defined in CACHE FILE PATHS section)
+
+# Load AI mode from file or default to 1 (show)
+if [[ -f "$_AI_MODE_FILE" ]]; then
+  _PROMPT_AI_MODE=$(<"$_AI_MODE_FILE")
+else
+  _PROMPT_AI_MODE=1
+fi
+
 # Toggle emoji mode
 function _prompt_toggle_emoji() {
   if (( _PROMPT_EMOJI_MODE )); then
@@ -688,6 +701,19 @@ function _prompt_toggle_network() {
     _cache_write "$_NETWORK_MODE_FILE" "1"
     echo "Network mode: ON"
     echo "Enabled: public IP, GitHub username/PR status, AI update checks"
+  fi
+}
+
+# Toggle AI tools display mode (show/hide)
+function _prompt_toggle_ai() {
+  if (( _PROMPT_AI_MODE )); then
+    _PROMPT_AI_MODE=0
+    _cache_write "$_AI_MODE_FILE" "0"
+    echo "AI tools display: OFF"
+  else
+    _PROMPT_AI_MODE=1
+    _cache_write "$_AI_MODE_FILE" "1"
+    echo "AI tools display: ON"
   fi
 }
 
@@ -774,6 +800,7 @@ function _prompt_emoji_help() {
   echo "║    e         Toggle emoji/plaintext mode                         ║"
   echo "║    p         Toggle path separator (space/slash)                 ║"
   echo "║    n         Toggle network features (IP, GitHub, AI updates)    ║"
+  echo "║    a         Toggle AI tools display (show/hide)                 ║"
   echo "║    h         Show this help                                      ║"
   echo "║    t         Show tool availability status                       ║"
   echo "╚══════════════════════════════════════════════════════════════════╝"
@@ -985,6 +1012,13 @@ function _prompt_tool_status() {
     _tsl "    ${CROSS} n  Network disabled"
   fi
 
+  # AI tools display mode (a)
+  if (( _PROMPT_AI_MODE )); then
+    _tsl "    ${CHECK} a  AI tools display enabled"
+  else
+    _tsl "    ${CROSS} a  AI tools display hidden"
+  fi
+
   _tsl ""
   echo "$BOT"
   echo ""
@@ -1007,6 +1041,9 @@ if (( ! $+aliases[t] && ! $+functions[t] )); then
 fi
 if (( ! $+aliases[n] && ! $+functions[n] )); then
   alias n='_prompt_toggle_network'
+fi
+if (( ! $+aliases[a] && ! $+functions[a] )); then
+  alias a='_prompt_toggle_ai'
 fi
 
 # Manual cache refresh function - clears all prompt caches
@@ -2819,6 +2856,13 @@ function _compute_ai_tool_status() {
 }
 
 function _compute_ai_tools_direct() {
+  # Skip if AI tools display is disabled
+  if (( ! _PROMPT_AI_MODE )); then
+    _PP_AI_STATUS=""
+    _PP_AI_STATUS_LONG=""
+    return
+  fi
+
   # Lazy detection: detect AI tools on first prompt render (after nvm loads)
   if (( ! _AI_TOOLS_DETECTED )); then
     command -v claude &>/dev/null && _HAS_CLAUDE=1
@@ -2887,7 +2931,7 @@ function _compute_ai_tools_direct() {
 # - PR status with CI indicator
 # - Background jobs counter (⚙N/JN)
 # - Adaptive RPROMPT for system info and AI tools
-# - Toggle emoji/plaintext with 'e', network with 'n', help with 'h', refresh with 'u'
+# - Toggle emoji/plaintext with 'e', network with 'n', AI tools with 'a', help with 'h', refresh with 'u'
 #
 # Order: [exit][ssh]user@host(IP)[GHUser] [container] [time+TZ] [path] [git+ext+special] [PR+CI] [sysinfo] [AI] [jobs]
 # Second line: -> %#
