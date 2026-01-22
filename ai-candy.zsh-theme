@@ -743,6 +743,67 @@ function _prompt_toggle_os() {
   fi
 }
 
+# Turn off all toggles (plaintext, slash separator, network disabled, ai hidden, os hidden)
+function _prompt_all_off() {
+  # 1. Plaintext mode (e)
+  _PROMPT_EMOJI_MODE=0
+  _cache_write "$_EMOJI_MODE_FILE" "0"
+
+  # 2. Slash separator (p)
+  _PROMPT_PATH_SEP_MODE=0
+  _cache_write "$_PATH_SEP_MODE_FILE" "0"
+
+  # 3. Network disabled (n)
+  _PROMPT_NETWORK_MODE=0
+  _cache_write "$_NETWORK_MODE_FILE" "0"
+
+  # 4. AI hidden (a)
+  _PROMPT_AI_MODE=0
+  _cache_write "$_AI_MODE_FILE" "0"
+
+  # 5. OS hidden (o)
+  _PROMPT_OS_MODE=0
+  _cache_write "$_OS_MODE_FILE" "0"
+
+  echo "All toggles turned OFF:"
+  echo "  - Emoji mode: OFF (Plaintext)"
+  echo "  - Path separator: Slash (/)"
+  echo "  - Network: DISABLED"
+  echo "  - AI tools: HIDDEN"
+  echo "  - OS/kernel: HIDDEN"
+}
+
+# Turn on all toggles (emoji, space separator, network enabled, ai visible, os visible)
+function _prompt_all_on() {
+  # 1. Emoji mode (e)
+  _PROMPT_EMOJI_MODE=1
+  _cache_write "$_EMOJI_MODE_FILE" "1"
+
+  # 2. Space separator (p)
+  # The variable sets the preference, the render logic handles the fallback if path has spaces
+  _PROMPT_PATH_SEP_MODE=1
+  _cache_write "$_PATH_SEP_MODE_FILE" "1"
+
+  # 3. Network enabled (n)
+  _PROMPT_NETWORK_MODE=1
+  _cache_write "$_NETWORK_MODE_FILE" "1"
+
+  # 4. AI visible (a)
+  _PROMPT_AI_MODE=1
+  _cache_write "$_AI_MODE_FILE" "1"
+
+  # 5. OS visible (o)
+  _PROMPT_OS_MODE=1
+  _cache_write "$_OS_MODE_FILE" "1"
+
+  echo "All toggles turned ON:"
+  echo "  - Emoji mode: ON"
+  echo "  - Path separator: Space (if valid)"
+  echo "  - Network: ENABLED"
+  echo "  - AI tools: VISIBLE"
+  echo "  - OS/kernel: VISIBLE"
+}
+
 # Print emoji help/legend
 function _prompt_emoji_help() {
   echo ""
@@ -1080,6 +1141,12 @@ if (( ! $+aliases[a] && ! $+functions[a] )); then
 fi
 if (( ! $+aliases[o] && ! $+functions[o] )); then
   alias o='_prompt_toggle_os'
+fi
+if (( ! $+aliases[off] && ! $+functions[off] )); then
+  alias off='_prompt_all_off'
+fi
+if (( ! $+aliases[on] && ! $+functions[on] )); then
+  alias on='_prompt_all_on'
 fi
 
 # Manual cache refresh function - clears all prompt caches
