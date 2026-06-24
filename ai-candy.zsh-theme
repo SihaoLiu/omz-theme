@@ -450,14 +450,14 @@ function _cache_set_async() {
 .parameter set @val X'${hex_value}'
 .parameter set @ts ${timestamp}
 INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT), CAST(@val AS TEXT), @ts);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
-    ) &>/dev/null &!
+    ) </dev/null &>/dev/null &!
   else
     (
       local cache_file="${_CACHE_DIR}/${cache_name}_cache"
       local sep=$'\x1f'
       local prefix="${key}${sep}"
       _cache_update_line_by_prefix "$cache_file" "$prefix" "${key}${sep}${value}${sep}${timestamp}"
-    ) &!
+    ) </dev/null &>/dev/null &!
   fi
 }
 
@@ -583,7 +583,7 @@ function _periodic_cache_cleanup() {
   _CACHE_CLEANUP_LAST_RUN="$current_id"
 
   # Run cleanup in background to avoid blocking prompt
-  ( _cache_cleanup ) &!
+  ( _cache_cleanup ) </dev/null &>/dev/null &!
 }
 
 # ============================================================================
@@ -2470,7 +2470,7 @@ _ai_tool_update_cache() {
 
     # Remove lock directory when done
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
   # &! immediately disowns, suppressing both start and end job notifications
 }
 
@@ -2527,7 +2527,7 @@ function _gh_username_update_gh() {
     fi
 
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
 }
 
 # Get GitHub username via ssh -T git@github.com (background update)
@@ -2550,7 +2550,7 @@ function _gh_username_update_ssh() {
     local ssh_output
 
     # Parse username from ssh output (ssh has built-in timeout via ConnectTimeout)
-    ssh_output=$(ssh -o ConnectTimeout="$net_timeout" -o BatchMode=yes -T git@github.com 2>&1)
+    ssh_output=$(ssh -n -o ConnectTimeout="$net_timeout" -o BatchMode=yes -T git@github.com 2>&1)
 
     # Extract username from "Hi USERNAME! You've successfully authenticated..."
     username=$(echo "$ssh_output" | grep -oE 'Hi [^!]+!' | head -n1 | sed 's/Hi //; s/!//')
@@ -2563,7 +2563,7 @@ function _gh_username_update_ssh() {
     fi
 
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
 }
 
 # Direct-assignment version: writes result to _PP_GH_USER global variable
@@ -2694,7 +2694,7 @@ function _public_ip_update_background() {
     echo "${ip}|${current_time}" > "$cache_file"
 
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
 }
 
 # Direct-assignment version: writes result to _PP_PUBLIC_IP global variable
@@ -2768,7 +2768,7 @@ function _gh_auth_update_background() {
       echo "0|${current_time}" > "$_GH_AUTH_CACHE_FILE"
     fi
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
 }
 
 # Check if gh is authenticated (cached with memory + file layers)
@@ -2891,7 +2891,7 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
 
     # Remove lock directory when done
     rmdir "${lock_file}.d" 2>/dev/null
-  ) &>/dev/null &!
+  ) </dev/null &>/dev/null &!
 }
 
 # Combined AI tools status: [tool1tool2tool3] format (emoji) or [tool1|tool2|tool3] (plaintext)
@@ -3092,4 +3092,4 @@ ZSH_THEME_GIT_PROMPT_CLEAN=""
 # ============================================================================
 # FIX: Moved to end of file to ensure all cache file variables are defined
 # This cleans up any stale cache from previous sessions
-( _cache_cleanup ) &!
+( _cache_cleanup ) </dev/null &>/dev/null &!
