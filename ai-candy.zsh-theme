@@ -1834,6 +1834,41 @@ function _get_cached_git_root() {
 
 # Path background colors defined in COLOR CONSTANTS section at file top
 
+function _logicalize_path_from_pwd() {
+  local physical_path="$1"
+  local logical_pwd="${2:-$PWD}"
+  local physical_pwd="${3:-$(pwd -P 2>/dev/null)}"
+
+  if [[ -z "$physical_path" || -z "$logical_pwd" || -z "$physical_pwd" ]]; then
+    print -r -- "$physical_path"
+    return
+  fi
+
+  if [[ "$physical_pwd" == "$physical_path" ]]; then
+    print -r -- "$logical_pwd"
+    return
+  fi
+
+  if [[ "$physical_pwd" == "$physical_path"/* ]]; then
+    local suffix="${physical_pwd#$physical_path}"
+    local suffix_len=${#suffix}
+    local logical_len=${#logical_pwd}
+    local suffix_start=$((logical_len - suffix_len + 1))
+
+    if (( suffix_len <= logical_len )) && [[ "${logical_pwd[$suffix_start,-1]}" == "$suffix" ]]; then
+      local root_len=$((logical_len - suffix_len))
+      if (( root_len > 0 )); then
+        print -r -- "${logical_pwd[1,$root_len]}"
+      else
+        print -r -- "/"
+      fi
+      return
+    fi
+  fi
+
+  print -r -- "$physical_path"
+}
+
 # Get git repository hierarchy (handles submodules)
 # Returns: repo1<sep>repo2<sep>repo3<sep>current_subdir
 # Where repo1 is outermost, repoN is innermost git root
@@ -1841,6 +1876,8 @@ function _get_cached_git_root() {
 function _get_git_hierarchy() {
   local current_time=${EPOCHSECONDS}
   local cache_key="$PWD"
+  local logical_pwd="$PWD"
+  local physical_pwd="$(pwd -P 2>/dev/null)"
 
   # Check memory cache first (fastest, no I/O)
   if [[ -n "${_MEM_CACHE_GIT_HIERARCHY[$cache_key]}" ]]; then
@@ -1880,7 +1917,8 @@ function _get_git_hierarchy() {
     local git_root=$(cd "$dir" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
     [[ -z "$git_root" ]] && break
 
-    hierarchy=("$git_root" "${hierarchy[@]}")  # prepend (outermost first)
+    local display_git_root=$(_logicalize_path_from_pwd "$git_root" "$logical_pwd" "$physical_pwd")
+    hierarchy=("$display_git_root" "${hierarchy[@]}")  # prepend (outermost first)
 
     # Check for superproject
     local superproject=$(cd "$git_root" 2>/dev/null && git rev-parse --show-superproject-working-tree 2>/dev/null)
