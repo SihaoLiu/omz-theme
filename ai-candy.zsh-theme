@@ -146,6 +146,10 @@ typeset -g _CACHE_TTL_LOW=3600        # 1 hour - system info, AI versions, auth 
 # Maximum depth for git hierarchy traversal (prevents infinite loops)
 typeset -g _GIT_HIERARCHY_MAX_DEPTH=20
 
+# Bump when git hierarchy serialization changes in a way that makes old cache
+# entries visually incorrect.
+typeset -g _GIT_HIERARCHY_CACHE_VERSION=2
+
 # Target width for path truncation
 typeset -g _PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
 typeset -g _PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
@@ -1875,7 +1879,7 @@ function _logicalize_path_from_pwd() {
 # current_subdir is the path within the innermost repo (may be empty)
 function _get_git_hierarchy() {
   local current_time=${EPOCHSECONDS}
-  local cache_key="$PWD"
+  local cache_key="${_GIT_HIERARCHY_CACHE_VERSION:-1}:$PWD"
   local logical_pwd="$PWD"
   local physical_pwd="$(pwd -P 2>/dev/null)"
 

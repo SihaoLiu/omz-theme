@@ -40,7 +40,7 @@ def strip_prompt_markup(value: str) -> str:
     return value
 
 
-def render_path_for(logical_dir: Path, cache_home: Path) -> dict[str, str]:
+def render_path_for(logical_dir: Path, cache_home: Path, before_render: str = "") -> dict[str, str]:
     script = r"""
 cd "$1" || exit 2
 source "$2"
@@ -48,6 +48,7 @@ _PROMPT_NETWORK_MODE=0
 _PROMPT_AI_MODE=0
 _PROMPT_OS_MODE=0
 _PROMPT_PATH_SEP_MODE=0
+eval "$3"
 _prompt_bump_render_id
 _PP_CACHED_GIT_ROOT=$(_get_cached_git_root)
 hierarchy=$(_get_git_hierarchy)
@@ -56,7 +57,7 @@ _compute_smart_path_direct full
 print -r -- "PATH=$_PP_PATH"
 """
     result = subprocess.run(
-        ["zsh", "-fc", script, "zsh", str(logical_dir), str(THEME)],
+        ["zsh", "-fc", script, "zsh", str(logical_dir), str(THEME), before_render],
         check=True,
         text=True,
         stdout=subprocess.PIPE,
@@ -141,6 +142,27 @@ class ThemeSafetyTest(unittest.TestCase):
 
             self.assertEqual(f"{logical_repo}|sub", output["HIER"])
             self.assertEqual(f"[{logical_repo}/sub]", strip_prompt_markup(output["PATH"]))
+            self.assertNotIn(str(real_repo), output["HIER"])
+
+    def test_stale_git_hierarchy_cache_does_not_override_logical_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real_repo = root / "real" / "repo"
+            logical_repo = root / "link" / "repo"
+            cache_home = root / "cache"
+            real_repo.mkdir(parents=True)
+            logical_repo.parent.mkdir()
+            subprocess.run(["git", "-C", str(real_repo), "init", "-q"], check=True)
+            logical_repo.symlink_to(real_repo)
+
+            stale_cache = (
+                f"bad='{real_repo}'\"$_GIT_HIERARCHY_SEP\"'{logical_repo}'; "
+                '_MEM_CACHE_GIT_HIERARCHY[$PWD]="$bad|$EPOCHSECONDS"'
+            )
+            output = render_path_for(logical_repo, cache_home, stale_cache)
+
+            self.assertEqual(f"{logical_repo}|", output["HIER"])
+            self.assertEqual(f"[{logical_repo}]", strip_prompt_markup(output["PATH"]))
             self.assertNotIn(str(real_repo), output["HIER"])
 
 
