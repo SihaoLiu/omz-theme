@@ -465,6 +465,24 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
   fi
 }
 
+function _cache_delete_key() {
+  local cache_name="$1"
+  local key="$2"
+
+  if (( _CACHE_USE_SQLITE )); then
+    local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
+    echo ".timeout 1000
+.parameter init
+.parameter set @key X'${hex_key}'
+DELETE FROM cache WHERE key = CAST(@key AS TEXT);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
+  else
+    local cache_file="${_CACHE_DIR}/${cache_name}_cache"
+    local sep=$'\x1f'
+    local prefix="${key}${sep}"
+    _cache_remove_line_by_prefix "$cache_file" "$prefix"
+  fi
+}
+
 # ============================================================================
 # CACHE CLEANUP SYSTEM - Automatic cleanup to prevent unbounded cache growth
 # ============================================================================
@@ -1232,6 +1250,103 @@ if (( ! $+aliases[u] && ! $+functions[u] )); then
   alias u='_prompt_refresh_all_caches'
 fi
 
+typeset -g _PROMPT_GIT_CACHE_INVALIDATE=0
+typeset -g _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+
+function _prompt_git_command_affects_cached_status() {
+  local command_text="$1"
+  [[ -n "$command_text" ]] || return 1
+
+  local -a words
+  words=("${(z)command_text}")
+  local index=1
+
+  while (( index <= ${#words} )); do
+    if [[ "${words[$index]}" == "git" ]]; then
+      local sub_index=$((index + 1))
+      while (( sub_index <= ${#words} )); do
+        local word="${words[$sub_index]}"
+        case "$word" in
+          -C|-c|--git-dir|--work-tree|--namespace)
+            (( sub_index += 2 ))
+            continue
+            ;;
+          --git-dir=*|--work-tree=*|--namespace=*)
+            (( sub_index++ ))
+            continue
+            ;;
+          --)
+            (( sub_index++ ))
+            break
+            ;;
+          -*)
+            (( sub_index++ ))
+            continue
+            ;;
+        esac
+        break
+      done
+
+      local subcommand="${words[$sub_index]}"
+      case "$subcommand" in
+        push|fetch|pull|commit|reset|rebase|merge|cherry-pick|revert|stash|switch|checkout|branch|tag)
+          return 0
+          ;;
+      esac
+    fi
+    (( index++ ))
+  done
+
+  return 1
+}
+
+function _prompt_mark_git_cache_invalidation() {
+  local typed_command="$1"
+  local expanded_command="${2:-$typed_command}"
+  local full_command="${3:-$expanded_command}"
+  local command_text="${expanded_command:-${full_command:-$typed_command}}"
+
+  _PROMPT_GIT_CACHE_INVALIDATE=0
+  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+
+  _prompt_git_command_affects_cached_status "$command_text" || return
+
+  local git_root="${_PP_CACHED_GIT_ROOT:-}"
+  if [[ -z "$git_root" || "$git_root" == "NOT_GIT" ]]; then
+    git_root=$(_get_cached_git_root)
+  fi
+
+  [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return
+  _PROMPT_GIT_CACHE_INVALIDATE=1
+  _PROMPT_GIT_CACHE_INVALIDATE_ROOT="$git_root"
+}
+
+function _prompt_invalidate_git_status_cache_for_root() {
+  local git_root="$1"
+  [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return
+
+  unset "_MEM_CACHE_GIT_EXT[$git_root]"
+  _cache_delete_key "git_ext" "$git_root"
+
+  _PROMPT_GIT_EXT_CACHE=""
+  _PROMPT_GIT_EXT_CACHE_ID=-1
+  _PROMPT_GH_PR_CACHE=""
+  _PROMPT_GH_PR_CACHE_ID=-1
+  _GIT_REMOTE_BRANCH_CACHE=""
+  _GIT_REMOTE_BRANCH_CACHE_ID=-1
+}
+
+function _prompt_apply_git_cache_invalidation() {
+  (( _PROMPT_GIT_CACHE_INVALIDATE )) || return
+
+  local git_root="$_PROMPT_GIT_CACHE_INVALIDATE_ROOT"
+  _PROMPT_GIT_CACHE_INVALIDATE=0
+  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+
+  [[ "$_LAST_EXIT_STATUS" -eq 0 ]] || return
+  _prompt_invalidate_git_status_cache_for_root "$git_root"
+}
+
 # Capture exit status before any other precmd runs
 # IMPORTANT: Must be FIRST in precmd_functions to capture $? before other hooks modify it
 _LAST_EXIT_STATUS=0
@@ -1244,6 +1359,9 @@ autoload -Uz add-zsh-hook
 # Ensure precmd_functions exists (for set -u compatibility)
 typeset -ga precmd_functions
 precmd_functions=(_capture_exit_status ${precmd_functions[@]:#_capture_exit_status})
+
+add-zsh-hook preexec _prompt_mark_git_cache_invalidation
+add-zsh-hook precmd _prompt_apply_git_cache_invalidation
 
 # Per-prompt render id to avoid recomputing expensive segments multiple times
 _PROMPT_RENDER_ID=0
@@ -1787,6 +1905,39 @@ function _cache_update_line_by_prefix() {
   else
     # No flock available, write directly (accept potential race)
     print -r -- "$new_content" > "$temp_file"
+    mv "$temp_file" "$cache_file" 2>/dev/null
+  fi
+}
+
+function _cache_remove_line_by_prefix() {
+  local cache_file="$1"
+  local prefix="$2"
+  local prefix_len=${#prefix}
+  local lock_file="${cache_file}.lock"
+
+  [[ -f "$cache_file" ]] || return
+
+  local temp_file
+  temp_file=$(mktemp "${cache_file}.tmp.XXXXXX" 2>/dev/null) || {
+    temp_file="${cache_file}.tmp.$$"
+  }
+
+  local new_content=""
+  local lines=("${(@f)$(<"$cache_file")}")
+  local entry
+  for entry in "${lines[@]}"; do
+    [[ "${entry:0:$prefix_len}" != "$prefix" ]] && new_content+="${entry}"$'\n'
+  done
+
+  if (( _HAS_FLOCK )); then
+    (
+      exec {lock_fd}>"$lock_file" || exit 1
+      flock -x -w 1 $lock_fd || exit 1
+      print -rn -- "$new_content" > "$temp_file"
+      mv "$temp_file" "$cache_file" 2>/dev/null
+    ) 2>/dev/null
+  else
+    print -rn -- "$new_content" > "$temp_file"
     mv "$temp_file" "$cache_file" 2>/dev/null
   fi
 }

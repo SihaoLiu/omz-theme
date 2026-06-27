@@ -72,6 +72,72 @@ print -r -- "PATH=$_PP_PATH"
     return output
 
 
+def run_git(args: list[str], cwd: Path) -> None:
+    subprocess.run(["git", "-C", str(cwd), *args], check=True)
+
+
+def make_repo_ahead_of_upstream(root: Path) -> Path:
+    remote = root / "remote.git"
+    work = root / "work"
+
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(["git", "init", "-q", str(work)], check=True)
+    run_git(["config", "user.email", "test@example.com"], work)
+    run_git(["config", "user.name", "Test User"], work)
+    run_git(["switch", "-q", "-c", "main"], work)
+    run_git(["remote", "add", "origin", str(remote)], work)
+
+    (work / "tracked.txt").write_text("one\n", encoding="utf-8")
+    run_git(["add", "tracked.txt"], work)
+    run_git(["commit", "-q", "-m", "initial"], work)
+    run_git(["push", "-q", "-u", "origin", "main"], work)
+
+    (work / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
+    run_git(["commit", "-q", "-am", "second"], work)
+    return work
+
+
+def render_git_ext_around_push(work: Path, cache_home: Path) -> dict[str, str]:
+    script = r"""
+cd "$1" || exit 2
+source "$2"
+_PROMPT_NETWORK_MODE=0
+_PROMPT_AI_MODE=0
+_PROMPT_OS_MODE=0
+_PROMPT_EMOJI_MODE=1
+_prompt_bump_render_id
+_PP_CACHED_GIT_ROOT=$(_get_cached_git_root)
+_compute_git_extended_direct
+print -r -- "BEFORE=$_PP_GIT_EXT"
+for fn in "${preexec_functions[@]}"; do
+  "$fn" "git push" "git push" "git push"
+done
+git push -q
+push_status=$?
+_LAST_EXIT_STATUS=$push_status
+for fn in "${precmd_functions[@]}"; do
+  [[ "$fn" == "_capture_exit_status" ]] && continue
+  "$fn"
+done
+print -r -- "PUSH_STATUS=$push_status"
+print -r -- "AFTER=$_PP_GIT_EXT"
+"""
+    result = subprocess.run(
+        ["zsh", "-fc", script, "zsh", str(work), str(THEME)],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "XDG_CACHE_HOME": str(cache_home)},
+    )
+
+    output: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition("=")
+        output[key] = value
+    return output
+
+
 class ThemeSafetyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -164,6 +230,18 @@ class ThemeSafetyTest(unittest.TestCase):
             self.assertEqual(f"{logical_repo}|", output["HIER"])
             self.assertEqual(f"[{logical_repo}]", strip_prompt_markup(output["PATH"]))
             self.assertNotIn(str(real_repo), output["HIER"])
+
+    def test_git_push_refreshes_cached_ahead_count_before_next_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            work = make_repo_ahead_of_upstream(root)
+            cache_home = root / "cache"
+
+            output = render_git_ext_around_push(work, cache_home)
+
+            self.assertEqual("0", output["PUSH_STATUS"])
+            self.assertEqual("↑1", strip_prompt_markup(output["BEFORE"]))
+            self.assertEqual("", strip_prompt_markup(output["AFTER"]))
 
 
 if __name__ == "__main__":
