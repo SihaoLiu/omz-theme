@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -138,6 +139,87 @@ print -r -- "AFTER=$_PP_GIT_EXT"
     return output
 
 
+def run_public_ip_refresh_with_slow_curl(cache_home: Path, bin_dir: Path) -> None:
+    script = r"""
+source "$1"
+_NETWORK_TIMEOUT=1
+_HAS_CURL=1
+rm -f "$_PUBLIC_IP_CACHE_FILE"
+rmdir "${_PUBLIC_IP_UPDATING}.d" 2>/dev/null
+_public_ip_update_background
+deadline=$(( EPOCHSECONDS + 5 ))
+while [[ ! -f "$_PUBLIC_IP_CACHE_FILE" && EPOCHSECONDS -lt deadline ]]; do
+  sleep 0.05
+done
+[[ -f "$_PUBLIC_IP_CACHE_FILE" ]] || exit 3
+"""
+    subprocess.run(
+        ["zsh", "-fc", script, "zsh", str(THEME)],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "XDG_CACHE_HOME": str(cache_home),
+        },
+    )
+
+
+def write_command(bin_dir: Path, name: str, body: str) -> None:
+    command = bin_dir / name
+    command.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+    command.chmod(0o755)
+
+
+def source_theme(cache_home: Path, bin_dir: Path | None = None) -> None:
+    env = {**os.environ, "XDG_CACHE_HOME": str(cache_home)}
+    if bin_dir is not None:
+        env["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+    script = r"""
+source "$1"
+print -r -- READY
+"""
+    subprocess.run(
+        ["zsh", "-fc", script, "zsh", str(THEME)],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+
+def render_first_prompt(cache_home: Path, bin_dir: Path | None = None) -> None:
+    env = {**os.environ, "XDG_CACHE_HOME": str(cache_home)}
+    if bin_dir is not None:
+        env["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+    script = r"""
+source "$1"
+for fn in "${precmd_functions[@]}"; do
+  "$fn"
+done
+print -r -- READY
+"""
+    subprocess.run(
+        ["zsh", "-fc", script, "zsh", str(THEME)],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+
+def elapsed_seconds(action) -> float:
+    start = time.monotonic()
+    action()
+    return time.monotonic() - start
+
+
 class ThemeSafetyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -174,6 +256,107 @@ class ThemeSafetyTest(unittest.TestCase):
             any(" -n " in f" {line} " or "StdinNull=yes" in line for line in ssh_lines),
             ssh_lines,
         )
+
+    def test_network_timeout_is_at_most_three_seconds(self) -> None:
+        match = re.search(r"typeset -g _NETWORK_TIMEOUT=(\d+)", self.text)
+
+        self.assertIsNotNone(match)
+        self.assertLessEqual(int(match.group(1)), 3)
+
+    def test_public_ip_refresh_uses_one_timeout_budget_for_all_providers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            curl = bin_dir / "curl"
+            curl.write_text("#!/bin/sh\nsleep 0.4\nexit 28\n", encoding="utf-8")
+            curl.chmod(0o755)
+
+            start = time.monotonic()
+            run_public_ip_refresh_with_slow_curl(cache_home, bin_dir)
+            elapsed = time.monotonic() - start
+
+            self.assertLess(elapsed, 1.35)
+
+    def test_sqlite_initialization_does_not_block_theme_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(bin_dir, "sqlite3", "sleep 1\nexit 1")
+
+            elapsed = elapsed_seconds(lambda: source_theme(cache_home, bin_dir))
+
+            self.assertLess(elapsed, 0.75)
+
+    def test_slow_git_does_not_block_first_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(bin_dir, "git", "sleep 1\nexit 1")
+
+            elapsed = elapsed_seconds(lambda: render_first_prompt(cache_home, bin_dir))
+
+            self.assertLess(elapsed, 0.75)
+
+    def test_slow_sysinfo_commands_do_not_block_first_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(bin_dir, "uname", "sleep 1\nexit 1")
+
+            elapsed = elapsed_seconds(lambda: render_first_prompt(cache_home, bin_dir))
+
+            self.assertLess(elapsed, 0.75)
+
+    def test_ai_process_count_does_not_block_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            prompt_cache = cache_home / "zsh-prompt"
+            bin_dir = root / "bin"
+            prompt_cache.mkdir(parents=True)
+            bin_dir.mkdir()
+            sep = "\x1f"
+            now = str(int(time.time()))
+            for cache_name in (
+                "claude_version_cache",
+                "codex_version_cache",
+                "gemini_version_cache",
+            ):
+                (prompt_cache / cache_name).write_text(
+                    f"1.2.3{sep}1.2.3{sep}{now}\n",
+                    encoding="utf-8",
+                )
+            (prompt_cache / "ai_mode").write_text("1\n", encoding="utf-8")
+            (prompt_cache / "network_mode").write_text("0\n", encoding="utf-8")
+            for name in ("claude", "codex", "gemini"):
+                write_command(bin_dir, name, f"printf '%s\\n' '{name} 1.2.3'")
+            for name in ("pgrep", "ps"):
+                write_command(bin_dir, name, "sleep 1\nexit 0")
+
+            elapsed = elapsed_seconds(lambda: render_first_prompt(cache_home, bin_dir))
+
+            self.assertLess(elapsed, 0.75)
+
+    def test_cache_directory_setup_does_not_block_theme_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(bin_dir, "mkdir", "sleep 1\nexit 1")
+            write_command(bin_dir, "chmod", "sleep 1\nexit 1")
+
+            elapsed = elapsed_seconds(lambda: source_theme(cache_home, bin_dir))
+
+            self.assertLess(elapsed, 0.75)
 
     def test_symlinked_repo_root_uses_logical_path_in_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

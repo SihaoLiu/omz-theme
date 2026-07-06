@@ -129,7 +129,13 @@ typeset -g _CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
 # All timing values in seconds for easy adjustment
 
 # Network timeout (prevents hanging on slow/unreachable services)
-typeset -g _NETWORK_TIMEOUT=5         # 5 seconds
+typeset -g _NETWORK_TIMEOUT=3         # 3 seconds
+
+# Local probe timeout (prevents optional local tools from blocking prompt startup)
+typeset -g _LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
+
+# Process count timeout (AI instance counts are optional prompt decoration)
+typeset -g _PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
 
 # High frequency cache (fast-changing data, checked frequently)
 typeset -g _CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
@@ -159,17 +165,56 @@ typeset -g _PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
 typeset -g _LAYOUT_MARGIN=8
 
 # ============================================================================
+# TIMEOUT WRAPPER - Universal timeout command abstraction
+# ============================================================================
+# Provides consistent timeout behavior across Linux (timeout), macOS (gtimeout).
+# SECURITY: If no timeout command is available, network-dependent features are
+# disabled to prevent background process accumulation.
+#
+# Usage: _run_with_timeout <timeout_seconds> <command> [args...]
+# Returns: command output on success, empty string on timeout or error
+# Exit code: mirrors the underlying command's exit code
+# Note: _HAS_TIMEOUT and _TIMEOUT_CMD are set in COMMAND AVAILABILITY section
+
+function _run_with_timeout() {
+  local timeout_sec="$1"
+  shift
+  if (( _HAS_TIMEOUT )); then
+    "$_TIMEOUT_CMD" "$timeout_sec" "$@"
+  else
+    # No timeout available - caller should have checked _HAS_TIMEOUT
+    # Return failure to signal the command cannot be safely executed
+    return 124  # Same exit code as timeout uses
+  fi
+}
+
+function _run_local_probe() {
+  _run_with_timeout "${_LOCAL_PROMPT_TIMEOUT:-0.25}" "$@"
+}
+
+function _run_process_count_probe() {
+  _run_with_timeout "${_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
+}
+
+# ============================================================================
 # CACHE DIRECTORY SETUP - Secure cache location in user's home directory
 # ============================================================================
 # Cache files are stored in $HOME/.cache/zsh-prompt/ with strict permissions
 # to prevent information leakage on shared systems.
 typeset -g _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh-prompt"
+typeset -g _CACHE_READY=0
 
-# Initialize cache directory with secure permissions (700)
-if [[ ! -d "$_CACHE_DIR" ]]; then
-  mkdir -p "$_CACHE_DIR" 2>/dev/null
-fi
-chmod 700 "$_CACHE_DIR" 2>/dev/null
+function _cache_init_dir() {
+  (( _HAS_TIMEOUT )) || return 1
+
+  _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" mkdir -p "$_CACHE_DIR" 2>/dev/null || return 1
+  _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" chmod 700 "$_CACHE_DIR" 2>/dev/null || true
+
+  [[ -d "$_CACHE_DIR" && -w "$_CACHE_DIR" ]] || return 1
+  _CACHE_READY=1
+}
+
+_cache_init_dir
 
 # ============================================================================
 # CACHE FILE PATHS - Centralized definitions for all cache files
@@ -202,30 +247,6 @@ typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
 typeset -g _PUBLIC_IP_UPDATING="${_CACHE_DIR}/public_ip_updating.lock"
 
 # ============================================================================
-# TIMEOUT WRAPPER - Universal timeout command abstraction
-# ============================================================================
-# Provides consistent timeout behavior across Linux (timeout), macOS (gtimeout).
-# SECURITY: If no timeout command is available, network-dependent features are
-# disabled to prevent background process accumulation.
-#
-# Usage: _run_with_timeout <timeout_seconds> <command> [args...]
-# Returns: command output on success, empty string on timeout or error
-# Exit code: mirrors the underlying command's exit code
-# Note: _HAS_TIMEOUT and _TIMEOUT_CMD are set in COMMAND AVAILABILITY section
-
-function _run_with_timeout() {
-  local timeout_sec="$1"
-  shift
-  if (( _HAS_TIMEOUT )); then
-    "$_TIMEOUT_CMD" "$timeout_sec" "$@"
-  else
-    # No timeout available - caller should have checked _HAS_TIMEOUT
-    # Return failure to signal the command cannot be safely executed
-    return 124  # Same exit code as timeout uses
-  fi
-}
-
-# ============================================================================
 # SECURE CACHE WRITE - Ensures proper permissions on all cache files
 # ============================================================================
 # SECURITY: All cache writes use umask 077 to prevent information leakage
@@ -235,6 +256,9 @@ function _cache_write() {
   local file="$1"
   local content="$2"
   local mode="${3:-overwrite}"
+
+  (( _CACHE_READY )) || return 1
+
   if [[ "$mode" == "append" ]]; then
     ( umask 077 && print -r -- "$content" >> "$file" )
   else
@@ -326,11 +350,11 @@ typeset -g _CACHE_DB_FILE="${_CACHE_DIR}/prompt_cache.db"
 typeset -g _CACHE_USE_SQLITE=0  # Will be set to 1 if sqlite3 is available
 
 # Check if sqlite3 is available and initialize database
-if (( _HAS_SQLITE3 )); then
+if (( _CACHE_READY && _HAS_SQLITE3 )); then
   # Initialize database schema (only creates if not exists)
   # Enable WAL mode for better concurrent write handling across multiple shells
   # Set busy_timeout to wait up to 1 second for locks instead of failing immediately
-  if sqlite3 -cmd ".timeout 1000" "$_CACHE_DB_FILE" "
+  if _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" sqlite3 -cmd ".timeout 1000" "$_CACHE_DB_FILE" "
       PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS cache (
         key TEXT PRIMARY KEY,
@@ -363,7 +387,7 @@ if (( _CACHE_USE_SQLITE )); then
     _CACHE_USE_SQLITE=0
   elif [[ "$(echo ".parameter init
 .parameter set @test X'00'
-SELECT length(@test);" | sqlite3 :memory: 2>/dev/null)" != "1" ]]; then
+SELECT length(@test);" | _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" sqlite3 :memory: 2>/dev/null)" != "1" ]]; then
     print -P "%F{yellow}[ai-candy.zsh-theme]%f SQLite cache disabled: version $(sqlite3 --version 2>/dev/null | cut -d' ' -f1) lacks hex binding support."
     print -P "%F{yellow}[ai-candy.zsh-theme]%f Upgrade to sqlite3 3.32+ for faster SQLite cache."
     print -P "%F{yellow}[ai-candy.zsh-theme]%f Falling back to file-based cache."
@@ -380,6 +404,8 @@ function _cache_get() {
   local cache_name="$1"
   local key="$2"
 
+  (( _CACHE_READY )) || return
+
   if (( _CACHE_USE_SQLITE )); then
     # SECURITY: Hex parameter binding prevents SQL injection
     # Use print -rn -- for safe string handling (handles - prefix and backslashes)
@@ -394,7 +420,7 @@ function _cache_get() {
     raw_output=$(echo ".timeout 1000
 .parameter init
 .parameter set @key X'${hex_key}'
-SELECT hex(value) || '|' || timestamp FROM cache WHERE key = CAST(@key AS TEXT) LIMIT 1;" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null)
+SELECT hex(value) || '|' || timestamp FROM cache WHERE key = CAST(@key AS TEXT) LIMIT 1;" | _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" sqlite3 "$_CACHE_DB_FILE" 2>/dev/null)
     if [[ -n "$raw_output" ]]; then
       # Parse: HEXVALUE|timestamp (hex chars [0-9A-F] never contain |)
       local hex_val="${raw_output%%|*}"
@@ -440,6 +466,8 @@ function _cache_set_async() {
     git_ext)      _MEM_CACHE_GIT_EXT[$key]="${value}|${timestamp}" ;;
   esac
 
+  (( _CACHE_READY )) || return
+
   # 2. Background write to persistent cache (non-blocking)
   if (( _CACHE_USE_SQLITE )); then
     (
@@ -469,12 +497,14 @@ function _cache_delete_key() {
   local cache_name="$1"
   local key="$2"
 
+  (( _CACHE_READY )) || return
+
   if (( _CACHE_USE_SQLITE )); then
     local hex_key=$(print -rn -- "${cache_name}:${key}" | xxd -p | tr -d '\n')
     echo ".timeout 1000
 .parameter init
 .parameter set @key X'${hex_key}'
-DELETE FROM cache WHERE key = CAST(@key AS TEXT);" | sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
+DELETE FROM cache WHERE key = CAST(@key AS TEXT);" | _run_with_timeout "$_LOCAL_PROMPT_TIMEOUT" sqlite3 "$_CACHE_DB_FILE" 2>/dev/null
   else
     local cache_file="${_CACHE_DIR}/${cache_name}_cache"
     local sep=$'\x1f'
@@ -501,6 +531,8 @@ typeset -g _FILE_CACHE_MAX_LINES=500        # Max lines per file cache
 # Batch cache cleanup - removes expired entries
 # Args: $1=max_age_seconds (optional, defaults to _CACHE_MAX_AGE)
 function _cache_cleanup() {
+  (( _CACHE_READY )) || return
+
   local max_age="${1:-$_CACHE_MAX_AGE}"
   local current_time=${EPOCHSECONDS}
   local cutoff=$((current_time - max_age))
@@ -621,6 +653,8 @@ zmodload zsh/datetime 2>/dev/null
 # Lock is considered stale if older than 2x timeout
 # SECURITY: Uses mkdir which is atomic on POSIX systems, preventing race conditions
 function _acquire_background_lock() {
+  (( _CACHE_READY )) || return 1
+
   local lock_name="$1"
   local timeout="${2:-${_NETWORK_TIMEOUT:-5}}"
   local lock_dir="${lock_name}.d"
@@ -647,7 +681,7 @@ function _acquire_background_lock() {
 # (_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load emoji mode from file or default to 1 (emoji-rich)
-if [[ -f "$_EMOJI_MODE_FILE" ]]; then
+if (( _CACHE_READY )) && [[ -f "$_EMOJI_MODE_FILE" ]]; then
   _PROMPT_EMOJI_MODE=$(<"$_EMOJI_MODE_FILE")
 else
   _PROMPT_EMOJI_MODE=1
@@ -659,7 +693,7 @@ fi
 # (_PATH_SEP_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load path separator mode from file or default to 1 (space mode)
-if [[ -f "$_PATH_SEP_MODE_FILE" ]]; then
+if (( _CACHE_READY )) && [[ -f "$_PATH_SEP_MODE_FILE" ]]; then
   _PROMPT_PATH_SEP_MODE=$(<"$_PATH_SEP_MODE_FILE")
 else
   _PROMPT_PATH_SEP_MODE=1
@@ -672,7 +706,7 @@ fi
 # (_NETWORK_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load network mode from file or default to 1 (network enabled)
-if [[ -f "$_NETWORK_MODE_FILE" ]]; then
+if (( _CACHE_READY )) && [[ -f "$_NETWORK_MODE_FILE" ]]; then
   _PROMPT_NETWORK_MODE=$(<"$_NETWORK_MODE_FILE")
 else
   _PROMPT_NETWORK_MODE=1
@@ -684,7 +718,7 @@ fi
 # (_AI_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load AI mode from file or default to 1 (show)
-if [[ -f "$_AI_MODE_FILE" ]]; then
+if (( _CACHE_READY )) && [[ -f "$_AI_MODE_FILE" ]]; then
   _PROMPT_AI_MODE=$(<"$_AI_MODE_FILE")
 else
   _PROMPT_AI_MODE=1
@@ -696,7 +730,7 @@ fi
 # (_OS_MODE_FILE defined in CACHE FILE PATHS section)
 
 # Load OS mode from file or default to 1 (show)
-if [[ -f "$_OS_MODE_FILE" ]]; then
+if (( _CACHE_READY )) && [[ -f "$_OS_MODE_FILE" ]]; then
   _PROMPT_OS_MODE=$(<"$_OS_MODE_FILE")
 else
   _PROMPT_OS_MODE=1
@@ -1779,21 +1813,38 @@ function _compute_sysinfo_direct() {
   # Compute system info (first call or cache expired)
   local os_long="" os_short=""
   local kernel_long="" kernel_short=""
-  local os_type=$(uname -s 2>/dev/null)
+  local os_type=$(_run_local_probe uname -s 2>/dev/null)
 
   if [[ "$os_type" == "Darwin" ]]; then
     if command -v sw_vers &>/dev/null; then
-      local product_name=$(sw_vers -productName 2>/dev/null)
-      local product_version=$(sw_vers -productVersion 2>/dev/null)
+      local product_name=$(_run_local_probe sw_vers -productName 2>/dev/null)
+      local product_version=$(_run_local_probe sw_vers -productVersion 2>/dev/null)
       if [[ -n "$product_name" && -n "$product_version" ]]; then
         os_long="$product_name $product_version"
         os_short="macOS-$product_version"
       fi
     fi
   elif [[ -f /etc/os-release ]]; then
-    local pretty_name=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
-    local os_id=$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
-    local version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    local pretty_name="" os_id="" version_id="" line value
+    while IFS= read -r line; do
+      case "$line" in
+        PRETTY_NAME=*)
+          value="${line#*=}"
+          pretty_name="${value%\"}"
+          pretty_name="${pretty_name#\"}"
+          ;;
+        ID=*)
+          value="${line#*=}"
+          os_id="${value%\"}"
+          os_id="${os_id#\"}"
+          ;;
+        VERSION_ID=*)
+          value="${line#*=}"
+          version_id="${value%\"}"
+          version_id="${version_id#\"}"
+          ;;
+      esac
+    done < /etc/os-release
 
     [[ -n "$pretty_name" ]] && os_long="$pretty_name"
     if [[ -n "$os_id" && -n "$version_id" ]]; then
@@ -1805,12 +1856,12 @@ function _compute_sysinfo_direct() {
   fi
 
   if command -v uname &>/dev/null; then
-    local kernel_full=$(uname -r 2>/dev/null)
+    local kernel_full=$(_run_local_probe uname -r 2>/dev/null)
     if [[ -n "$kernel_full" ]]; then
       local kernel_name="$os_type"
       [[ -z "$kernel_name" ]] && kernel_name="Unknown"
       kernel_long=", $kernel_name-$kernel_full"
-      local kernel_short_ver=$(echo "$kernel_full" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+      local kernel_short_ver="${kernel_full%%-*}"
       if [[ -n "$kernel_short_ver" ]]; then
         kernel_short=", $kernel_name-$kernel_short_ver"
       else
@@ -1974,7 +2025,7 @@ function _get_cached_git_root() {
   fi
 
   # Compute git root
-  local git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  local git_root=$(_run_local_probe git rev-parse --show-toplevel 2>/dev/null)
   [[ -z "$git_root" ]] && git_root="NOT_GIT"
 
   # Update both caches
@@ -2069,14 +2120,14 @@ function _get_git_hierarchy() {
   while true; do
     (( depth >= max_depth )) && break
     (( depth++ ))
-    local git_root=$(cd "$dir" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
+    local git_root=$(cd "$dir" 2>/dev/null && _run_local_probe git rev-parse --show-toplevel 2>/dev/null)
     [[ -z "$git_root" ]] && break
 
     local display_git_root=$(_logicalize_path_from_pwd "$git_root" "$logical_pwd" "$physical_pwd")
     hierarchy=("$display_git_root" "${hierarchy[@]}")  # prepend (outermost first)
 
     # Check for superproject
-    local superproject=$(cd "$git_root" 2>/dev/null && git rev-parse --show-superproject-working-tree 2>/dev/null)
+    local superproject=$(cd "$git_root" 2>/dev/null && _run_local_probe git rev-parse --show-superproject-working-tree 2>/dev/null)
     [[ -z "$superproject" || "$superproject" == "$dir" || "$superproject" == "$git_root" ]] && break
 
     dir="$superproject"
@@ -2178,9 +2229,9 @@ function _compute_git_extended_direct() {
   local result=""
 
   # Get ahead/behind counts relative to upstream
-  local upstream=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null)
+  local upstream=$(_run_local_probe git rev-parse --abbrev-ref @{upstream} 2>/dev/null)
   if [[ -n "$upstream" ]]; then
-    local counts=$(git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)
+    local counts=$(_run_local_probe git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)
     if [[ -n "$counts" ]]; then
       local ahead behind
       IFS=$'\t ' read -r ahead behind <<< "$counts"
@@ -2204,7 +2255,7 @@ function _compute_git_extended_direct() {
 
   # Get stash count (pure zsh)
   local stash_output stash_count=0
-  stash_output=$(git stash list 2>/dev/null)
+  stash_output=$(_run_local_probe git stash list 2>/dev/null)
   [[ -n "$stash_output" ]] && stash_count=${#${(f)stash_output}}
   if [[ "$stash_count" -gt 0 ]]; then
     if (( _PROMPT_EMOJI_MODE )); then
@@ -2284,7 +2335,7 @@ function _compute_git_special_direct() {
 
   # Check for detached HEAD
   if [[ -z "$state" ]]; then
-    local head_ref=$(git symbolic-ref HEAD 2>/dev/null)
+    local head_ref=$(_run_local_probe git symbolic-ref HEAD 2>/dev/null)
     [[ -z "$head_ref" ]] && state="detached"
   fi
 
@@ -2600,8 +2651,8 @@ function _get_cached_git_remote_branch() {
     return
   fi
 
-  local remote_url=$(git config --get remote.origin.url 2>/dev/null)
-  local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+  local remote_url=$(_run_local_probe git config --get remote.origin.url 2>/dev/null)
+  local branch=$(_run_local_probe git symbolic-ref --short HEAD 2>/dev/null)
 
   if [[ -n "$remote_url" && -n "$branch" ]]; then
     local remote_key=$(_hash_string "$remote_url")
@@ -2873,8 +2924,14 @@ function _public_ip_update_background() {
       "https://api.ipify.org"
     )
 
+    local start_time="${EPOCHREALTIME:-$EPOCHSECONDS}"
+    local elapsed remaining
     for provider in "${providers[@]}"; do
-      ip=$(_run_with_timeout "$net_timeout" curl -4 -s "$provider" 2>/dev/null)
+      elapsed=$(( ${EPOCHREALTIME:-$EPOCHSECONDS} - start_time ))
+      remaining=$(( net_timeout - elapsed ))
+      (( remaining <= 0 )) && break
+
+      ip=$(_run_with_timeout "$remaining" curl -4 -s --max-time "$remaining" "$provider" 2>/dev/null)
       # Validate IPv4 format (basic check: contains dots and only digits/dots)
       if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         break
@@ -3101,24 +3158,28 @@ function _count_ai_instances() {
   local method="$1"
   local pattern="$2"
   local count=0
+  local output line
 
   case "$method" in
     pgrep_exact)
       # Exact process name match (for claude, codex), current user only
-      # Use wc -l instead of -c flag (not available on macOS)
-      count=$(pgrep -x -u "$UID" "$pattern" 2>/dev/null | wc -l)
-      count=${count// /}
+      output=$(_run_process_count_probe pgrep -x -u "$UID" "$pattern" 2>/dev/null) || output=""
+      [[ -n "$output" ]] && count=${#${(f)output}}
       ;;
     ps_grep)
-      # Use ps + grep for complex patterns (for gemini), current user only
+      # Use ps output for complex patterns (for gemini), current user only
       # Pattern like '^node .*/bin/gemini' counts only first process per instance
       # Exclude --version processes (background version checks)
       # macOS ps uses -U for user filter; Linux uses -u
       if [[ "$OSTYPE" == darwin* ]]; then
-        count=$(ps -U "$UID" -o args= 2>/dev/null | grep "$pattern" | grep -vc -- '--version') || count=0
+        output=$(_run_process_count_probe ps -U "$UID" -o args= 2>/dev/null) || output=""
       else
-        count=$(ps -u "$UID" -o args= 2>/dev/null | grep "$pattern" | grep -vc -- '--version') || count=0
+        output=$(_run_process_count_probe ps -u "$UID" -o args= 2>/dev/null) || output=""
       fi
+      for line in "${(@f)output}"; do
+        [[ "$line" == *"--version"* ]] && continue
+        [[ "$line" =~ "$pattern" ]] && (( count++ ))
+      done
       ;;
   esac
 
