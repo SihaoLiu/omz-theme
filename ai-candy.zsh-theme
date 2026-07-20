@@ -25,7 +25,7 @@ fi
 # These flags avoid repeated `command -v` calls throughout the file.
 # Each flag is set to 1 if the command is available, 0 otherwise.
 #
-# NOTE: AI tools (claude/codex/gemini) use LAZY detection because they're
+# NOTE: AI tools (claude/codex/gemini/kimi) use LAZY detection because they're
 # installed via nvm/npm which may not be in PATH when the theme first loads.
 # They are detected on first prompt render when shell is fully initialized.
 
@@ -42,6 +42,7 @@ typeset -g _HAS_CURL=0
 typeset -g _HAS_CLAUDE=0
 typeset -g _HAS_CODEX=0
 typeset -g _HAS_GEMINI=0
+typeset -g _HAS_KIMI=0
 typeset -g _AI_TOOLS_DETECTED=0  # Flag to trigger one-time detection
 
 # Core system tools - detect immediately (always in PATH)
@@ -92,6 +93,7 @@ typeset -g _CLR_TRUNCATED=240         # Gray for truncated path indicator
 typeset -g _CLR_CLAUDE=173            # Coral - Claude Code branding
 typeset -g _CLR_CODEX=250             # Light gray - Codex
 typeset -g _CLR_GEMINI=141            # Purple - Google Gemini
+typeset -g _CLR_KIMI=75               # Sky blue - Moonshot Kimi
 typeset -g _CLR_PR=213                # Pink - GitHub PR
 typeset -g _CLR_USER_HOST=136         # Brown - user@host
 
@@ -231,6 +233,7 @@ typeset -g _OS_MODE_FILE="${_CACHE_DIR}/os_mode"
 typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
 typeset -g _CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
 typeset -g _GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
+typeset -g _KIMI_CACHE_FILE="${_CACHE_DIR}/kimi_version_cache"
 
 # GitHub integration caches
 typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
@@ -550,6 +553,7 @@ function _cache_cleanup() {
     "$_CLAUDE_CACHE_FILE"
     "$_CODEX_CACHE_FILE"
     "$_GEMINI_CACHE_FILE"
+    "$_KIMI_CACHE_FILE"
     "$_GH_AUTH_CACHE_FILE"
     "$_GH_USERNAME_GH_CACHE_FILE"
     "$_GH_USERNAME_SSH_CACHE_FILE"
@@ -935,6 +939,7 @@ function _prompt_emoji_help() {
   echo "║    $_NF_CLAUDE / Cl:   Claude Code version                                ║"
   echo "║    $_NF_CODEX / Cx:   OpenAI Codex version                               ║"
   echo "║    $_NF_GEMINI / Gm:   Google Gemini CLI version                          ║"
+  echo "║    $_NF_KIMI / Km:   Moonshot Kimi version                              ║"
   echo "║    *         Update available (shown after version)              ║"
   echo "║    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ║"
   echo "╠══════════════════════════════════════════════════════════════════╣"
@@ -1192,6 +1197,17 @@ function _prompt_tool_status() {
     _tsl "                    Install: npm i -g @google/gemini-cli"
   fi
 
+  # Kimi
+  if (( _HAS_KIMI )); then
+    local kimi_ver=$(kimi --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    _tsl "    ${CHECK} kimi        - Moonshot Kimi v${kimi_ver:-?}"
+  elif (( ! _PROMPT_NETWORK_MODE )); then
+    _tsl "    ${QMARK} kimi        - Network disabled"
+  else
+    _tsl "    ${CROSS} kimi        - Not installed"
+    _tsl "                    Install: https://kimi.com/code"
+  fi
+
   _tsl ""
   echo "$BOT"
   echo ""
@@ -1236,6 +1252,7 @@ function _prompt_refresh_all_caches() {
   command -v claude &>/dev/null && _HAS_CLAUDE=1 || _HAS_CLAUDE=0
   command -v codex &>/dev/null && _HAS_CODEX=1 || _HAS_CODEX=0
   command -v gemini &>/dev/null && _HAS_GEMINI=1 || _HAS_GEMINI=0
+  command -v kimi &>/dev/null && _HAS_KIMI=1 || _HAS_KIMI=0
   command -v gh &>/dev/null && _HAS_GH=1 || _HAS_GH=0
   _AI_TOOLS_DETECTED=1  # Mark as detected
 
@@ -1259,6 +1276,7 @@ function _prompt_refresh_all_caches() {
   rm -f "$_CLAUDE_CACHE_FILE" 2>/dev/null
   rm -f "$_CODEX_CACHE_FILE" 2>/dev/null
   rm -f "$_GEMINI_CACHE_FILE" 2>/dev/null
+  rm -f "$_KIMI_CACHE_FILE" 2>/dev/null
 
   # Clear memory-based associative array caches
   _MEM_CACHE_GIT_ROOT=()
@@ -1747,10 +1765,12 @@ typeset -g _NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
 typeset -g _NF_LINUX=$'\xef\x85\xbc'      # U+F17C
 
 # AI tool icons for emoji mode (using Nerd Font icons with hex byte escapes for portability)
-# Claude Code U+F069 (nf-fa-asterisk), Gemini U+F1A0 (nf-fa-google), Codex U+E27F (nf-fae-atom)
+# Claude Code U+F069 (nf-fa-asterisk), Gemini U+F1A0 (nf-fa-google), Codex U+E27F (nf-fae-atom),
+# Kimi U+F186 (nf-fa-moon_o, Moonshot branding)
 typeset -g _NF_CLAUDE=$'\xef\x81\xa9 '    # U+F069 nf-fa-asterisk (+ space for 2-char width)
 typeset -g _NF_GEMINI=$'\xef\x86\xa0 '    # U+F1A0 nf-fa-google (+ space for 2-char width)
 typeset -g _NF_CODEX=$'\xee\x89\xbf '     # U+E27F nf-fae-atom (+ space for 2-char width)
+typeset -g _NF_KIMI=$'\xef\x86\x86 '      # U+F186 nf-fa-moon_o (+ space for 2-char width)
 typeset -g _NF_CONTAINER=$'\xef\x88\x9f'  # U+F21F nf-fa-docker
 typeset -g _NF_SSH=$'\xf3\xb0\xa3\x80 '   # U+F08C0 nf-md-ssh (+ space for 2-char width)
 typeset -g _NF_GITHUB=$'\xef\x82\x9b '    # U+F09B nf-fa-github (+ space for 2-char width)
@@ -2677,12 +2697,14 @@ _version_differs() {
 }
 
 # Generic AI tool version cache updater (runs in background)
-# Args: $1=cache_file, $2=command_name, $3=npm_package_url
+# Args: $1=cache_file, $2=command_name, $3=version_manifest_url
+# The manifest URL is any JSON endpoint exposing a "version" field
+# (npm registry latest doc, vendor CDN manifest, ...)
 # Uses lock file to prevent multiple simultaneous background processes
 _ai_tool_update_cache() {
   local cache_file="$1"
   local cmd="$2"
-  local npm_url="$3"
+  local version_url="$3"
   local lock_file="${cache_file}.updating"
   local net_timeout="${_NETWORK_TIMEOUT:-5}"
 
@@ -2698,9 +2720,10 @@ _ai_tool_update_cache() {
     # Get local installed version
     installed_version=$($cmd --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
 
-    # Get remote latest version from NPM registry
+    # Get remote latest version from the version manifest
+    # -L follows redirects (vendor CDNs); pattern tolerates whitespace after ':'
     if (( _HAS_CURL )); then
-      remote_version=$(curl -s --max-time "$net_timeout" "$npm_url" 2>/dev/null | grep -o '"version":"[^"]*"' | sed 's/"version":"//; s/"//')
+      remote_version=$(curl -sL --max-time "$net_timeout" "$version_url" 2>/dev/null | grep -oE '"version":[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"version":[[:space:]]*"//; s/"//')
     fi
 
     # Only update cache if we got the local version
@@ -3146,7 +3169,7 @@ INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (CAST(@key AS TEXT),
 
 # Combined AI tools status: [tool1tool2tool3] format (emoji) or [tool1|tool2|tool3] (plaintext)
 # Direct-assignment version: writes result to _PP_AI_STATUS global variable
-# In plaintext mode, also generates _PP_AI_STATUS_LONG with full names (Claude/Codex/Gemini)
+# In plaintext mode, also generates _PP_AI_STATUS_LONG with full names (Claude/Codex/Gemini/Kimi)
 # PERFORMANCE: Avoids subshells by using direct variable assignment
 typeset -g _PP_AI_STATUS=""
 typeset -g _PP_AI_STATUS_LONG=""
@@ -3162,7 +3185,7 @@ function _count_ai_instances() {
 
   case "$method" in
     pgrep_exact)
-      # Exact process name match (for claude, codex), current user only
+      # Exact process name match (for claude, codex, kimi), current user only
       output=$(_run_process_count_probe pgrep -x -u "$UID" "$pattern" 2>/dev/null) || output=""
       [[ -n "$output" ]] && count=${#${(f)output}}
       ;;
@@ -3190,11 +3213,11 @@ function _count_ai_instances() {
 
 # Generic AI tool status computation
 # Sets caller-scoped variables: tool_result, tool_result_long
-# Args: $1=has_flag (0/1), $2=cache_file, $3=cmd_name, $4=npm_url,
+# Args: $1=has_flag (0/1), $2=cache_file, $3=cmd_name, $4=version_url,
 #       $5=short_icon, $6=long_icon, $7=color_code, $8=long_name,
 #       $9=count_method (pgrep_exact|ps_grep), $10=count_pattern
 function _compute_ai_tool_status() {
-  local has_flag="$1" cache_file="$2" cmd_name="$3" npm_url="$4"
+  local has_flag="$1" cache_file="$2" cmd_name="$3" version_url="$4"
   local short_icon="$5" long_icon="$6" color_code="$7"
   local long_name="$8" count_method="$9" count_pattern="${10}"
 
@@ -3213,11 +3236,11 @@ function _compute_ai_tool_status() {
     [[ ! "$cache_time" =~ ^[0-9]+$ ]] && cache_time=0
     # Only trigger background update if network mode is enabled
     if (( _PROMPT_NETWORK_MODE )) && (( current_time - cache_time > _CACHE_TTL_LOW )); then
-      _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+      _ai_tool_update_cache "$cache_file" "$cmd_name" "$version_url"
     fi
   else
     # Only trigger background update if network mode is enabled
-    (( _PROMPT_NETWORK_MODE )) && _ai_tool_update_cache "$cache_file" "$cmd_name" "$npm_url"
+    (( _PROMPT_NETWORK_MODE )) && _ai_tool_update_cache "$cache_file" "$cmd_name" "$version_url"
   fi
 
   if [[ -n "$installed_version" ]]; then
@@ -3259,6 +3282,7 @@ function _compute_ai_tools_direct() {
     command -v claude &>/dev/null && _HAS_CLAUDE=1
     command -v codex &>/dev/null && _HAS_CODEX=1
     command -v gemini &>/dev/null && _HAS_GEMINI=1
+    command -v kimi &>/dev/null && _HAS_KIMI=1
     _AI_TOOLS_DETECTED=1
   fi
 
@@ -3296,6 +3320,13 @@ function _compute_ai_tools_direct() {
   _compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
     "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI" \
     "Gemini" "ps_grep" "^node .*/bin/gemini"
+  _append_ai_tool
+
+  # Kimi (pgrep -x kimi works directly; native binary distributed via vendor CDN)
+  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_KIMI" icon_l="$_NF_KIMI" || { icon_s="Km:"; icon_l="Kimi:"; }
+  _compute_ai_tool_status "$_HAS_KIMI" "$_KIMI_CACHE_FILE" "kimi" \
+    "https://code.kimi.com/kimi-code/latest.json" "$icon_s" "$icon_l" "$_CLR_KIMI" \
+    "Kimi" "pgrep_exact" "kimi"
   _append_ai_tool
 
   unfunction _append_ai_tool

@@ -329,6 +329,7 @@ class ThemeSafetyTest(unittest.TestCase):
                 "claude_version_cache",
                 "codex_version_cache",
                 "gemini_version_cache",
+                "kimi_version_cache",
             ):
                 (prompt_cache / cache_name).write_text(
                     f"1.2.3{sep}1.2.3{sep}{now}\n",
@@ -336,7 +337,7 @@ class ThemeSafetyTest(unittest.TestCase):
                 )
             (prompt_cache / "ai_mode").write_text("1\n", encoding="utf-8")
             (prompt_cache / "network_mode").write_text("0\n", encoding="utf-8")
-            for name in ("claude", "codex", "gemini"):
+            for name in ("claude", "codex", "gemini", "kimi"):
                 write_command(bin_dir, name, f"printf '%s\\n' '{name} 1.2.3'")
             for name in ("pgrep", "ps"):
                 write_command(bin_dir, name, "sleep 1\nexit 0")

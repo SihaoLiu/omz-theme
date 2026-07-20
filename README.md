@@ -16,7 +16,7 @@ Ever SSH'd into a machine and wondered *"Wait, am I on the host or in a containe
 - **SSH + Public IP** — SSH indicator plus external IP (green) or `(offline)` (red)
 - **Git Status** — Branch, dirty marker, ahead/behind, stash count, and special states (rebase, merge, cherry-pick, revert, bisect)
 - **GitHub Integration** — Username badge (with mismatch detection) + PR number + CI status
-- **AI Tools Status** — Claude, Codex, and Gemini versions with update indicators
+- **AI Tools Status** — Claude, Codex, Gemini, and Kimi versions with update indicators
 - **Toggle Modes** — Emoji/plaintext, path separator (space/slash), and network on/off
 - **Smart Caching** — Multi-tier memory + SQLite (WAL mode) + file caches with background refresh, zero prompt lag
 - **Secure** — Cache files are created with `umask 077` and stored in a secure directory
@@ -28,12 +28,12 @@ Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push
 **Emoji Mode (Requires Nerd Font):**
 ```
 # LONG MODE - Full details + AI tools + PR status
-[✓]user@host(x.x.x.x)  GitHubUser 💻 [09:32:49 PDT] [~/project] [main][#42✓] [  RHEL 9.7,  Linux-5.14.0] [ 1.0.18| 0.1.2504302| 0.1.9*]
+[✓]user@host(x.x.x.x)  GitHubUser 💻 [09:32:49 PDT] [~/project] [main][#42✓] [  RHEL 9.7,  Linux-5.14.0] [ 1.0.18| 0.1.2504302| 0.1.9*| 0.28.1]
 -> %
 
 # SHORT MODE - Sysinfo + AI move to RPROMPT
 [✓]user@host(x.x.x.x)  GitHubUser 💻 [09:32:53 PDT] [~/project] [main][#42✓]
-# RPROMPT: [  Rhel-9.7,  Linux-5.14.0] [ 1.0.18| 0.1.2504302| 0.1.9*]
+# RPROMPT: [  Rhel-9.7,  Linux-5.14.0] [ 1.0.18| 0.1.2504302| 0.1.9*| 0.28.1]
 -> %
 
 # MIN MODE - Truncated path
@@ -45,10 +45,10 @@ Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push
 **Plaintext Mode:**
 ```
 # LONG MODE with long AI names
-[OK][SSH]user@host(x.x.x.x)[GitHubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0] [Claude:1.0.18|Codex:0.1.2504302|Gemini:0.1.9*]
+[OK][SSH]user@host(x.x.x.x)[GitHubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0] [Claude:1.0.18|Codex:0.1.2504302|Gemini:0.1.9*|Kimi:0.28.1]
 
 # LONG MODE with short AI names
-[OK][SSH]user@host(x.x.x.x)[GitHubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0] [Cl:1.0.18|Cx:0.1.2504302|Gm:0.1.9*]
+[OK][SSH]user@host(x.x.x.x)[GitHubUser] H [09:32:49 PDT] [~/project] [main][#42 OK] [Red Hat Enterprise Linux 9.7 (Plow), Linux-5.14.0] [Cl:1.0.18|Cx:0.1.2504302|Gm:0.1.9*|Km:0.28.1]
 ```
 
 ## Badge Reference
@@ -82,6 +82,7 @@ Watch the prompt gracefully adapt as your terminal shrinks. Short/min modes push
 | ` ` / `Cl:` / `Claude:` | Claude Code (Nerd Font: nf-fa-asterisk) | Coral |
 | ` ` / `Cx:` / `Codex:` | OpenAI Codex CLI (Nerd Font: nf-fae-atom) | Light Gray |
 | ` ` / `Gm:` / `Gemini:` | Gemini CLI (Nerd Font: nf-fa-google) | Purple |
+| ` ` / `Km:` / `Kimi:` | Moonshot Kimi CLI (Nerd Font: nf-fa-moon_o) | Sky Blue |
 
 A red `*` after the version means an update is available.
 
@@ -173,7 +174,7 @@ A red `*` after the version means an update is available.
 - Optional: `curl` for public IP display and AI update checks
 - Optional: `gh` CLI for GitHub PR status badge
 - Optional: `ssh` for GitHub identity badge
-- Optional: `claude`, `codex`, and/or `gemini` CLI tools for AI status badges
+- Optional: `claude`, `codex`, `gemini`, and/or `kimi` CLI tools for AI status badges
 
 ## How It Works
 
