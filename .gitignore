@@ -1,1 +1,11 @@
 __pycache__/
+*.py[cod]
+.DS_Store
+.claude/
+.pytest_cache/
+.ruff_cache/
+.demo-publish.*/
+.demo-restore.*
+ai-candy.zsh-theme.tmp.*
+relative/
+temp/

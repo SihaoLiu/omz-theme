@@ -1,0 +1,135 @@
+name: Compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  ZSH_54_IMAGE: zshusers/zsh@sha256:fef3586ad5edde90a7e8322d13056465b382a1d2db67b526ba6c16850441f0e6
+
+jobs:
+  ubuntu:
+    name: Ubuntu ${{ matrix.release }}
+    runs-on: ubuntu-${{ matrix.release }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["22.04", "24.04"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils git sqlite3 zsh
+      - name: Validate theme
+        run: |
+          zsh scripts/build-theme.zsh --check
+          zsh -n ai-candy.zsh-theme
+          python3 -m unittest discover -s tests -v
+
+  enterprise-linux:
+    name: AlmaLinux ${{ matrix.release }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: "9"
+            image: almalinux@sha256:d2515c769e7b73f95c4fde38c0a505336ff38f14990c0b7253b77060a049a743
+          - release: "10"
+            image: almalinux@sha256:cc24bc5b6ac7e284f2f62a07bdaa1b15d3319fdcf46413c6b8fe9fa245068ddd
+    steps:
+      - name: Install dependencies
+        run: dnf install -y binutils diffutils git python3 sqlite zsh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate theme
+        run: |
+          zsh scripts/build-theme.zsh --check
+          zsh -n ai-candy.zsh-theme
+          python3 -m unittest discover -s tests -v
+
+  macos:
+    name: macOS ${{ matrix.release }}
+    runs-on: macos-${{ matrix.release }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["14", "15"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate system tools
+        run: |
+          zsh --version
+          git --version
+          sqlite3 --version
+          python3 --version
+      - name: Validate theme
+        run: |
+          zsh scripts/build-theme.zsh --check
+          zsh -n ai-candy.zsh-theme
+          python3 -m unittest discover -s tests -v
+
+  zsh-5-4:
+    name: Zsh 5.4.2 compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate minimum Zsh version
+        run: |
+          docker run --rm --network none -v "$PWD:/work:ro" -w /work "$ZSH_54_IMAGE" zsh -fc '
+            setopt errexit nounset pipefail
+            [[ "$ZSH_VERSION" == 5.4.2 ]]
+            zsh scripts/build-theme.zsh --check
+            zsh -n ai-candy.zsh-theme
+            export XDG_CACHE_HOME=/tmp/ai-candy-cache
+            export LC_ALL=C
+            export LANG=C
+            autoload -Uz colors
+            colors
+            source ./ai-candy.zsh-theme
+            _TIMEOUT_CMD=zsh-native
+            [[ "$(_ai_candy_run_with_timeout 0.2 print -r -- ready)" == ready ]]
+            _ai_candy_prompt_text_width $'a\xE4\xB8\xAD'
+            [[ "$REPLY" == 3 ]]
+            _CACHE_BACKEND_STATE=1
+            _CACHE_BACKEND=file
+            cache_time=$EPOCHSECONDS
+            _ai_candy_cache_reserve_operation set probe key "$cache_time"
+            reservation=("${reply[@]}")
+            [[ "${reservation[2]}" == v3:* ]]
+            _ai_candy_cache_commit_operation set probe key value "$cache_time" \
+              "${reservation[@]}"
+            _ai_candy_cache_persist_read probe key
+            [[ "$REPLY" == value\|* ]]
+            (zselect -t 300) &!
+            background_pid=$!
+            _ai_candy_register_background_pid "$background_pid"
+            _ai_candy_stop_registered_background_jobs
+            for attempt in {1..20}; do
+              ! kill -0 "$background_pid" 2>/dev/null && break
+              _ai_candy_sleep_ticks 1
+            done
+            ! kill -0 "$background_pid" 2>/dev/null
+          '
