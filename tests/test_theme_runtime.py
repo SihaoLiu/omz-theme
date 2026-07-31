@@ -172,16 +172,22 @@ source "$1"
 _AI_CANDY_PROMPT_NETWORK_MODE=0
 _AI_CANDY_PROMPT_AI_MODE=0
 _AI_CANDY_PROMPT_OS_MODE=0
-zselect -t 20
+_ai_candy_precmd_compute_prompt
+for attempt in {1..500}; do
+  [[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] && break
+  zselect -t 1
+done
+[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 70
+[[ -s "$SQLITE_LOG" ]] || return 71
 : >| "$SQLITE_LOG"
 _ai_candy_precmd_compute_prompt
-zselect -t 20
-first_calls=("${(@f)$(<"$SQLITE_LOG")}")
-_ai_candy_precmd_compute_prompt
-zselect -t 20
-second_calls=("${(@f)$(<"$SQLITE_LOG")}")
-print -r -- "FIRST=${#first_calls}"
-print -r -- "SECOND=${#second_calls}"
+for attempt in {1..500}; do
+  [[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] && break
+  zselect -t 1
+done
+[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 72
+[[ ! -s "$SQLITE_LOG" ]] || return 73
+print -r -- "WARM_SQLITE=idle"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -192,9 +198,7 @@ print -r -- "SECOND=${#second_calls}"
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        counts = dict(line.split("=", 1) for line in result.stdout.splitlines())
-        self.assertGreater(int(counts["FIRST"]), 0)
-        self.assertEqual(counts["FIRST"], counts["SECOND"])
+        self.assertEqual("WARM_SQLITE=idle\n", result.stdout)
 
     def test_sqlite_persistence_round_trips_special_values(self) -> None:
         if shutil.which("sqlite3") is None:

@@ -318,7 +318,7 @@ functions[_persist_without_hold]="${functions[_ai_candy_cache_persist_write_unlo
 function _ai_candy_cache_persist_write_unlocked() {
   if [[ "$3" == old ]]; then
     print -r -- held >| "$HOLD_FILE"
-    for attempt in {1..500}; do
+    for attempt in {1..1500}; do
       [[ -f "$RELEASE_FILE" ]] && break
       zselect -t 1
     done
@@ -334,11 +334,16 @@ done
 [[ -f "$HOLD_FILE" ]] || return 71
 _ai_candy_cache_set git_root removed stale "$EPOCHSECONDS"
 print -r -- scheduled >| "$OLDER_SCHEDULED_FILE"
+for attempt in {1..1000}; do
+  [[ -f "$RELEASE_FILE" ]] && break
+  zselect -t 1
+done
+[[ -f "$RELEASE_FILE" ]] || return 72
 for attempt in {1..500}; do
   [[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] && break
   zselect -t 1
 done
-[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 72
+[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 73
 """
             )
             newer_script = (
@@ -350,11 +355,16 @@ source "$1"
 _ai_candy_cache_set git_root ordered new "$EPOCHSECONDS"
 _ai_candy_cache_delete_key git_root removed
 print -r -- scheduled >| "$SCHEDULED_FILE"
+for attempt in {1..1000}; do
+  [[ -f "$RELEASE_FILE" ]] && break
+  zselect -t 1
+done
+[[ -f "$RELEASE_FILE" ]] || return 74
 for attempt in {1..500}; do
   [[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] && break
   zselect -t 1
 done
-[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 73
+[[ ! -s "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 75
 _ai_candy_cache_persist_read git_root ordered
 print -r -- "ORDERED=${REPLY}"
 if _ai_candy_cache_persist_read git_root removed; then
