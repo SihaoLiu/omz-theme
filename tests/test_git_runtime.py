@@ -1230,6 +1230,8 @@ builtin print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_LOCAL_PROMPT_TIMEOUT=1
 cd "$CHILD"
 _ai_candy_get_cached_git_root
 before="$REPLY"

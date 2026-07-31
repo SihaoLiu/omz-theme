@@ -374,12 +374,18 @@ class ThemeSafetyTest(unittest.TestCase):
             root = Path(tmp)
             cache_home = root / "cache"
             bin_dir = root / "bin"
+            completion = root / "sqlite-completed"
             bin_dir.mkdir()
-            write_command(bin_dir, "sqlite3", "sleep 1\nexit 1")
+            write_command(
+                bin_dir,
+                "sqlite3",
+                f"sleep 3\nprintf completed > '{completion}'\nexit 1",
+            )
 
             elapsed = render_first_prompt(cache_home, bin_dir)
 
-            self.assertLess(elapsed, 0.25)
+            self.assertFalse(completion.exists())
+            self.assertLess(elapsed, 1.5)
 
     def test_slow_git_does_not_block_first_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -444,12 +450,18 @@ class ThemeSafetyTest(unittest.TestCase):
             root = Path(tmp)
             cache_home = root / "cache"
             bin_dir = root / "bin"
+            completion = root / "uname-completed"
             bin_dir.mkdir()
-            write_command(bin_dir, "uname", "sleep 1\nexit 1")
+            write_command(
+                bin_dir,
+                "uname",
+                f"sleep 3\nprintf completed > '{completion}'\nexit 1",
+            )
 
             elapsed = render_first_prompt(cache_home, bin_dir)
 
-            self.assertLess(elapsed, 0.75)
+            self.assertFalse(completion.exists())
+            self.assertLess(elapsed, 1.5)
 
     def test_ai_process_count_does_not_block_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

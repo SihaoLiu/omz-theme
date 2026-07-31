@@ -803,48 +803,64 @@ print -r -- "ELAPSED=${elapsed}"
     def test_pr_worker_shares_one_network_deadline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            bin_dir = root / "bin"
-            bin_dir.mkdir()
-            gh = bin_dir / "gh"
-            gh.write_text(
-                "#!/bin/sh\n"
-                'case "$*" in\n'
-                "  *'pr view'*) sleep 0.35; printf '%s\\n' 42 ;;\n"
-                "  *'pr checks'*) sleep 2 ;;\n"
-                "esac\n",
-                encoding="ascii",
-            )
-            gh.chmod(0o755)
-
             result = run_zsh(
                 r"""
 source "$1"
 _AI_CANDY_HAS_GH=1
-_AI_CANDY_NETWORK_TIMEOUT=0.5
+_AI_CANDY_NETWORK_TIMEOUT=3
 _AI_CANDY_GH_AUTH_MEM_CACHE=1
 _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
-start=$EPOCHREALTIME
+function _ai_candy_run_with_timeout() {
+  local timeout="$1"
+  shift
+  if [[ "$1 $2 $3" == "gh pr view" ]]; then
+    builtin print -r -- "VIEW=${timeout}" >>! "$TIMEOUTS_FILE"
+    while [[ ! -e "$RELEASE_FILE" ]]; do
+      zselect -t 1
+    done
+    zselect -t 20
+    builtin print -r -- 42
+    return 0
+  fi
+  if [[ "$1 $2 $3" == "gh pr checks" ]]; then
+    builtin print -r -- "CHECKS=${timeout}" >>! "$TIMEOUTS_FILE"
+    return 124
+  fi
+  return 124
+}
+function _ai_candy_cache_persist_write() { return 0; }
 _ai_candy_gh_pr_update_cache remote branch
 worker_pid="${_AI_CANDY_BACKGROUND_PIDS[-1]-}"
 [[ "$worker_pid" == <-> ]] || exit 3
+builtin print -r -- release >| "$RELEASE_FILE"
 deadline=$(( EPOCHREALTIME + 1.5 ))
 while _ai_candy_background_pid_is_owned "$worker_pid" && (( EPOCHREALTIME < deadline )); do
   zselect -t 1
 done
-elapsed=$(( EPOCHREALTIME - start ))
 print -r -- "WORKER=$(_ai_candy_background_pid_is_owned "$worker_pid" && print running || print stopped)"
-print -r -- "ELAPSED=${elapsed}"
+[[ -f "$TIMEOUTS_FILE" ]] && builtin print -r -- "$(<"$TIMEOUTS_FILE")"
 """,
                 cache_home=root / "cache",
-                env={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+                env={
+                    "RELEASE_FILE": str(root / "release"),
+                    "TIMEOUTS_FILE": str(root / "timeouts"),
+                },
+                timeout=5,
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("WORKER=stopped", result.stdout)
-        elapsed_line = next(
-            line for line in result.stdout.splitlines() if line.startswith("ELAPSED=")
-        )
-        self.assertLess(float(elapsed_line.partition("=")[2]), 0.75)
+        timeouts = {
+            key: float(value)
+            for key, value in (
+                line.split("=", 1)
+                for line in result.stdout.splitlines()
+                if "=" in line and not line.startswith("WORKER=")
+            )
+        }
+        self.assertEqual(3.0, timeouts["VIEW"])
+        self.assertGreater(timeouts["CHECKS"], 0.0)
+        self.assertLess(timeouts["CHECKS"], timeouts["VIEW"] - 0.1)
 
 
 if __name__ == "__main__":
