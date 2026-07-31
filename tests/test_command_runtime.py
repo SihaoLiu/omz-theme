@@ -2,7 +2,9 @@
 import hashlib
 import os
 import shutil
+import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -96,6 +98,379 @@ print -r -- "SHADOWED=$([[ -f $SHADOW_LOG ]] && print yes || print no)"
         )
         self.assertLess(float(elapsed_line.partition("=")[2]), 0.5)
 
+    def test_bash_monitor_fallback_ignores_inherited_shellopts(self) -> None:
+        shell_probe = subprocess.run(
+            ["/bin/sh", "-c", 'test -n "${BASH_VERSION-}"'],
+            check=False,
+        )
+        if shell_probe.returncode != 0:
+            self.skipTest("/bin/sh is not Bash")
+
+        backends = [("native", "zsh-native")]
+        external_timeout = shutil.which("timeout")
+        if external_timeout is not None:
+            backends.append(("external", external_timeout))
+
+        for backend_name, timeout_command in backends:
+            with (
+                self.subTest(backend=backend_name),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                result = run_zsh(
+                    r"""
+source "$1"
+_AI_CANDY_TIMEOUT_CMD="$TIMEOUT_COMMAND"
+_AI_CANDY_SETSID_CMD=""
+export SHELLOPTS=errexit:nounset:noclobber:xtrace
+output=$(_ai_candy_run_with_timeout 0.2 /bin/echo isolated)
+command_status=$?
+setopt null_glob
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
+print -r -- "STATUS=${command_status} OUTPUT=${output} ARTIFACTS=${#artifacts}"
+""",
+                    cache_home=Path(tmp) / "cache",
+                    env={"TIMEOUT_COMMAND": timeout_command},
+                )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("", result.stderr)
+            self.assertEqual("STATUS=0 OUTPUT=isolated ARTIFACTS=0\n", result.stdout)
+
+    def test_bash_monitor_fallback_ignores_exported_control_functions(self) -> None:
+        shell_probe = subprocess.run(
+            ["/bin/sh", "-c", 'test -n "${BASH_VERSION-}"'],
+            check=False,
+        )
+        if shell_probe.returncode != 0:
+            self.skipTest("/bin/sh is not Bash")
+
+        backends = [("native", "zsh-native")]
+        external_timeout = shutil.which("timeout")
+        if external_timeout is not None:
+            backends.append(("external", external_timeout))
+
+        for backend_name, timeout_command in backends:
+            with (
+                self.subTest(backend=backend_name),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                root = Path(tmp)
+                marker = root / "started"
+                result = run_zsh(
+                    r"""
+source "$1"
+_AI_CANDY_TIMEOUT_CMD="$TIMEOUT_COMMAND"
+_AI_CANDY_SETSID_CMD=""
+output=$(_ai_candy_run_with_timeout 0.2 /bin/sh -c '
+  printf started > "$STARTED_MARKER"
+  printf isolated
+')
+command_status=$?
+setopt null_glob
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
+print -r -- "STATUS=${command_status} OUTPUT=${output} STARTED=$([[ -f $STARTED_MARKER ]] && print yes || print no) ARTIFACTS=${#artifacts}"
+""",
+                    cache_home=root / "cache",
+                    env={
+                        "BASH_FUNC_kill%%": "() { return 1; }",
+                        "STARTED_MARKER": str(marker),
+                        "TIMEOUT_COMMAND": timeout_command,
+                    },
+                )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("", result.stderr)
+            self.assertEqual(
+                "STATUS=0 OUTPUT=isolated STARTED=yes ARTIFACTS=0\n",
+                result.stdout,
+            )
+
+    def test_timeout_preserves_bash_target_option_environment(self) -> None:
+        if not Path("/bin/bash").is_file():
+            self.skipTest("Bash is not installed at /bin/bash")
+
+        shell_probe = subprocess.run(
+            ["/bin/sh", "-c", 'test -n "${BASH_VERSION-}"'],
+            check=False,
+        )
+        shell_is_bash = shell_probe.returncode == 0
+        backends = [("native-setsid", "zsh-native", "setsid")]
+        if shell_is_bash:
+            backends.append(("native-monitor", "zsh-native", "monitor"))
+        external_timeout = shutil.which("timeout")
+        if external_timeout is not None:
+            backends.append(
+                ("external-setsid", external_timeout, "setsid")
+            )
+            if shell_is_bash:
+                backends.append(
+                    ("external-monitor", external_timeout, "monitor")
+                )
+        environments = [
+            ("default", "", ""),
+            ("exported", "noclobber", "nullglob"),
+        ]
+        target_script = r"""
+set -e
+value=$(false; printf ok)
+option_state=
+if shopt -qo posix; then option_state+=1; else option_state+=0; fi
+if shopt -qo privileged; then option_state+=1; else option_state+=0; fi
+if shopt -qo noclobber; then option_state+=1; else option_state+=0; fi
+if shopt -q nullglob; then option_state+=1; else option_state+=0; fi
+printf "%s:%s:%s:%s" "$option_state" "$value" \
+  "${AI_CANDY_BASH_ENV_LOADED-no}" "${BASH_ARGV0-unset}"
+"""
+
+        for backend_name, timeout_command, setsid_mode in backends:
+            for environment_name, shellopts, bashopts in environments:
+                with (
+                    self.subTest(backend=backend_name, environment=environment_name),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    root = Path(tmp)
+                    bash_env = root / "bash-env"
+                    bash_env.write_text(
+                        "export AI_CANDY_BASH_ENV_LOADED=yes\n", encoding="ascii"
+                    )
+                    target_env = {
+                        **os.environ,
+                        "BASH_ARGV0": "ai-candy-target",
+                        "BASHOPTS": bashopts,
+                        "BASH_ENV": str(bash_env),
+                        "SHELLOPTS": shellopts,
+                    }
+                    direct = subprocess.run(
+                        ["/bin/bash", "-c", target_script],
+                        check=False,
+                        env=target_env,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    result = run_zsh(
+                        r"""
+source "$1"
+_AI_CANDY_TIMEOUT_CMD="$TIMEOUT_COMMAND"
+[[ "$SETSID_MODE" == monitor ]] && _AI_CANDY_SETSID_CMD=""
+output=$(_ai_candy_run_with_timeout 1 /bin/bash -c "$TARGET_SCRIPT")
+command_status=$?
+print -r -- "STATUS=${command_status} OUTPUT=${output}"
+""",
+                        cache_home=root / "cache",
+                        env={
+                            "BASH_ARGV0": "ai-candy-target",
+                            "BASHOPTS": bashopts,
+                            "BASH_ENV": str(bash_env),
+                            "SETSID_MODE": setsid_mode,
+                            "SHELLOPTS": shellopts,
+                            "TARGET_SCRIPT": target_script,
+                            "TIMEOUT_COMMAND": timeout_command,
+                        },
+                    )
+
+                self.assertEqual(0, direct.returncode, direct.stderr)
+                self.assertEqual("", direct.stderr)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stderr)
+                self.assertEqual(
+                    f"STATUS={direct.returncode} OUTPUT={direct.stdout}\n",
+                    result.stdout,
+                )
+
+    def test_timeout_control_shells_ignore_bash_startup_environment(self) -> None:
+        if not Path("/bin/bash").is_file():
+            self.skipTest("Bash is not installed at /bin/bash")
+
+        shell_probe = subprocess.run(
+            ["/bin/sh", "-c", 'test -n "${BASH_VERSION-}"'],
+            check=False,
+        )
+        shell_is_bash = shell_probe.returncode == 0
+        backends = [("native-setsid", "zsh-native", "setsid")]
+        if shell_is_bash:
+            backends.append(("native-monitor", "zsh-native", "monitor"))
+        external_timeout = shutil.which("timeout")
+        if external_timeout is not None:
+            backends.append(
+                ("external-setsid", external_timeout, "setsid")
+            )
+            if shell_is_bash:
+                backends.append(
+                    ("external-monitor", external_timeout, "monitor")
+                )
+
+        target_env = {
+            **os.environ,
+            "BASH_COMPAT": "not-valid",
+            "BASH_XTRACEFD": "99",
+        }
+        direct = subprocess.run(
+            ["/bin/bash", "-c", "printf quiet"],
+            check=False,
+            env=target_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(0, direct.returncode, direct.stderr)
+        self.assertEqual("quiet", direct.stdout)
+
+        for backend_name, timeout_command, setsid_mode in backends:
+            with (
+                self.subTest(backend=backend_name),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                result = run_zsh(
+                    r"""
+source "$1"
+_AI_CANDY_TIMEOUT_CMD="$TIMEOUT_COMMAND"
+[[ "$SETSID_MODE" == monitor ]] && _AI_CANDY_SETSID_CMD=""
+output=$(_ai_candy_run_with_timeout 1 /bin/bash -c 'printf quiet')
+command_status=$?
+print -r -- "STATUS=${command_status} OUTPUT=${output}"
+""",
+                    cache_home=Path(tmp) / "cache",
+                    env={
+                        "BASH_COMPAT": "not-valid",
+                        "BASH_XTRACEFD": "99",
+                        "SETSID_MODE": setsid_mode,
+                        "TIMEOUT_COMMAND": timeout_command,
+                    },
+                )
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("STATUS=0 OUTPUT=quiet\n", result.stdout)
+                for variable_name in ("BASH_COMPAT", "BASH_XTRACEFD"):
+                    self.assertEqual(
+                        direct.stderr.count(variable_name),
+                        result.stderr.count(variable_name),
+                        result.stderr,
+                    )
+
+    def test_timeout_preserves_exported_bash_environment_for_any_target(
+        self,
+    ) -> None:
+        selected_names = (
+            "BASH_ARGV0",
+            "BASH_COMMAND",
+            "BASH_EXECUTION_STRING",
+            "BASH_SUBSHELL",
+            "BASHPID",
+            "SHLVL",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+direct=$(/usr/bin/env)
+wrapped=$(_ai_candy_run_with_timeout 1 /usr/bin/env)
+print -r -- DIRECT
+print -r -- "$direct"
+print -r -- WRAPPED
+print -r -- "$wrapped"
+""",
+                cache_home=Path(tmp) / "cache",
+                env={
+                    "BASH_ARGV0": "ai-candy-argv0",
+                    "BASH_COMMAND": "ai-candy-command",
+                    "BASH_EXECUTION_STRING": "ai-candy-execution",
+                    "BASH_SUBSHELL": "7",
+                    "BASHPID": "123",
+                    "SHLVL": "41",
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stderr)
+        direct_text, separator, wrapped_text = result.stdout.partition("\nWRAPPED\n")
+        self.assertEqual("\nWRAPPED\n", separator)
+
+        def selected_environment(text: str) -> dict[str, str]:
+            selected = {}
+            for line in text.splitlines():
+                name, equals, value = line.partition("=")
+                if equals and name in selected_names:
+                    selected[name] = value
+            return selected
+
+        direct_environment = selected_environment(
+            direct_text.removeprefix("DIRECT\n")
+        )
+        wrapped_environment = selected_environment(wrapped_text)
+        self.assertEqual(set(selected_names), set(direct_environment))
+        self.assertEqual(direct_environment, wrapped_environment)
+        self.assertNotIn("_AI_CANDY_TIMEOUT_TARGET_", wrapped_text)
+
+    def test_timeout_control_argv_does_not_expose_saved_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            started = root / "started"
+            marker = f"ai-candy-sensitive-{root.name}"
+            shell_env = {
+                **os.environ,
+                "BASH_COMMAND": marker,
+                "STARTED_MARKER": str(started),
+                "XDG_CACHE_HOME": str(root / "cache"),
+            }
+            process = subprocess.Popen(
+                [
+                    "zsh",
+                    "-fc",
+                    r"""
+source "$1"
+output=$(_ai_candy_run_with_timeout 2 /bin/sh -c '
+  printf started > "$STARTED_MARKER"
+  sleep 1
+  printf complete
+')
+command_status=$?
+print -r -- "STATUS=${command_status} OUTPUT=${output}"
+""",
+                    "zsh",
+                    str(Path(__file__).resolve().parents[1] / "ai-candy.zsh-theme"),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                env=shell_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline and not started.is_file():
+                    time.sleep(0.005)
+                self.assertTrue(started.is_file())
+                if Path("/proc").is_dir():
+                    process_commands = []
+                    for command_line in Path("/proc").glob("[0-9]*/cmdline"):
+                        try:
+                            command = command_line.read_bytes().replace(b"\0", b" ")
+                        except (FileNotFoundError, PermissionError, ProcessLookupError):
+                            continue
+                        process_commands.append(
+                            command.decode(errors="surrogateescape")
+                        )
+                    process_table = "\n".join(process_commands)
+                else:
+                    ps = shutil.which("ps")
+                    if ps is None:
+                        self.skipTest("A process command-line source is required")
+                    process_table = subprocess.run(
+                        [ps, "-axo", "command="],
+                        check=True,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    ).stdout
+            finally:
+                stdout, stderr = process.communicate(timeout=3)
+
+        self.assertNotIn(marker, process_table)
+        self.assertEqual(0, process.returncode, stderr)
+        self.assertEqual("", stderr)
+        self.assertEqual("STATUS=0 OUTPUT=complete\n", stdout)
+
     def test_external_timeout_is_absolute_and_kills_term_ignoring_commands(
         self,
     ) -> None:
@@ -130,11 +505,104 @@ print -r -- "ELAPSED=${elapsed}"
         status_line = next(
             line for line in result.stdout.splitlines() if line.startswith("STATUS=")
         )
-        self.assertIn(int(status_line.partition("=")[2]), (124, 137))
+        self.assertEqual(124, int(status_line.partition("=")[2]))
         elapsed_line = next(
             line for line in result.stdout.splitlines() if line.startswith("ELAPSED=")
         )
         self.assertLess(float(elapsed_line.partition("=")[2]), 0.7)
+
+    def test_zero_timeout_does_not_start_external_fallback(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "started"
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+start=$EPOCHREALTIME
+output=$(_ai_candy_run_with_timeout 0 sh -c '
+  printf started > "$ZERO_TIMEOUT_MARKER"
+  printf unexpected
+')
+command_status=$?
+elapsed=$(( EPOCHREALTIME - start ))
+setopt null_glob
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
+print -r -- "STATUS=${command_status} BYTES=${#output} STARTED=$([[ -f $ZERO_TIMEOUT_MARKER ]] && print yes || print no) ARTIFACTS=${#artifacts} ELAPSED=${elapsed}"
+""",
+                cache_home=root / "cache",
+                env={
+                    "EXTERNAL_TIMEOUT": external_timeout,
+                    "ZERO_TIMEOUT_MARKER": str(marker),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        fields = dict(
+            field.split("=", maxsplit=1) for field in result.stdout.strip().split()
+        )
+        self.assertEqual("124", fields["STATUS"])
+        self.assertEqual("0", fields["BYTES"])
+        self.assertEqual("no", fields["STARTED"])
+        self.assertEqual("0", fields["ARTIFACTS"])
+        self.assertLess(float(fields["ELAPSED"]), 0.5)
+
+    def test_invalid_timeout_expression_is_rejected_without_evaluation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "started"
+            result = run_zsh(
+                r"""
+source "$1"
+print -r -- before
+output=$(_ai_candy_run_with_timeout '1/0' /bin/sh -c \
+  'printf started > "$INVALID_TIMEOUT_MARKER"')
+command_status=$?
+print -r -- "STATUS=${command_status} BYTES=${#output}"
+print -r -- after
+""",
+                cache_home=root / "cache",
+                env={"INVALID_TIMEOUT_MARKER": str(marker)},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stderr)
+        self.assertEqual("before\nSTATUS=124 BYTES=0\nafter\n", result.stdout)
+        self.assertFalse(marker.exists())
+
+    def test_oversized_timeout_is_rejected_without_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "started"
+            result = run_zsh(
+                r"""
+source "$1"
+for timeout_sec in 999999999999999999 9999999999999999999; do
+  output=$(_ai_candy_run_with_timeout "$timeout_sec" /bin/sh -c \
+    'printf started > "$OVERSIZED_TIMEOUT_MARKER"')
+  command_status=$?
+  print -r -- "${timeout_sec}:${command_status}:${#output}"
+done
+""",
+                cache_home=root / "cache",
+                env={"OVERSIZED_TIMEOUT_MARKER": str(marker)},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stderr)
+        self.assertEqual(
+            "999999999999999999:124:0\n9999999999999999999:124:0\n",
+            result.stdout,
+        )
+        self.assertFalse(marker.exists())
 
     def test_external_timeout_bounds_captured_output(self) -> None:
         external_timeout = shutil.which("timeout")
@@ -172,6 +640,52 @@ print -r -- "STATUS=${command_status} BYTES=${#output} ARTIFACTS=${#artifacts}"
         self.assertEqual("125", fields["STATUS"])
         self.assertEqual(4096, int(fields["BYTES"]))
         self.assertEqual("0", fields["ARTIFACTS"])
+
+    def test_external_timeout_discards_partial_output_after_deadline(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+output=$(_ai_candy_run_with_timeout 0.1 sh -c 'printf partial; sleep 1')
+command_status=$?
+print -r -- "STATUS=${command_status} BYTES=${#output}"
+""",
+                cache_home=Path(tmp) / "cache",
+                env={"EXTERNAL_TIMEOUT": external_timeout},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=124 BYTES=0\n", result.stdout)
+
+    def test_external_timeout_preserves_fast_status_137_output(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+output=$(_ai_candy_run_with_timeout 2 sh -c 'printf complete; exit 137')
+command_status=$?
+print -r -- "STATUS=${command_status} OUTPUT=${output}"
+""",
+                cache_home=Path(tmp) / "cache",
+                env={"EXTERNAL_TIMEOUT": external_timeout},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=137 OUTPUT=complete\n", result.stdout)
 
     def test_external_timeout_fallback_preserves_small_multiline_output(self) -> None:
         external_timeout = shutil.which("timeout")

@@ -20,6 +20,7 @@ ARCHITECTURE_DOC = ROOT / "docs" / "architecture.md"
 DEVELOPMENT_DOC = ROOT / "docs" / "development.md"
 MODULES = (
     ROOT / "src" / "bootstrap.zsh",
+    ROOT / "src" / "process-supervisor.zsh",
     ROOT / "src" / "unicode-width.zsh",
     ROOT / "src" / "cache.zsh",
     ROOT / "src" / "ui.zsh",

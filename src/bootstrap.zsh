@@ -131,6 +131,7 @@ _ai_candy_capture_physical_pwd || true
 typeset -g _AI_CANDY_HAS_SQLITE3=0
 typeset -g _AI_CANDY_HAS_TIMEOUT=0
 typeset -g _AI_CANDY_TIMEOUT_CMD=""
+typeset -g _AI_CANDY_SETSID_CMD=""
 typeset -g _AI_CANDY_HAS_GH=0
 typeset -g _AI_CANDY_HAS_SSH=0
 typeset -g _AI_CANDY_HAS_CURL=0
@@ -189,6 +190,7 @@ function _ai_candy_detect_core_commands() {
   _AI_CANDY_HAS_SQLITE3=0
   _AI_CANDY_HAS_TIMEOUT=0
   _AI_CANDY_TIMEOUT_CMD=""
+  _AI_CANDY_SETSID_CMD=""
   _AI_CANDY_HAS_GH=0
   _AI_CANDY_HAS_SSH=0
   _AI_CANDY_HAS_CURL=0
@@ -206,6 +208,7 @@ function _ai_candy_detect_core_commands() {
     _AI_CANDY_HAS_TIMEOUT=1
     _AI_CANDY_TIMEOUT_CMD="$REPLY"
   fi
+  _ai_candy_resolve_external_command setsid && _AI_CANDY_SETSID_CMD="$REPLY"
   _ai_candy_resolve_external_command gh && _AI_CANDY_HAS_GH=1
   _ai_candy_resolve_external_command ssh && _AI_CANDY_HAS_SSH=1
   _ai_candy_resolve_external_command curl && _AI_CANDY_HAS_CURL=1
@@ -514,14 +517,13 @@ typeset -g _AI_CANDY_LAYOUT_MARGIN=8
 # fallback for builds missing the standard modules.
 #
 # Usage: _ai_candy_run_with_timeout <timeout_seconds> <command> [args...]
-# Returns: command output on success, empty string on timeout or error
-# Exit code: mirrors the underlying command's exit code
+# Returns: bounded command output unless the deadline expires
+# Exit code: mirrors the command, with 124 reserved for an expired deadline
 # Note: _AI_CANDY_HAS_TIMEOUT and _AI_CANDY_TIMEOUT_CMD are set in COMMAND AVAILABILITY section
 
 typeset -g _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=$((256 * 1024))
 typeset -g _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=0
 typeset -g _AI_CANDY_TIMEOUT_TEMP_DIR=""
-
 function _ai_candy_timeout_output_limit_bytes() {
   integer max_output_bytes=${_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES:-262144}
   if (( max_output_bytes < 512 || max_output_bytes > 1048576 )); then
@@ -725,7 +727,7 @@ function _ai_candy_run_bounded_output_command() {
   return "$command_status"
 }
 
-function _ai_candy_redispatch_native_timeout_signal() {
+function _ai_candy_redispatch_timeout_signal() {
   local signal_name="$1"
   local signal_number="$2"
   local trap_name="$3"
@@ -766,29 +768,47 @@ function _ai_candy_run_native_timeout() {
   local -F timeout_sec="$1"
   shift
   (( timeout_sec > 0 )) || return 124
+  integer isolate_target=0
+  [[ "${1-}" == command && "${2-}" == /* ]] && isolate_target=1
 
   _ai_candy_create_timeout_output_file || return 124
   local output_file="$REPLY"
+  local completion_file=""
+  local group_file=""
+  if (( isolate_target )); then
+    if ! _ai_candy_create_timeout_output_file; then
+      _ai_candy_remove_timeout_files "$output_file"
+      return 124
+    fi
+    completion_file="$REPLY"
+    if ! _ai_candy_create_timeout_output_file; then
+      _ai_candy_remove_timeout_files "$output_file" "$completion_file"
+      return 124
+    fi
+    group_file="$REPLY"
+  fi
   local timeout_marker="${output_file}.expired"
+  local -a timeout_files=("$output_file" "$timeout_marker")
+  (( isolate_target )) && timeout_files+=("$completion_file" "$group_file")
   integer timeout_marker_fd=-1
   integer timeout_watchdog_fd=-1
   integer timeout_parent_fd=-1
   if ! builtin sysopen -r -w -o create,excl,cloexec -m 600 \
        -u timeout_marker_fd "$timeout_marker" 2>/dev/null; then
-    _ai_candy_remove_timeout_files "$output_file"
+    _ai_candy_remove_timeout_files "${timeout_files[@]}"
     return 124
   fi
   if ! builtin sysopen -r -o cloexec -u timeout_watchdog_fd \
        "$timeout_marker" 2>/dev/null; then
     exec {timeout_marker_fd}>&-
-    _ai_candy_remove_timeout_files "$output_file" "$timeout_marker"
+    _ai_candy_remove_timeout_files "${timeout_files[@]}"
     return 124
   fi
   if ! builtin sysopen -r -o cloexec -u timeout_parent_fd \
        "$timeout_marker" 2>/dev/null; then
     exec {timeout_watchdog_fd}<&-
     exec {timeout_marker_fd}>&-
-    _ai_candy_remove_timeout_files "$output_file" "$timeout_marker"
+    _ai_candy_remove_timeout_files "${timeout_files[@]}"
     return 124
   fi
 
@@ -796,21 +816,31 @@ function _ai_candy_run_native_timeout() {
   local watchdog_pid=""
   local timeout_state=""
   local command_status=0
+  local wrapper_status=0
   local interrupted_signal=""
   _ai_candy_timeout_output_limit_bytes
   integer max_output_bytes="$REPLY"
   integer timeout_ticks=$(( timeout_sec * 100 + 0.999 ))
+  integer deadline_expired=0
   integer interrupted_status=0
   (( timeout_ticks < 1 )) && timeout_ticks=1
 
-  builtin trap 'interrupted_signal=HUP; interrupted_status=129; [[ -n "$child_pid" ]] && _ai_candy_kill_process_tree "$child_pid"' HUP
-  builtin trap 'interrupted_signal=INT; interrupted_status=130; [[ -n "$child_pid" ]] && _ai_candy_kill_process_tree "$child_pid"' INT
-  builtin trap 'interrupted_signal=TERM; interrupted_status=143; [[ -n "$child_pid" ]] && _ai_candy_kill_process_tree "$child_pid"' TERM
+  builtin trap 'interrupted_signal=HUP; interrupted_status=129; if [[ -n "$child_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$child_pid"; _ai_candy_kill_process_tree "$child_pid"; fi' HUP
+  builtin trap 'interrupted_signal=INT; interrupted_status=130; if [[ -n "$child_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$child_pid"; _ai_candy_kill_process_tree "$child_pid"; fi' INT
+  builtin trap 'interrupted_signal=TERM; interrupted_status=143; if [[ -n "$child_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$child_pid"; _ai_candy_kill_process_tree "$child_pid"; fi' TERM
 
   {
     {
-      _ai_candy_run_bounded_output_command \
-        "$output_file" "$max_output_bytes" "$@"
+      if (( isolate_target )); then
+        _ai_candy_run_bounded_output_command \
+          "$output_file" "$max_output_bytes" \
+          _ai_candy_launch_timeout_supervisor zsh-native "" \
+          "$completion_file" "$group_file" "$_AI_CANDY_SETSID_CMD" \
+          "${@:2}"
+      else
+        _ai_candy_run_bounded_output_command \
+          "$output_file" "$max_output_bytes" "$@"
+      fi
       local child_status=$?
       builtin syswrite -o "$timeout_marker_fd" completed 2>/dev/null
       return "$child_status"
@@ -824,6 +854,7 @@ function _ai_candy_run_native_timeout() {
         completion_state 2>/dev/null || true
       if [[ "$completion_state" != *completed* ]]; then
         builtin syswrite -o "$timeout_marker_fd" expired 2>/dev/null
+        _ai_candy_kill_timeout_process_group "$group_file" "$child_pid"
         _ai_candy_kill_process_tree "$child_pid"
       fi
     ) &
@@ -831,12 +862,14 @@ function _ai_candy_run_native_timeout() {
 
     builtin wait "$child_pid" 2>/dev/null
     command_status=$?
+    wrapper_status=$command_status
 
     builtin sysread -i "$timeout_parent_fd" -s 16 \
       timeout_state 2>/dev/null || true
     if [[ "$timeout_state" == *expired* ]]; then
       builtin wait "$watchdog_pid" 2>/dev/null || true
       watchdog_pid=""
+      deadline_expired=1
       command_status=124
     else
       builtin kill -TERM "$watchdog_pid" 2>/dev/null
@@ -845,14 +878,28 @@ function _ai_candy_run_native_timeout() {
     fi
     child_pid=""
 
+    if (( ! deadline_expired && isolate_target )); then
+      if _ai_candy_read_timeout_completion_status "$completion_file"; then
+        command_status="$REPLY"
+        if (( command_status == 0 && wrapper_status == 125 )); then
+          command_status=125
+        fi
+      else
+        command_status=$wrapper_status
+        (( command_status == 0 )) && command_status=125
+      fi
+    fi
     (( interrupted_status )) && command_status="$interrupted_status"
-    _ai_candy_print_timeout_output_file "$output_file"
+    if (( ! deadline_expired && command_status != 124 )); then
+      _ai_candy_print_timeout_output_file "$output_file"
+    fi
   } always {
     if [[ -n "$watchdog_pid" ]]; then
       builtin kill -TERM "$watchdog_pid" 2>/dev/null
       builtin wait "$watchdog_pid" 2>/dev/null || true
     fi
     if [[ -n "$child_pid" ]] && builtin kill -0 "$child_pid" 2>/dev/null; then
+      _ai_candy_kill_timeout_process_group "$group_file" "$child_pid"
       _ai_candy_kill_process_tree "$child_pid"
       builtin wait "$child_pid" 2>/dev/null || true
     fi
@@ -868,20 +915,20 @@ function _ai_candy_run_native_timeout() {
       exec {timeout_marker_fd}>&-
       timeout_marker_fd=-1
     fi
-    _ai_candy_remove_timeout_files "$output_file" "$timeout_marker"
+    _ai_candy_remove_timeout_files "${timeout_files[@]}"
   }
 
   case "$interrupted_signal" in
     HUP)
-      _ai_candy_redispatch_native_timeout_signal HUP 1 TRAPHUP \
+      _ai_candy_redispatch_timeout_signal HUP 1 TRAPHUP \
         "$entry_hup_trap_set" "$entry_hup_trap" 129
       ;;
     INT)
-      _ai_candy_redispatch_native_timeout_signal INT 2 TRAPINT \
+      _ai_candy_redispatch_timeout_signal INT 2 TRAPINT \
         "$entry_int_trap_set" "$entry_int_trap" 130
       ;;
     TERM)
-      _ai_candy_redispatch_native_timeout_signal TERM 15 TRAPTERM \
+      _ai_candy_redispatch_timeout_signal TERM 15 TRAPTERM \
         "$entry_term_trap_set" "$entry_term_trap" 143
       ;;
   esac
@@ -890,26 +937,103 @@ function _ai_candy_run_native_timeout() {
 
 function _ai_candy_run_external_timeout() {
   emulate -L zsh
-
+  setopt localtraps
+  integer entry_hup_trap_set=${+functions[TRAPHUP]}
+  integer entry_int_trap_set=${+functions[TRAPINT]}
+  integer entry_term_trap_set=${+functions[TRAPTERM]}
+  local entry_hup_trap="${functions[TRAPHUP]-}"
+  local entry_int_trap="${functions[TRAPINT]-}"
+  local entry_term_trap="${functions[TRAPTERM]-}"
   local timeout_command="$1"
   local timeout_sec="$2"
   shift 2
   local output_file=""
+  local completion_file=""
+  local group_file=""
+  local completion_status=""
+  local runner_pid=""
+  local interrupted_signal=""
   integer command_status=124
-
+  integer wrapper_status=124 completion_valid=0 deadline_expired=0
+  integer interrupted_status=0
   _ai_candy_timeout_output_limit_bytes
   integer max_output_bytes="$REPLY"
   _ai_candy_create_timeout_output_file || return 124
   output_file="$REPLY"
+  if ! _ai_candy_create_timeout_output_file; then
+    _ai_candy_remove_timeout_files "$output_file"
+    return 124
+  fi
+  completion_file="$REPLY"
+  if ! _ai_candy_create_timeout_output_file; then
+    _ai_candy_remove_timeout_files "$output_file" "$completion_file"
+    return 124
+  fi
+  group_file="$REPLY"
+  builtin trap 'interrupted_signal=HUP; interrupted_status=129; if [[ -n "$runner_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$runner_pid"; _ai_candy_kill_process_tree "$runner_pid"; fi' HUP
+  builtin trap 'interrupted_signal=INT; interrupted_status=130; if [[ -n "$runner_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$runner_pid"; _ai_candy_kill_process_tree "$runner_pid"; fi' INT
+  builtin trap 'interrupted_signal=TERM; interrupted_status=143; if [[ -n "$runner_pid" ]]; then _ai_candy_kill_timeout_process_group "$group_file" "$runner_pid"; _ai_candy_kill_process_tree "$runner_pid"; fi' TERM
 
   {
-    _ai_candy_run_bounded_output_command "$output_file" "$max_output_bytes" \
-      builtin command "$timeout_command" -k 0.1 "$timeout_sec" "$@"
-    command_status=$?
-    _ai_candy_print_timeout_output_file "$output_file"
+    {
+      _ai_candy_run_bounded_output_command \
+        "$output_file" "$max_output_bytes" \
+        _ai_candy_launch_timeout_supervisor \
+        "$timeout_command" "$timeout_sec" \
+        "$completion_file" "$group_file" "$_AI_CANDY_SETSID_CMD" "$@"
+      return $?
+    } &
+    runner_pid=$!
+    builtin wait "$runner_pid" 2>/dev/null
+    wrapper_status=$?
+    runner_pid=""
+    if _ai_candy_read_timeout_completion_status "$completion_file"; then
+      completion_status="$REPLY"
+      completion_valid=1
+    fi
+    if (( wrapper_status == 124 || wrapper_status == 137 )); then
+      command_status=124
+      deadline_expired=1
+    elif (( completion_valid )); then
+      command_status="$completion_status"
+      if (( command_status == 0 && wrapper_status == 125 )); then
+        command_status=125
+      fi
+    else
+      command_status="$wrapper_status"
+      (( command_status == 0 )) && command_status=125
+    fi
+
+    if (( interrupted_status )); then
+      command_status=$interrupted_status
+      deadline_expired=1
+    fi
+    if (( ! deadline_expired && command_status != 124 )); then
+      _ai_candy_print_timeout_output_file "$output_file"
+    fi
   } always {
-    _ai_candy_remove_timeout_files "$output_file"
+    if [[ -n "$runner_pid" ]] && builtin kill -0 "$runner_pid" 2>/dev/null; then
+      _ai_candy_kill_timeout_process_group "$group_file" "$runner_pid"
+      _ai_candy_kill_process_tree "$runner_pid"
+      builtin wait "$runner_pid" 2>/dev/null || true
+    fi
+    _ai_candy_remove_timeout_files \
+      "$output_file" "$completion_file" "$group_file"
   }
+  case "$interrupted_signal" in
+    HUP)
+      _ai_candy_redispatch_timeout_signal HUP 1 TRAPHUP \
+        "$entry_hup_trap_set" "$entry_hup_trap" 129
+      ;;
+    INT)
+      _ai_candy_redispatch_timeout_signal INT 2 TRAPINT \
+        "$entry_int_trap_set" "$entry_int_trap" 130
+      ;;
+    TERM)
+      _ai_candy_redispatch_timeout_signal TERM 15 TRAPTERM \
+        "$entry_term_trap_set" "$entry_term_trap" 143
+      ;;
+  esac
   return "$command_status"
 }
 
@@ -1477,7 +1601,20 @@ function _ai_candy_install_signal_traps() {
 function _ai_candy_run_with_timeout() {
   emulate -L zsh
   local timeout_sec="$1"
+  local integer_part="${timeout_sec%%.*}"
+  case "$timeout_sec" in
+    <->|<->.<->|.<->) ;;
+    *) return 124 ;;
+  esac
+  (( ${#timeout_sec} <= 32 )) || return 124
+  [[ -n "$integer_part" ]] || integer_part=0
+  while [[ ${#integer_part} -gt 1 && "$integer_part" == 0* ]]; do
+    integer_part="${integer_part#0}"
+  done
+  (( ${#integer_part} <= 5 )) || return 124
+  local -F timeout_value="$timeout_sec"
   shift
+  (( timeout_value > 0 && timeout_value <= 86400 )) || return 124
   local -a command_args=("$@")
   local command_name="${command_args[1]-}"
   integer target_is_external=0

@@ -76,6 +76,12 @@ typeset -gr _AI_CANDY_ZSH54_FIXTURE_DIR="$(
 trap 'command rm -rf -- "$_AI_CANDY_ZSH54_FIXTURE_DIR"' EXIT
 {
   print -r -- '#!/bin/sh'
+  print -r -- 'if [ "$#" -ge 4 ] && [ "$1" = -C ] && [ "$3" = config ]; then'
+  print -r -- '  case "$*" in'
+  print -r -- '    *--list) exit 0 ;;'
+  print -r -- '    *--get-regexp*) exit 1 ;;'
+  print -r -- '  esac'
+  print -r -- 'fi'
   print -r -- 'if [ "$#" -eq 2 ] && [ "$1" = rev-parse ] && [ "$2" = --show-toplevel ]; then'
   print -r -- '  printf "%s\n" /work'
   print -r -- '  exit 0'

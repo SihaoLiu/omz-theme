@@ -1339,6 +1339,14 @@ typeset -gA _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT
 _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$PWD]=stale
 typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
 _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$PWD]=stale
+_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$PWD]=stale
+_AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY[$PWD]=stale
+_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY[$PWD]="9999999999|x7"
+_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID=42
+_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY="$PWD"
+_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE=x7
+_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=1
+_AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE=7
 _AI_CANDY_MEM_CACHE_TOMBSTONES[stale:key]=$EPOCHSECONDS
 _ai_candy_prompt_refresh_all_caches >/dev/null
 print -r -- "IP=$([[ -f $_AI_CANDY_PUBLIC_IP_CACHE_FILE ]] && print present || print absent)"
@@ -1346,6 +1354,11 @@ print -r -- "AUTH=${_AI_CANDY_GH_AUTH_MEM_CACHE:-empty}"
 print -r -- "PROCESS=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME}"
 print -r -- "REMOTE=${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}"
 print -r -- "OPTIONS=${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}"
+print -r -- "GRAPH_PATHS=${#_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY}"
+print -r -- "GRAPH_CONTEXTS=${#_AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY}"
+print -r -- "GRAPH_TIMEOUTS=${#_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY}"
+print -r -- "GRAPH_RENDER=${_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID}:${_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY}:${_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE}:${_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED}"
+print -r -- "GRAPH_FAILURE_SEQUENCE=${_AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE}"
 print -r -- "TOMBSTONES=${#_AI_CANDY_MEM_CACHE_TOMBSTONES}"
 print -r -- \
   "SEQUENCE=$([[ -f $_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE ]] && print present || print absent)"
@@ -1359,6 +1372,11 @@ print -r -- \
         self.assertIn("PROCESS=0", result.stdout)
         self.assertIn("REMOTE=0", result.stdout)
         self.assertIn("OPTIONS=0", result.stdout)
+        self.assertIn("GRAPH_PATHS=0", result.stdout)
+        self.assertIn("GRAPH_CONTEXTS=0", result.stdout)
+        self.assertIn("GRAPH_TIMEOUTS=0", result.stdout)
+        self.assertIn("GRAPH_RENDER=-1:::0", result.stdout)
+        self.assertIn("GRAPH_FAILURE_SEQUENCE=0", result.stdout)
         self.assertIn("TOMBSTONES=0", result.stdout)
         self.assertIn("SEQUENCE=absent", result.stdout)
 

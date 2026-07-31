@@ -385,13 +385,41 @@ class ThemeSafetyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             cache_home = root / "cache"
+            calls = root / "git-calls"
             bin_dir = root / "bin"
             bin_dir.mkdir()
-            write_command(bin_dir, "git", "sleep 1\nexit 1")
+            write_command(
+                bin_dir,
+                "git",
+                f"printf 'called\\n' >> '{calls}'\n"
+                "printf 'file:/tmp/config\\000partial'\n"
+                "sleep 1\n"
+                "exit 1",
+            )
 
             elapsed = render_first_prompt(cache_home, bin_dir)
 
+            self.assertEqual(["called"], calls.read_text(encoding="ascii").splitlines())
             self.assertLess(elapsed, 0.75)
+
+    def test_git_status_124_does_not_trigger_a_second_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            calls = root / "git-calls"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(
+                bin_dir,
+                "git",
+                f"printf 'called\\n' >> '{calls}'\n"
+                "printf 'file:/tmp/config\\000partial'\n"
+                "exit 124",
+            )
+
+            render_first_prompt(cache_home, bin_dir)
+
+            self.assertEqual(["called"], calls.read_text(encoding="ascii").splitlines())
 
     def test_first_prompt_performance_helper_never_starts_network_work(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -5,6 +5,7 @@ typeset -g _AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE="${_AI_CANDY_CACHE_DIR}/git_to
 typeset -g _AI_CANDY_GIT_METADATA_MAX_BYTES=$((16 * 1024))
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
+typeset -gi _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
 typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
@@ -627,6 +628,7 @@ function _ai_candy_git_metadata_context_key() {
   fi
   _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
   _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
+  _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
   REPLY=""
 
   if (( ${+GIT_DIR} )); then
@@ -778,6 +780,11 @@ function _ai_candy_get_cached_git_root() {
   local metadata_context="$REPLY"
   integer metadata_context_cacheable=$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE
   integer metadata_context_persistable=$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE
+  integer metadata_probe_failed=$_AI_CANDY_GIT_METADATA_PROBE_FAILED
+  if (( metadata_probe_failed )); then
+    REPLY="NOT_GIT"
+    return 0
+  fi
   if (( ! physical_pwd_is_current || ! current_directory_is_identified )); then
     metadata_context_cacheable=0
     metadata_context_persistable=0

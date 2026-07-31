@@ -17,8 +17,9 @@ The supported environments are:
 - Red Hat Enterprise Linux-compatible releases 9 and 10
 - Ubuntu 22.04 and 24.04
 
-The version of Bash shipped by macOS does not affect this theme. Oh My Zsh
-themes execute in Zsh, and the runtime code does not invoke Bash.
+The prompt runs in Zsh. Its bounded-command supervisor may launch `/bin/sh`;
+on macOS this is the system Bash 3.2. The supervisor uses portable shell
+behavior compatible with that release and does not require modern Bash syntax.
 
 ## Requirements
 

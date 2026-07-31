@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -18,6 +19,126 @@ from tests.theme_test_support import (
 
 
 class ProcessRuntimeTest(unittest.TestCase):
+    def _assert_timeout_stops_output_holding_orphan(
+        self, timeout_setup: str, env: dict[str, str]
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            child_pid_file = root / "child.pid"
+            child_pid = None
+            try:
+                result = run_zsh(
+                    "\n".join(
+                        [
+                            'source "$1"',
+                            timeout_setup,
+                            r"""
+start=$EPOCHREALTIME
+_ai_candy_run_with_timeout 0.1 sh -c '
+  sleep 30 &
+  printf "%s\n" "$!" > "$CHILD_PID_FILE"
+'
+command_status=$?
+elapsed=$(( EPOCHREALTIME - start ))
+builtin print -r -- "STATUS=${command_status} ELAPSED=${elapsed}"
+""",
+                        ]
+                    ),
+                    cache_home=root / "cache",
+                    env={"CHILD_PID_FILE": str(child_pid_file), **env},
+                    timeout=3,
+                )
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                fields = dict(
+                    field.split("=", maxsplit=1)
+                    for field in result.stdout.strip().split()
+                )
+                self.assertEqual("124", fields["STATUS"])
+                self.assertLess(float(fields["ELAPSED"]), 1.0)
+                self.assertTrue(child_pid_file.is_file())
+                child_pid = int(child_pid_file.read_text(encoding="ascii"))
+                self.assertTrue(wait_for_process_exit(child_pid, 1))
+            finally:
+                if child_pid is None and child_pid_file.is_file():
+                    child_pid = int(child_pid_file.read_text(encoding="ascii"))
+                if child_pid is not None and process_is_running(child_pid):
+                    os.kill(child_pid, signal.SIGKILL)
+
+    def test_external_timeout_stops_output_holding_orphan(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        self._assert_timeout_stops_output_holding_orphan(
+            "\n".join(
+                [
+                    "_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0",
+                    "_AI_CANDY_HAS_ZSH_SYSTEM=0",
+                    '_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"',
+                ]
+            ),
+            {"EXTERNAL_TIMEOUT": external_timeout},
+        )
+
+    def test_native_timeout_stops_output_holding_orphan(self) -> None:
+        self._assert_timeout_stops_output_holding_orphan(
+            "_AI_CANDY_TIMEOUT_CMD=zsh-native", {}
+        )
+
+    def test_monitor_fallback_stops_output_holding_orphan(self) -> None:
+        shell_probe = subprocess.run(
+            ["/bin/sh", "-c", 'test -n "${BASH_VERSION-}"'], check=False
+        )
+        if shell_probe.returncode != 0:
+            self.skipTest("the system /bin/sh does not provide Bash job control")
+
+        self._assert_timeout_stops_output_holding_orphan(
+            "_AI_CANDY_SETSID_CMD=\n_AI_CANDY_TIMEOUT_CMD=zsh-native", {}
+        )
+
+    def test_external_timeout_kills_a_term_ignoring_command(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            child_pid_file = root / "child.pid"
+            child_pid = None
+            try:
+                result = run_zsh(
+                    r"""
+source "$1"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+_ai_candy_run_with_timeout 0.1 sh -c '
+  printf "%s\n" "$$" > "$CHILD_PID_FILE"
+  trap "" TERM
+  while :; do :; done
+'
+builtin print -r -- "STATUS=$?"
+""",
+                    cache_home=root / "cache",
+                    env={
+                        "CHILD_PID_FILE": str(child_pid_file),
+                        "EXTERNAL_TIMEOUT": external_timeout,
+                    },
+                    timeout=3,
+                )
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("STATUS=124\n", result.stdout)
+                self.assertTrue(child_pid_file.is_file())
+                child_pid = int(child_pid_file.read_text(encoding="ascii"))
+                self.assertTrue(wait_for_process_exit(child_pid, 1))
+            finally:
+                if child_pid is None and child_pid_file.is_file():
+                    child_pid = int(child_pid_file.read_text(encoding="ascii"))
+                if child_pid is not None and process_is_running(child_pid):
+                    os.kill(child_pid, signal.SIGKILL)
+
     def test_native_timeout_readers_have_independent_file_offsets(self) -> None:
         source = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="utf-8")
         function_body = source.partition(
@@ -898,7 +1019,9 @@ print -r -- "PARENT_LOCKS=${#_AI_CANDY_CACHE_LOCK_FDS}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("PARENT_LOCKS=0\n", result.stdout)
 
-    def test_native_timeout_cleans_up_when_its_shell_is_terminated(self) -> None:
+    def _assert_timeout_cleans_up_when_shell_is_terminated(
+        self, timeout_setup: str, env_overrides: dict[str, str]
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             child_pid_file = root / "child.pid"
@@ -906,17 +1029,22 @@ print -r -- "PARENT_LOCKS=${#_AI_CANDY_CACHE_LOCK_FDS}"
                 **os.environ,
                 "XDG_CACHE_HOME": str(root / "cache"),
                 "CHILD_PID_FILE": str(child_pid_file),
+                **env_overrides,
             }
             process = subprocess.Popen(
                 [
                     "zsh",
                     "-fc",
-                    r"""
-source "$1"
-_AI_CANDY_TIMEOUT_CMD=zsh-native
+                    "\n".join(
+                        [
+                            'source "$1"',
+                            timeout_setup,
+                            r"""
 _ai_candy_run_with_timeout 30 sh -c 'printenv PPID >/dev/null; echo $$ > "$CHILD_PID_FILE"; exec sleep 30'
 builtin print -r -- SURVIVED
 """,
+                        ]
+                    ),
                     "zsh",
                     str(THEME),
                 ],
@@ -947,14 +1075,35 @@ builtin print -r -- SURVIVED
                         f"timeout child survived wrapper termination: {child_pid}"
                     )
             finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.communicate()
                 if child_pid is not None:
                     try:
                         os.kill(child_pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+
+    def test_external_timeout_cleans_up_when_its_shell_is_terminated(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        self._assert_timeout_cleans_up_when_shell_is_terminated(
+            "\n".join(
+                [
+                    "_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0",
+                    "_AI_CANDY_HAS_ZSH_SYSTEM=0",
+                    '_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"',
+                ]
+            ),
+            {"EXTERNAL_TIMEOUT": external_timeout},
+        )
+
+    def test_native_timeout_cleans_up_when_its_shell_is_terminated(self) -> None:
+        self._assert_timeout_cleans_up_when_shell_is_terminated(
+            "_AI_CANDY_TIMEOUT_CMD=zsh-native", {}
+        )
 
     def test_native_timeout_preserves_fast_command_output_and_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -975,6 +1124,40 @@ print -r -- "STATUS=${command_status}"
         self.assertIn("OUTPUT=result", result.stdout)
         self.assertIn("STATUS=7", result.stdout)
 
+    def test_native_timeout_discards_partial_output_after_deadline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
+output=$(_ai_candy_run_with_timeout 0.1 sh -c 'printf partial; sleep 1')
+command_status=$?
+print -r -- "STATUS=${command_status} BYTES=${#output}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=124 BYTES=0\n", result.stdout)
+
+    def test_native_timeout_discards_output_from_reserved_status_124(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
+output=$(_ai_candy_run_with_timeout 1 sh -c 'printf partial; exit 124')
+command_status=$?
+print -r -- "STATUS=${command_status} BYTES=${#output}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=124 BYTES=0\n", result.stdout)
+
     def test_native_timeout_does_not_expire_an_unreaped_finished_child(
         self,
     ) -> None:
@@ -987,17 +1170,29 @@ function _ai_candy_process_pid_is_active() {
 }
 function _ai_candy_sleep_ticks() {
   (
-    command sleep 0.2
+    command sleep 1.5
     builtin kill -CONT "$$" 2>/dev/null
   ) &!
   builtin kill -STOP "$$"
-  command sleep 0.05
+  local marker_state=""
+  local -a marker_files
+  integer attempts=0
+  while (( attempts < 100 )); do
+    marker_files=("$_AI_CANDY_CACHE_DIR"/ai-candy-timeout.*.expired(N))
+    if (( ${#marker_files} == 1 )); then
+      marker_state="$(<"${marker_files[1]}")"
+      [[ "$marker_state" == *completed* ]] && break
+    fi
+    command sleep 0.01
+    (( ++attempts ))
+  done
+  [[ "$marker_state" == *completed* ]]
 }
 _ai_candy_run_native_timeout 0.1 command sleep 0.02
 print -r -- "STATUS=$?"
 """,
                 cache_home=Path(tmp) / "cache",
-                timeout=2,
+                timeout=3,
             )
 
         self.assertEqual(0, result.returncode, result.stderr)

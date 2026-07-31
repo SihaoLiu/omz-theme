@@ -667,6 +667,13 @@ function _ai_candy_mem_cache_remove_key() {
       done
       _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=("${(@kv)kept}")
       ;;
+    git_config_graph_timeout)
+      for candidate in "${(@k)_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY}"; do
+        [[ "$candidate" == "$remove_key" ]] || \
+          kept[$candidate]="${_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY[$candidate]}"
+      done
+      _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY=("${(@kv)kept}")
+      ;;
     git_stash)
       for candidate in "${(@k)_AI_CANDY_GIT_STASH_COUNT_BY_LOG}"; do
         [[ "$candidate" == "$remove_key" ]] || \

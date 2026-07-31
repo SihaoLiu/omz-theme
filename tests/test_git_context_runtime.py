@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -975,6 +977,55 @@ builtin print -r -- "DIRECT=${direct_remote}|${direct_hide}"
                 },
             )
 
+    def test_missing_prefix_include_creation_partitions_derived_state(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            home = root / "home"
+            included_config = root / "included.config"
+            configure_repository(repo)
+            prefix_probe = "ai-candy-prefix-probe"
+            resolved_probe = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "-c",
+                    f"ai-candy.prefix=%(prefix)/{prefix_probe}",
+                    "config",
+                    "--path",
+                    "--get",
+                    "ai-candy.prefix",
+                ],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            ).stdout.strip()
+            git_prefix = Path(resolved_probe).parent
+            include_value = "%(prefix)/" + os.path.relpath(
+                included_config,
+                git_prefix,
+            )
+            write_global_config_with_relative_include(
+                home / ".gitconfig",
+                "alpha.git",
+                "1",
+                include_value,
+            )
+            self.assert_config_switch(
+                repo,
+                root / "cache",
+                "included-create",
+                {
+                    "HOME": str(home),
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "INCLUDED_CONFIG": str(included_config),
+                    "XDG_CONFIG_HOME": str(root / "xdg"),
+                },
+            )
+
     def test_onbranch_include_switch_partitions_pr_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1058,7 +1109,7 @@ builtin print -r -- "SCANS=${first_count}->${#scans}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("SCANS=2->2\n", result.stdout)
 
-    def test_config_graph_scan_failure_is_not_cacheable(self) -> None:
+    def test_config_graph_timeout_uses_retry_backoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = root / "repo"
@@ -1068,25 +1119,28 @@ builtin print -r -- "SCANS=${first_count}->${#scans}"
                 r"""
 source "$1"
 _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
-function _ai_candy_git_scan_config_graph_paths() { return 1; }
+typeset -gi scan_count=0
+function _ai_candy_git_scan_config_graph_paths() {
+  (( ++scan_count ))
+  return 2
+}
 
 _AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_get_cached_git_root
 first_root="$REPLY"
-_ai_candy_git_context_cache_key "$first_root"
-first_context="$REPLY"
 first_cacheable="$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE"
 first_persistable="$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE"
+_ai_candy_get_cached_git_root
+same_render_root="$REPLY"
+same_render_scans="$scan_count"
 
 (( ++_AI_CANDY_PROMPT_RENDER_ID ))
 _ai_candy_get_cached_git_root
 second_root="$REPLY"
-_ai_candy_git_context_cache_key "$second_root"
-second_context="$REPLY"
 builtin print -r -- \
-  "ROOTS=${first_root}->${second_root}"
+  "ROOTS=${first_root}->${same_render_root}->${second_root}"
 builtin print -r -- \
-  "CONTEXTS_EQUAL=$([[ $first_context == $second_context ]] && print yes || print no)"
+  "SCANS=${same_render_scans}->${scan_count}"
 builtin print -r -- \
   "CACHEABLE=${first_cacheable}|${_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE}"
 builtin print -r -- \
@@ -1098,10 +1152,105 @@ builtin print -r -- \
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            f"ROOTS={repo}->{repo}\n"
-            "CONTEXTS_EQUAL=no\n"
+            "ROOTS=NOT_GIT->NOT_GIT->NOT_GIT\n"
+            "SCANS=1->1\n"
             "CACHEABLE=0|0\n"
             "PERSISTABLE=0|0\n",
+            result.stdout,
+        )
+
+    def test_external_kill_after_is_classified_as_git_timeout(self) -> None:
+        external_timeout = shutil.which("timeout")
+        if external_timeout is None:
+            self.skipTest("GNU-compatible timeout is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            git_command = bin_dir / "git"
+            git_command.write_text(
+                "#!/bin/sh\n"
+                "printf 'file:/tmp/config\\000partial'\n"
+                "trap '' TERM\n"
+                "while :; do :; done\n",
+                encoding="ascii",
+            )
+            git_command.chmod(0o755)
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+function _ai_candy_resolve_external_command() {
+  [[ "$1" == git ]] || return 1
+  REPLY="$FAKE_GIT"
+}
+_ai_candy_git_scan_config_graph_paths "$PWD" "$PWD"
+builtin print -r -- "STATUS=$?"
+""",
+                cache_home=root / "cache",
+                cwd=root,
+                env={
+                    "EXTERNAL_TIMEOUT": external_timeout,
+                    "FAKE_GIT": str(git_command),
+                },
+                timeout=3,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=2\n", result.stdout)
+
+    def test_oversized_valid_config_graph_still_discovers_git_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            global_config = root / "global.config"
+            configure_repository(repo)
+            global_config.write_text(
+                "".join(
+                    f"[include]\n\tpath = {root / f'included-{index}.config'}\n"
+                    for index in range(129)
+                ),
+                encoding="ascii",
+            )
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_PROMPT_RENDER_ID=1
+_ai_candy_get_cached_git_root
+first_root="$REPLY"
+first_cacheable="$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE"
+
+(( ++_AI_CANDY_PROMPT_RENDER_ID ))
+_ai_candy_get_cached_git_root
+second_root="$REPLY"
+second_cacheable="$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE"
+direct_root=$(command git rev-parse --show-toplevel 2>/dev/null) || return 70
+builtin print -r -- "ROOTS=${first_root}->${second_root}"
+builtin print -r -- "DIRECT=${direct_root}"
+builtin print -r -- "CACHEABLE=${first_cacheable}|${second_cacheable}"
+""",
+                cache_home=root / "cache",
+                cwd=repo,
+                env={
+                    "GIT_CONFIG_GLOBAL": str(global_config),
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "HOME": str(root / "home"),
+                    "XDG_CONFIG_HOME": str(root / "xdg"),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            f"ROOTS={repo}->{repo}\n"
+            f"DIRECT={repo}\n"
+            "CACHEABLE=0|0\n",
             result.stdout,
         )
 

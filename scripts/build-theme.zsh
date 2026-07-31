@@ -7,6 +7,7 @@ typeset -r project_root="${0:A:h:h}"
 typeset -r output_file="${project_root}/ai-candy.zsh-theme"
 typeset -a theme_modules=(
   "${project_root}/src/bootstrap.zsh"
+  "${project_root}/src/process-supervisor.zsh"
   "${project_root}/src/unicode-width.zsh"
   "${project_root}/src/cache.zsh"
   "${project_root}/src/ui.zsh"

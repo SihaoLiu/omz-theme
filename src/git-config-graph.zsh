@@ -4,6 +4,8 @@ typeset -gA _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY
 typeset -gi _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID=-1
 typeset -g _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY=""
 typeset -g _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE=""
+typeset -gi _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=0
+typeset -gA _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY
 
 function _ai_candy_git_config_graph_paths_context_key() {
   emulate -L zsh
@@ -34,7 +36,7 @@ function _ai_candy_git_scan_config_graph_paths() {
   local phase=origins
   local -a config_paths
   local -A seen_paths
-  integer completed=0 max_paths=128
+  integer completed=0 probe_failed=0 probe_timed_out=0 max_paths=128
   REPLY=""
 
   while IFS= builtin read -r -d $'\0' origin && \
@@ -43,6 +45,8 @@ function _ai_candy_git_scan_config_graph_paths() {
       case "$entry" in
         _AI_CANDY_CONFIG_GRAPH_INCLUDES) phase=includes ;;
         _AI_CANDY_CONFIG_GRAPH_DONE) completed=1; break ;;
+        _AI_CANDY_CONFIG_GRAPH_PROBE_FAILED) probe_failed=1; break ;;
+        _AI_CANDY_CONFIG_GRAPH_PROBE_TIMED_OUT) probe_timed_out=1; break ;;
         *) return 1 ;;
       esac
       continue
@@ -94,19 +98,33 @@ function _ai_candy_git_scan_config_graph_paths() {
     fi
   done < <(
     local _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=$((64 * 1024))
+    local probe_status=0
     if _ai_candy_run_git_probe_at_root "$command_root" config --includes \
          --show-origin --null --name-only --list 2>/dev/null; then
       builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_INCLUDES\0'
       local include_status=0
       _ai_candy_run_git_probe_at_root "$command_root" config --includes \
-        --show-origin --null --get-regexp \
+        --show-origin --null --path --get-regexp \
         '^include(if\..*)?\.path$' 2>/dev/null || include_status=$?
       if (( include_status == 0 || include_status == 1 )); then
         builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_DONE\0'
+      elif (( include_status == 124 )); then
+        builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_PROBE_TIMED_OUT\0'
+      else
+        builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_PROBE_FAILED\0'
+      fi
+    else
+      probe_status=$?
+      if (( probe_status == 124 )); then
+        builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_PROBE_TIMED_OUT\0'
+      else
+        builtin print -rn -- $'\0_AI_CANDY_CONFIG_GRAPH_PROBE_FAILED\0'
       fi
     fi
   )
 
+  (( ! probe_timed_out )) || return 2
+  (( ! probe_failed )) || return 1
   (( completed )) || return 1
   REPLY="${(pj:\n:)config_paths}"
 }
@@ -114,17 +132,22 @@ function _ai_candy_git_scan_config_graph_paths() {
 function _ai_candy_git_config_graph_context_key() {
   emulate -L zsh
   local command_root="$1" origin_base="$2" graph_key="$3"
-  local serialized_paths="" graph_context=""
+  local serialized_paths="" graph_context="" timeout_record=""
+  local retry_after="" timeout_context=""
   integer render_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
   integer cached_entry=${+_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$graph_key]}
+  integer current_time=$EPOCHSECONDS
   REPLY=""
 
   if (( render_id > 0 && \
         _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID == render_id )) && \
      [[ "$_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY" == "$graph_key" ]]; then
     REPLY="$_AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE"
+    (( _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED )) && \
+      _AI_CANDY_GIT_METADATA_PROBE_FAILED=1
     return 0
   fi
+  _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=0
 
   if (( cached_entry )); then
     serialized_paths="${_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$graph_key]}"
@@ -141,11 +164,45 @@ function _ai_candy_git_config_graph_context_key() {
     fi
   fi
 
-  if ! _ai_candy_git_scan_config_graph_paths "$command_root" "$origin_base"; then
+  timeout_record="${_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY[$graph_key]-}"
+  if [[ "$timeout_record" == *"|"* ]]; then
+    retry_after="${timeout_record%%|*}"
+    timeout_context="${timeout_record#*|}"
+  fi
+  if [[ "$retry_after" == <-> && "$timeout_context" == x<-> ]] && \
+     (( current_time < retry_after )); then
+    _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
+    _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
+    _AI_CANDY_GIT_METADATA_PROBE_FAILED=1
+    _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=1
+    REPLY="$timeout_context"
+    _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID="$render_id"
+    _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY="$graph_key"
+    _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE="$REPLY"
+    return 0
+  fi
+  [[ -n "$timeout_record" ]] && \
+    _ai_candy_mem_cache_remove_key git_config_graph_timeout "$graph_key"
+
+  integer scan_status=0
+  _ai_candy_git_scan_config_graph_paths \
+    "$command_root" "$origin_base" || scan_status=$?
+  if (( scan_status != 0 )); then
     (( ++_AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE ))
     _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
     _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
+    if (( scan_status == 2 )); then
+      _AI_CANDY_GIT_METADATA_PROBE_FAILED=1
+      _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=1
+    fi
     REPLY="x${_AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE}"
+    if (( scan_status == 2 )); then
+      if (( ${#_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY} >= \
+            _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )); then
+        _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY=()
+      fi
+      _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY[$graph_key]="$(( current_time + 3 ))|${REPLY}"
+    fi
     _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_ID="$render_id"
     _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_KEY="$graph_key"
     _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE="$REPLY"
@@ -168,6 +225,7 @@ function _ai_candy_git_config_graph_context_key() {
           _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )); then
     _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY=()
     _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY=()
+    _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY=()
   fi
   _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$graph_key]="$serialized_paths"
   _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY[$graph_key]="$graph_context"
