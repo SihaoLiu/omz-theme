@@ -1123,6 +1123,48 @@ builtin print -r -- \
             result.stdout,
         )
 
+    def test_non_repository_root_cache_stays_hot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            work = root / "work"
+            home = root / "home"
+            marker = root / "root-probes"
+            work.mkdir()
+            home.mkdir()
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+functions[_root_probe_without_count]="${functions[_ai_candy_run_local_probe]}"
+function _ai_candy_run_local_probe() {
+  if [[ "$1" == git && "$2" == rev-parse && "$3" == --show-toplevel ]]; then
+    builtin print -r -- call >>! "$PROBE_MARKER"
+  fi
+  _root_probe_without_count "$@"
+}
+_ai_candy_get_cached_git_root
+first="$REPLY"
+_ai_candy_get_cached_git_root
+second="$REPLY"
+typeset -a root_probes
+root_probes=("${(@f)$(<"$PROBE_MARKER")}")
+builtin print -r -- \
+  "ROOTS=${first}->${second} CALLS=${#root_probes}"
+""",
+                cache_home=root / "cache",
+                cwd=work,
+                env={
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "HOME": str(home),
+                    "PROBE_MARKER": str(marker),
+                    "XDG_CONFIG_HOME": str(root / "xdg"),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("ROOTS=NOT_GIT->NOT_GIT CALLS=1\n", result.stdout)
+
     def test_symlinked_repository_root_cache_stays_hot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1394,7 +1436,10 @@ print -r -- "GENERATION=${_AI_CANDY_GIT_TOPOLOGY_GENERATION} ROOT=${REPLY}"
 source "$1"
 functions[_ai_candy_probe_without_count]="${functions[_ai_candy_run_local_probe]}"
 function _ai_candy_run_local_probe() {
-  builtin print -r -- probe >> "$PROBE_LOG"
+  if [[ "$1" == git && "$2" == rev-parse && \
+        "$3" == --show-toplevel ]]; then
+    builtin print -r -- probe >> "$PROBE_LOG"
+  fi
   _ai_candy_probe_without_count "$@"
 }
 _AI_CANDY_CACHE_READY=0

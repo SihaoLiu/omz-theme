@@ -12,6 +12,8 @@ typeset -a theme_modules=(
   "${project_root}/src/ui.zsh"
   "${project_root}/src/prompt.zsh"
   "${project_root}/src/git.zsh"
+  "${project_root}/src/git-config-graph.zsh"
+  "${project_root}/src/smart-path.zsh"
   "${project_root}/src/integrations.zsh"
   "${project_root}/src/theme.zsh"
 )

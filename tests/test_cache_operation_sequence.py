@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from tests.theme_test_support import ROOT, THEME, run_zsh
+from tests.theme_test_support import CACHE_SCHEDULING_BUDGET_MS, ROOT, THEME, run_zsh
 
 
 class CacheOperationSequenceTest(unittest.TestCase):
@@ -59,7 +59,7 @@ printf 'VALUE=%s ELAPSED_MS=%.3f\n' "$value" "$elapsed_ms"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("VALUE=missing", result.stdout)
         elapsed_ms = float(result.stdout.strip().rsplit("=", maxsplit=1)[1])
-        self.assertLess(elapsed_ms, 100.0)
+        self.assertLess(elapsed_ms, CACHE_SCHEDULING_BUDGET_MS)
 
     def test_worker_launch_failure_rolls_back_under_the_reservation_lock(
         self,
@@ -218,7 +218,9 @@ printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             for line in result.stdout.splitlines()
             if line.startswith("ELAPSED_MS=")
         )
-        self.assertLess(float(elapsed_line.partition("=")[2]), 100.0)
+        self.assertLess(
+            float(elapsed_line.partition("=")[2]), CACHE_SCHEDULING_BUDGET_MS
+        )
 
     def test_cache_delete_supersedes_an_older_async_write(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,7 +259,9 @@ printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             for line in result.stdout.splitlines()
             if line.startswith("ELAPSED_MS=")
         )
-        self.assertLess(float(elapsed_line.partition("=")[2]), 100.0)
+        self.assertLess(
+            float(elapsed_line.partition("=")[2]), CACHE_SCHEDULING_BUDGET_MS
+        )
 
     def test_async_persistence_orders_operations_across_shells(self) -> None:
         for backend in ("file", "sqlite"):

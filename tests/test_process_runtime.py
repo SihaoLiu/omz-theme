@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -17,6 +18,19 @@ from tests.theme_test_support import (
 
 
 class ProcessRuntimeTest(unittest.TestCase):
+    def test_native_timeout_readers_have_independent_file_offsets(self) -> None:
+        source = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="utf-8")
+        function_body = source.partition(
+            "function _ai_candy_run_native_timeout() {"
+        )[2].partition("\n}\n")[0]
+        reader_fds = re.findall(
+            r'builtin sysread -i "\$(timeout_[a-z_]+_fd)"', function_body
+        )
+
+        self.assertGreaterEqual(len(reader_fds), 2)
+        self.assertGreaterEqual(len(set(reader_fds)), 2)
+        self.assertNotIn("timeout_marker_fd", reader_fds)
+
     @unittest.skipUnless(Path("/proc").is_dir(), "Linux procfs is required")
     def test_process_table_uses_procfs_before_external_ps(self) -> None:
         source = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="utf-8")
@@ -968,6 +982,9 @@ print -r -- "STATUS=${command_status}"
             result = run_zsh(
                 r"""
 source "$1"
+function _ai_candy_process_pid_is_active() {
+  return 0
+}
 function _ai_candy_sleep_ticks() {
   (
     command sleep 0.2

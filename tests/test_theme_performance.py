@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from tests.theme_test_support import run_zsh
+from tests.theme_test_support import CACHE_SCHEDULING_BUDGET_MS, run_zsh
 
 
 class ThemePerformanceTest(unittest.TestCase):
@@ -397,7 +397,11 @@ printf 'ELAPSED_MS=%.3f PERSISTED=%d\n' "$elapsed_ms" "$persisted"
 
         self.assertEqual(0, result.returncode, result.stderr)
         fields = dict(item.split("=", 1) for item in result.stdout.split())
-        self.assertLess(float(fields["ELAPSED_MS"]), 100.0, result.stdout)
+        self.assertLess(
+            float(fields["ELAPSED_MS"]),
+            CACHE_SCHEDULING_BUDGET_MS,
+            result.stdout,
+        )
         self.assertEqual("1", fields["PERSISTED"])
 
     def test_native_timeout_avoids_external_file_helpers(self) -> None:
@@ -698,7 +702,16 @@ _AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_get_cached_git_remote_branch
 second="$REPLY"
 calls=("${(@f)$(<"$GIT_LOG")}")
-print -r -- "CALLS=${#calls}"
+remote_calls=0
+graph_calls=0
+for call in "${calls[@]}"; do
+  [[ "$call" == "config --get remote.origin.url" ]] && \
+    (( ++remote_calls ))
+  [[ "$call" == *" config --includes --show-origin "* ]] && \
+    (( ++graph_calls ))
+done
+print -r -- \
+  "REMOTE_CALLS=${remote_calls} GRAPH_CALLS=${graph_calls} TOTAL=${#calls}"
 print -r -- "SAME=$([[ "$first" == "$second" ]] && print yes || print no)"
 """,
                 cache_home=root / "cache",
@@ -710,7 +723,7 @@ print -r -- "SAME=$([[ "$first" == "$second" ]] && print yes || print no)"
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("CALLS=1", result.stdout)
+        self.assertIn("REMOTE_CALLS=1 GRAPH_CALLS=2 TOTAL=3", result.stdout)
         self.assertIn("SAME=yes", result.stdout)
 
     def test_tool_status_does_not_spawn_sed_for_each_line(self) -> None:

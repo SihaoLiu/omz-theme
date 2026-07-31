@@ -771,9 +771,24 @@ function _ai_candy_run_native_timeout() {
   local output_file="$REPLY"
   local timeout_marker="${output_file}.expired"
   integer timeout_marker_fd=-1
+  integer timeout_watchdog_fd=-1
+  integer timeout_parent_fd=-1
   if ! builtin sysopen -r -w -o create,excl,cloexec -m 600 \
        -u timeout_marker_fd "$timeout_marker" 2>/dev/null; then
     _ai_candy_remove_timeout_files "$output_file"
+    return 124
+  fi
+  if ! builtin sysopen -r -o cloexec -u timeout_watchdog_fd \
+       "$timeout_marker" 2>/dev/null; then
+    exec {timeout_marker_fd}>&-
+    _ai_candy_remove_timeout_files "$output_file" "$timeout_marker"
+    return 124
+  fi
+  if ! builtin sysopen -r -o cloexec -u timeout_parent_fd \
+       "$timeout_marker" 2>/dev/null; then
+    exec {timeout_watchdog_fd}<&-
+    exec {timeout_marker_fd}>&-
+    _ai_candy_remove_timeout_files "$output_file" "$timeout_marker"
     return 124
   fi
 
@@ -793,12 +808,21 @@ function _ai_candy_run_native_timeout() {
   builtin trap 'interrupted_signal=TERM; interrupted_status=143; [[ -n "$child_pid" ]] && _ai_candy_kill_process_tree "$child_pid"' TERM
 
   {
-    _ai_candy_run_bounded_output_command "$output_file" "$max_output_bytes" "$@" &
+    {
+      _ai_candy_run_bounded_output_command \
+        "$output_file" "$max_output_bytes" "$@"
+      local child_status=$?
+      builtin syswrite -o "$timeout_marker_fd" completed 2>/dev/null
+      return "$child_status"
+    } &
     child_pid=$!
 
     (
+      local completion_state=""
       _ai_candy_sleep_ticks "$timeout_ticks"
-      if _ai_candy_process_pid_is_active "$child_pid"; then
+      builtin sysread -i "$timeout_watchdog_fd" -s 16 \
+        completion_state 2>/dev/null || true
+      if [[ "$completion_state" != *completed* ]]; then
         builtin syswrite -o "$timeout_marker_fd" expired 2>/dev/null
         _ai_candy_kill_process_tree "$child_pid"
       fi
@@ -808,9 +832,9 @@ function _ai_candy_run_native_timeout() {
     builtin wait "$child_pid" 2>/dev/null
     command_status=$?
 
-    builtin sysseek -u "$timeout_marker_fd" 0 2>/dev/null
-    builtin sysread -i "$timeout_marker_fd" -s 7 timeout_state 2>/dev/null || true
-    if [[ "$timeout_state" == "expired" ]]; then
+    builtin sysread -i "$timeout_parent_fd" -s 16 \
+      timeout_state 2>/dev/null || true
+    if [[ "$timeout_state" == *expired* ]]; then
       builtin wait "$watchdog_pid" 2>/dev/null || true
       watchdog_pid=""
       command_status=124
@@ -831,6 +855,14 @@ function _ai_candy_run_native_timeout() {
     if [[ -n "$child_pid" ]] && builtin kill -0 "$child_pid" 2>/dev/null; then
       _ai_candy_kill_process_tree "$child_pid"
       builtin wait "$child_pid" 2>/dev/null || true
+    fi
+    if (( timeout_parent_fd >= 0 )); then
+      exec {timeout_parent_fd}<&-
+      timeout_parent_fd=-1
+    fi
+    if (( timeout_watchdog_fd >= 0 )); then
+      exec {timeout_watchdog_fd}<&-
+      timeout_watchdog_fd=-1
     fi
     if (( timeout_marker_fd >= 0 )); then
       exec {timeout_marker_fd}>&-

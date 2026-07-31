@@ -25,6 +25,8 @@ MODULES = (
     ROOT / "src" / "ui.zsh",
     ROOT / "src" / "prompt.zsh",
     ROOT / "src" / "git.zsh",
+    ROOT / "src" / "git-config-graph.zsh",
+    ROOT / "src" / "smart-path.zsh",
     ROOT / "src" / "integrations.zsh",
     ROOT / "src" / "theme.zsh",
 )

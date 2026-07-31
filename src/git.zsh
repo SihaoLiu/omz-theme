@@ -5,10 +5,14 @@ typeset -g _AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE="${_AI_CANDY_CACHE_DIR}/git_to
 typeset -g _AI_CANDY_GIT_METADATA_MAX_BYTES=$((16 * 1024))
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
-typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND=-1
 typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
+typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_STAT_BY_PATH
+typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH
+typeset -gi _AI_CANDY_GIT_CONTEXT_KEY_RENDER_ID=-1
+typeset -g _AI_CANDY_GIT_CONTEXT_KEY_INPUT=""
+typeset -g _AI_CANDY_GIT_CONTEXT_KEY_VALUE=""
 
 function _ai_candy_read_git_metadata_file() {
   emulate -L zsh
@@ -130,7 +134,8 @@ function _ai_candy_git_config_override_context_key() {
   emulate -L zsh
   local LC_ALL=C
   local resolution_base="${1:-${_AI_CANDY_PHYSICAL_PWD:-$PWD}}"
-  local parameter_name="" parameter_value="" resolved_path=""
+  local command_resolution_base="${2:-$resolution_base}"
+  local parameter_name="" parameter_value="" resolved_path="" path_base=""
   local count_value="${GIT_CONFIG_COUNT-}"
   local key_name="" value_name="" key_value="" config_value=""
   local -a fixed_parameters=(
@@ -142,6 +147,7 @@ function _ai_candy_git_config_override_context_key() {
   )
   integer index=0 entry_count=0 max_entries=128
   resolution_base="${resolution_base:A}"
+  command_resolution_base="${command_resolution_base:A}"
   REPLY=""
 
   for parameter_name in "${fixed_parameters[@]}"; do
@@ -153,8 +159,11 @@ function _ai_candy_git_config_override_context_key() {
       GIT_CONFIG|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM)
         resolved_path="$parameter_value"
         if [[ -n "$resolved_path" ]]; then
+          path_base="$resolution_base"
+          [[ "$parameter_name" == GIT_CONFIG ]] && \
+            path_base="$command_resolution_base"
           [[ "$resolved_path" == /* ]] || \
-            resolved_path="${resolution_base}/${resolved_path}"
+            resolved_path="${path_base}/${resolved_path}"
           resolved_path="${resolved_path:A}"
         fi
         REPLY+="p${#resolved_path}:${resolved_path}"
@@ -271,6 +280,14 @@ function _ai_candy_git_context_cache_key() {
   local root_config_context=""
   local resolved_git_dir=""
   local resolved_git_common_dir=""
+  local external_config_context=""
+  local common_config_context=""
+  local worktree_config_context=""
+  local effective_config_context=""
+  local command_resolution_base="${_AI_CANDY_PHYSICAL_PWD:-${PWD:A}}"
+  local config_resolution_base="$command_resolution_base"
+  local context_cache_input=""
+  integer render_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
 
   if (( $# >= 2 )); then
     discovery_context="$2"
@@ -278,17 +295,47 @@ function _ai_candy_git_context_cache_key() {
     _ai_candy_git_discovery_context_key
     discovery_context="$REPLY"
   fi
-  if [[ "$discovery_context" == g1* && -n "$git_root" && \
-        "$git_root" != "NOT_GIT" ]]; then
-    _ai_candy_git_config_override_context_key "$git_root"
-    root_config_context="$REPLY"
+  context_cache_input="r${#git_root}:${git_root}"
+  context_cache_input+="c${#discovery_context}:${discovery_context}"
+  context_cache_input+="h${+HOME}:${#home_value}:${home_value}"
+  context_cache_input+="x${+XDG_CONFIG_HOME}:"
+  context_cache_input+="${#xdg_config_home}:${xdg_config_home}"
+  if (( render_id > 0 && \
+        _AI_CANDY_GIT_CONTEXT_KEY_RENDER_ID == render_id )) && \
+     [[ "$_AI_CANDY_GIT_CONTEXT_KEY_INPUT" == "$context_cache_input" ]]; then
+    REPLY="$_AI_CANDY_GIT_CONTEXT_KEY_VALUE"
+    return 0
   fi
   if [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] && \
      _ai_candy_resolve_git_dir "$git_root"; then
+    config_resolution_base="$git_root"
     resolved_git_dir="$REPLY"
     if _ai_candy_resolve_git_common_dir "$git_root" "$resolved_git_dir"; then
       resolved_git_common_dir="$REPLY"
+      _ai_candy_git_config_file_context_key \
+        "${resolved_git_common_dir}/config"
+      common_config_context="$REPLY"
+      _ai_candy_git_config_file_context_key \
+        "${resolved_git_dir}/config.worktree"
+      worktree_config_context="$REPLY"
     fi
+  fi
+  if [[ "$discovery_context" == g1* && -n "$git_root" && \
+        "$git_root" != "NOT_GIT" ]]; then
+    _ai_candy_git_config_override_context_key \
+      "$config_resolution_base" "$command_resolution_base"
+    root_config_context="$REPLY"
+  fi
+  _ai_candy_git_external_config_context_key \
+    "$config_resolution_base" "$command_resolution_base"
+  external_config_context="$REPLY"
+  if [[ -n "$resolved_git_dir" && -n "$resolved_git_common_dir" ]]; then
+    _ai_candy_git_effective_config_context_key \
+      "$command_resolution_base" "$git_root" "$resolved_git_dir" \
+      "$resolved_git_common_dir" "$discovery_context" \
+      "$external_config_context" "$common_config_context" \
+      "$worktree_config_context"
+    effective_config_context="$REPLY"
   fi
 
   REPLY="c${#discovery_context}:${discovery_context}"
@@ -298,6 +345,15 @@ function _ai_candy_git_context_cache_key() {
   REPLY+="h${+HOME}:${#home_value}:${home_value}"
   REPLY+="x${+XDG_CONFIG_HOME}:${#xdg_config_home}:${xdg_config_home}"
   REPLY+="g${#root_config_context}:${root_config_context}"
+  REPLY+="e${#external_config_context}:${external_config_context}"
+  REPLY+="l${#common_config_context}:${common_config_context}"
+  REPLY+="w${#worktree_config_context}:${worktree_config_context}"
+  REPLY+="q${#effective_config_context}:${effective_config_context}"
+  if (( render_id > 0 )); then
+    _AI_CANDY_GIT_CONTEXT_KEY_RENDER_ID="$render_id"
+    _AI_CANDY_GIT_CONTEXT_KEY_INPUT="$context_cache_input"
+    _AI_CANDY_GIT_CONTEXT_KEY_VALUE="$REPLY"
+  fi
 }
 
 function _ai_candy_run_git_probe_at_root() {
@@ -321,7 +377,12 @@ function _ai_candy_run_git_probe_at_root() {
     resolved_context_path="${context_pwd}/${GIT_COMMON_DIR}"
     local -x GIT_COMMON_DIR="${resolved_context_path:A}"
   fi
-
+  # Keep GIT_CONFIG anchored to the calling shell when -C changes Git's cwd.
+  if (( ${+GIT_CONFIG} )) && \
+     [[ -n "$GIT_CONFIG" && "$GIT_CONFIG" != /* ]]; then
+    resolved_context_path="${context_pwd}/${GIT_CONFIG}"
+    local -x GIT_CONFIG="${resolved_context_path:A}"
+  fi
   _ai_candy_run_local_probe git -C "$git_root" "$@"
 }
 
@@ -338,13 +399,52 @@ function _ai_candy_git_current_directory_context_key() {
   REPLY+="i${#metadata[inode]}:${metadata[inode]}"
 }
 
+function _ai_candy_git_track_config_generation() {
+  emulate -L zsh
+  local physical_config_file="$1"
+  local stat_signature="$2"
+  integer mark_stable="${3:-0}"
+  local content_identity=""
+  local generation=""
+  REPLY=""
+
+  _ai_candy_read_git_metadata_file "$physical_config_file" || return 1
+  content_identity="x${REPLY}"
+  generation="${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}"
+  if [[ -z "$generation" ]] && \
+     (( ${#_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH} >= \
+        _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )); then
+    _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH=()
+    _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH=()
+    _AI_CANDY_GIT_VOLATILE_CONFIG_STAT_BY_PATH=()
+    _AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH=()
+  fi
+  if [[ -z "$generation" || \
+        "${_AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH[$physical_config_file]-0}" == 1 || \
+        "${_AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]-}" != \
+          "$content_identity" ]]; then
+    (( ++_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE ))
+    generation="$_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE"
+  fi
+  _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]="$generation"
+  _AI_CANDY_GIT_VOLATILE_CONFIG_STAT_BY_PATH[$physical_config_file]="$stat_signature"
+  if (( mark_stable )); then
+    _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]=""
+    _AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH[$physical_config_file]=1
+  else
+    _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]="$content_identity"
+    _AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH[$physical_config_file]=0
+  fi
+  REPLY="$generation"
+}
+
 function _ai_candy_git_config_file_context_key() {
   emulate -L zsh
   local config_file="$1"
   local physical_config_file="$config_file"
   local config_context=""
-  local volatile_content=""
   local volatile_generation=""
+  local stat_signature=""
   local -A metadata
   integer current_time=$EPOCHSECONDS
 
@@ -362,28 +462,16 @@ function _ai_candy_git_config_file_context_key() {
     config_context+="s${#metadata[size]}:${metadata[size]}"
     config_context+="m${#metadata[mtime]}:${metadata[mtime]}"
     config_context+="c${#metadata[ctime]}:${metadata[ctime]}"
-    # Whole-second stat fields need a session-only discriminator. Config
-    # contents never enter a persistent key or backend.
+    stat_signature="d${metadata[device]}i${metadata[inode]}"
+    stat_signature+="s${metadata[size]}m${metadata[mtime]}c${metadata[ctime]}"
+    # Whole-second stat fields cannot distinguish in-place rewrites. A bounded
+    # session generation preserves hot caches without persisting config text.
     if (( metadata[mtime] >= current_time || \
           metadata[ctime] >= current_time )); then
       _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
-      if _ai_candy_read_git_metadata_file "$physical_config_file"; then
-        volatile_content="x${REPLY}"
-        if [[ "${_AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]-}" != \
-              "$volatile_content" || \
-              -z "${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}" ]]; then
-          if (( ${#_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH} >= \
-                _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
-             [[ -z "${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}" ]]; then
-            _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH=()
-            _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH=()
-          fi
-          (( ++_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE ))
-          _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]="${volatile_content}"
-          _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]="$_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE"
-        fi
-        volatile_generation="${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]}"
-        config_context+="v${#volatile_generation}:${volatile_generation}"
+      if _ai_candy_git_track_config_generation \
+           "$physical_config_file" "$stat_signature" 0; then
+        volatile_generation="$REPLY"
       else
         _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
       fi
@@ -391,9 +479,20 @@ function _ai_candy_git_config_file_context_key() {
       volatile_generation="${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}"
       if [[ -n "$volatile_generation" ]]; then
         _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
-        config_context+="v${#volatile_generation}:${volatile_generation}"
+        if [[ "${_AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH[$physical_config_file]-0}" != 1 || \
+              "${_AI_CANDY_GIT_VOLATILE_CONFIG_STAT_BY_PATH[$physical_config_file]-}" != \
+                "$stat_signature" ]]; then
+          if _ai_candy_git_track_config_generation \
+               "$physical_config_file" "$stat_signature" 1; then
+            volatile_generation="$REPLY"
+          else
+            _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
+          fi
+        fi
       fi
     fi
+    [[ -n "$volatile_generation" ]] && \
+      config_context+="v${#volatile_generation}:${volatile_generation}"
     REPLY="$config_context"
     return 0
   fi
@@ -402,6 +501,106 @@ function _ai_candy_git_config_file_context_key() {
   [[ -e "$config_file" ]] && config_context+="e1" || config_context+="e0"
   [[ -L "$config_file" ]] && config_context+="l1" || config_context+="l0"
   REPLY="$config_context"
+}
+
+function _ai_candy_git_external_config_context_key() {
+  emulate -L zsh
+  local resolution_base="${1:-${_AI_CANDY_PHYSICAL_PWD:-$PWD}}"
+  local command_resolution_base="${2:-$resolution_base}"
+  local config_path="" resolved_path="" git_executable=""
+  local config_file_context="" external_context=""
+  local home_value="${HOME-}"
+  local xdg_config_home="${XDG_CONFIG_HOME-}"
+  local nosystem_value="" nosystem_magnitude=""
+  local -a config_paths config_bases system_paths
+  local -A seen_paths
+  integer config_index=0 path_index=0 skip_system_config=0
+  REPLY=""
+
+  [[ "$resolution_base" == /* ]] || resolution_base="${resolution_base:A}"
+  [[ "$command_resolution_base" == /* ]] || \
+    command_resolution_base="${command_resolution_base:A}"
+  if (( ${+GIT_CONFIG} )) && [[ -n "$GIT_CONFIG" ]]; then
+    config_paths+=("$GIT_CONFIG")
+    config_bases+=("$command_resolution_base")
+  fi
+  if (( ${+GIT_CONFIG_GLOBAL} )); then
+    if [[ -n "$GIT_CONFIG_GLOBAL" ]]; then
+      config_paths+=("$GIT_CONFIG_GLOBAL")
+      config_bases+=("$resolution_base")
+    fi
+  else
+    if [[ -n "$xdg_config_home" ]]; then
+      config_paths+=("${xdg_config_home%/}/git/config")
+      config_bases+=("$resolution_base")
+    elif [[ -n "$home_value" ]]; then
+      config_paths+=("${home_value%/}/.config/git/config")
+      config_bases+=("$resolution_base")
+    fi
+    if [[ -n "$home_value" ]]; then
+      config_paths+=("${home_value%/}/.gitconfig")
+      config_bases+=("$resolution_base")
+    fi
+  fi
+  if (( ${+GIT_CONFIG_NOSYSTEM} )); then
+    nosystem_value="${(L)GIT_CONFIG_NOSYSTEM}"
+    case "$nosystem_value" in
+      true|yes|on) skip_system_config=1 ;;
+      *)
+        nosystem_magnitude="$nosystem_value"
+        if [[ "$nosystem_magnitude" == [+-]* ]]; then
+          nosystem_magnitude="${nosystem_magnitude[2,-1]}"
+        fi
+        if [[ "$nosystem_magnitude" == <-> &&
+              -n "${nosystem_magnitude//0/}" ]]; then
+          skip_system_config=1
+        fi
+        ;;
+    esac
+  fi
+  if (( ! skip_system_config )); then
+    if (( ${+GIT_CONFIG_SYSTEM} )); then
+      if [[ -n "$GIT_CONFIG_SYSTEM" ]]; then
+        config_paths+=("$GIT_CONFIG_SYSTEM")
+        config_bases+=("$resolution_base")
+      fi
+    else
+      system_paths=(
+        /etc/gitconfig
+        /Library/Developer/CommandLineTools/usr/etc/gitconfig
+        /Applications/Xcode.app/Contents/Developer/usr/etc/gitconfig
+        /opt/homebrew/etc/gitconfig
+        /usr/local/etc/gitconfig
+        /opt/local/etc/gitconfig
+      )
+      for config_path in "${system_paths[@]}"; do
+        config_paths+=("$config_path")
+        config_bases+=("$resolution_base")
+      done
+      git_executable="${commands[git]-}"
+      if [[ "$git_executable" == /* ]]; then
+        config_paths+=("${git_executable:A:h:h}/etc/gitconfig")
+        config_bases+=("$resolution_base")
+      fi
+    fi
+  fi
+
+  for (( config_index=1; config_index<=${#config_paths}; config_index++ )); do
+    config_path="${config_paths[$config_index]}"
+    resolution_base="${config_bases[$config_index]}"
+    resolved_path="$config_path"
+    [[ "$resolved_path" == /* ]] || \
+      resolved_path="${resolution_base%/}/${resolved_path}"
+    resolved_path="${resolved_path:A}"
+    [[ -n "${seen_paths[$resolved_path]-}" ]] && continue
+    seen_paths[$resolved_path]=1
+    _ai_candy_git_config_file_context_key "$resolved_path"
+    config_file_context="$REPLY"
+    (( ++path_index ))
+    external_context+="f${path_index}:${#config_file_context}:"
+    external_context+="$config_file_context"
+  done
+  REPLY="$external_context"
 }
 
 function _ai_candy_git_metadata_context_key() {
@@ -415,26 +614,33 @@ function _ai_candy_git_metadata_context_key() {
   local resolved_git_common_dir=""
   local common_config_context=""
   local worktree_config_context=""
+  local external_config_context=""
+  local effective_config_context=""
+  local discovery_context="${2-}"
+  local metadata_prefix=""
   local ceiling_entry=""
   local -a ceiling_entries ceiling_paths
   integer candidate_is_start=1
+  if (( $# < 2 )); then
+    _ai_candy_git_discovery_context_key
+    discovery_context="$REPLY"
+  fi
   _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
   _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
-  if (( _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND != EPOCHSECONDS )); then
-    _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH=()
-    _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND=$EPOCHSECONDS
-  fi
   REPLY=""
 
   if (( ${+GIT_DIR} )); then
+    _ai_candy_git_external_config_context_key "$physical_path" "$physical_path"
+    external_config_context="$REPLY"
+    metadata_prefix="g${#external_config_context}:${external_config_context}"
     if ! _ai_candy_resolve_git_dir "$physical_path"; then
-      REPLY="e0:"
+      REPLY="${metadata_prefix}e0:"
       return 0
     fi
     resolved_git_dir="$REPLY"
     if ! _ai_candy_resolve_git_common_dir \
          "$physical_path" "$resolved_git_dir"; then
-      REPLY="e${#resolved_git_dir}:${resolved_git_dir}"
+      REPLY="${metadata_prefix}e${#resolved_git_dir}:${resolved_git_dir}"
       return 0
     fi
     resolved_git_common_dir="$REPLY"
@@ -444,10 +650,17 @@ function _ai_candy_git_metadata_context_key() {
     _ai_candy_git_config_file_context_key \
       "${resolved_git_dir}/config.worktree"
     worktree_config_context="$REPLY"
-    REPLY="d${#resolved_git_dir}:${resolved_git_dir}"
+    _ai_candy_git_effective_config_context_key \
+      "$physical_path" "$physical_path" "$resolved_git_dir" \
+      "$resolved_git_common_dir" "$discovery_context" \
+      "$external_config_context" "$common_config_context" \
+      "$worktree_config_context"
+    effective_config_context="$REPLY"
+    REPLY="${metadata_prefix}d${#resolved_git_dir}:${resolved_git_dir}"
     REPLY+="m${#resolved_git_common_dir}:${resolved_git_common_dir}"
     REPLY+="c${#common_config_context}:${common_config_context}"
     REPLY+="w${#worktree_config_context}:${worktree_config_context}"
+    REPLY+="q${#effective_config_context}:${effective_config_context}"
     return 0
   fi
   if (( ${+GIT_CEILING_DIRECTORIES} )); then
@@ -466,6 +679,10 @@ function _ai_candy_git_metadata_context_key() {
     git_marker="${candidate_dir%/}/.git"
     [[ "$candidate_dir" == "/" ]] && git_marker="/.git"
     if [[ -e "$git_marker" || -L "$git_marker" ]]; then
+      _ai_candy_git_external_config_context_key \
+        "$candidate_dir" "$physical_path"
+      external_config_context="$REPLY"
+      metadata_prefix="g${#external_config_context}:${external_config_context}"
       if _ai_candy_resolve_git_dir "$candidate_dir"; then
         resolved_git_dir="$REPLY"
         if _ai_candy_resolve_git_common_dir \
@@ -477,11 +694,18 @@ function _ai_candy_git_metadata_context_key() {
           _ai_candy_git_config_file_context_key \
             "${resolved_git_dir}/config.worktree"
           worktree_config_context="$REPLY"
-          REPLY="r${#candidate_dir}:${candidate_dir}"
+          _ai_candy_git_effective_config_context_key \
+            "$physical_path" "$candidate_dir" "$resolved_git_dir" \
+            "$resolved_git_common_dir" "$discovery_context" \
+            "$external_config_context" "$common_config_context" \
+            "$worktree_config_context"
+          effective_config_context="$REPLY"
+          REPLY="${metadata_prefix}r${#candidate_dir}:${candidate_dir}"
           REPLY+="d${#resolved_git_dir}:${resolved_git_dir}"
           REPLY+="m${#resolved_git_common_dir}:${resolved_git_common_dir}"
           REPLY+="c${#common_config_context}:${common_config_context}"
           REPLY+="w${#worktree_config_context}:${worktree_config_context}"
+          REPLY+="q${#effective_config_context}:${effective_config_context}"
           return 0
         fi
       fi
@@ -490,7 +714,7 @@ function _ai_candy_git_metadata_context_key() {
          _ai_candy_read_git_metadata_file "$git_marker"; then
         marker_detail="$REPLY"
       fi
-      REPLY="i${#candidate_dir}:${candidate_dir}"
+      REPLY="${metadata_prefix}i${#candidate_dir}:${candidate_dir}"
       REPLY+="v${#marker_detail}:${marker_detail}"
       return 0
     fi
@@ -549,7 +773,8 @@ function _ai_candy_get_cached_git_root() {
   local current_directory_context="$REPLY"
   _ai_candy_git_discovery_context_key
   local discovery_context="$REPLY"
-  _ai_candy_git_metadata_context_key "$current_physical_dir"
+  _ai_candy_git_metadata_context_key \
+    "$current_physical_dir" "$discovery_context"
   local metadata_context="$REPLY"
   integer metadata_context_cacheable=$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE
   integer metadata_context_persistable=$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE
@@ -1371,240 +1596,6 @@ function _ai_candy_compute_pr_status_direct() {
 
   _AI_CANDY_PROMPT_GH_PR_CACHE="$_AI_CANDY_PP_PR"
   _AI_CANDY_PROMPT_GH_PR_CACHE_ID="$current_id"
-}
-
-typeset -g _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
-typeset -g _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
-typeset -g _AI_CANDY_SMART_PATH_FALLBACK=""
-typeset -g _AI_CANDY_SMART_PATH_NUM_REPOS=0
-typeset -g _AI_CANDY_SMART_PATH_TOTAL_LENGTH=0
-typeset -g _AI_CANDY_SMART_PATH_SEPARATOR="/"
-typeset -ga _AI_CANDY_SMART_PATH_SEGMENTS
-typeset -ga _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS
-typeset -g _AI_CANDY_SMART_PATH_RENDER_KEY=""
-typeset -g _AI_CANDY_SMART_PATH_RENDER_VALUE=""
-
-function _ai_candy_abbreviate_home_path() {
-  local candidate_path="$1"
-  local home_value="${HOME:-}"
-  REPLY="$candidate_path"
-
-  [[ "$home_value" == /* ]] || return 0
-  while [[ "$home_value" != "/" && "$home_value" == */ ]]; do
-    home_value="${home_value%/}"
-  done
-
-  if [[ "$candidate_path" == "$home_value" ]]; then
-    REPLY="~"
-  elif [[ "$home_value" == "/" && "$candidate_path" == /* ]]; then
-    REPLY="~${candidate_path}"
-  elif [[ "$candidate_path" == "${home_value}/"* ]]; then
-    integer suffix_start=$(( ${#home_value} + 1 ))
-    REPLY="~${candidate_path[$suffix_start,-1]}"
-  fi
-}
-
-function _ai_candy_smart_path_context_key() {
-  local home_value="${HOME:-}"
-  local git_root_value="${_AI_CANDY_PP_CACHED_GIT_ROOT:-NOT_GIT}"
-  _ai_candy_git_context_cache_key "$git_root_value"
-  local git_context="$REPLY"
-  REPLY="${#PWD}:${PWD}|${#home_value}:${home_value}|"
-  REPLY+="${#git_context}:${git_context}|${_AI_CANDY_PROMPT_PATH_SEP_MODE}|"
-  REPLY+="${_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION}"
-}
-
-function _ai_candy_prepare_smart_path_context() {
-  local current_time="$EPOCHSECONDS"
-  _ai_candy_smart_path_context_key
-  local context_key="$REPLY"
-  if [[ "$_AI_CANDY_SMART_PATH_CONTEXT_KEY" == "$context_key" ]] && \
-     _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP" \
-       "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
-    return 0
-  fi
-
-  _AI_CANDY_SMART_PATH_RENDER_KEY=""
-  _AI_CANDY_SMART_PATH_RENDER_VALUE=""
-  _AI_CANDY_SMART_PATH_CONTEXT_KEY="$context_key"
-  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP="$current_time"
-  _AI_CANDY_SMART_PATH_FALLBACK=""
-  _AI_CANDY_SMART_PATH_NUM_REPOS=0
-  _AI_CANDY_SMART_PATH_TOTAL_LENGTH=0
-  _AI_CANDY_SMART_PATH_SEPARATOR="/"
-  _AI_CANDY_SMART_PATH_SEGMENTS=()
-  _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS=()
-
-  _ai_candy_abbreviate_home_path "$PWD"
-  local full_path="$REPLY"
-  if [[ "$_AI_CANDY_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
-    _AI_CANDY_SMART_PATH_FALLBACK="$full_path"
-    _ai_candy_prompt_text_width "$full_path"
-    _AI_CANDY_SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
-    return 0
-  fi
-
-  _ai_candy_get_git_hierarchy
-  local hierarchy_str="$REPLY"
-  if [[ -z "$hierarchy_str" ]]; then
-    _AI_CANDY_SMART_PATH_FALLBACK="$full_path"
-    _ai_candy_prompt_text_width "$full_path"
-    _AI_CANDY_SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
-    return 0
-  fi
-
-  local hierarchy_separator="${_AI_CANDY_GIT_HIERARCHY_SEP:-:}"
-  local -a parts repos
-  parts=("${(@ps.$hierarchy_separator.)hierarchy_str}")
-  local subdir=""
-  integer num_parts=${#parts}
-  if (( num_parts > 0 )); then
-    subdir="${parts[-1]}"
-    repos=("${parts[@]:0:$(( num_parts - 1 ))}")
-  fi
-
-  _AI_CANDY_SMART_PATH_NUM_REPOS=${#repos}
-  local repo parent display_path segment
-  integer index total_length=2 has_space=0
-  for (( index=1; index<=_AI_CANDY_SMART_PATH_NUM_REPOS; index++ )); do
-    repo="${repos[index]}"
-    if (( index == 1 )); then
-      _ai_candy_abbreviate_home_path "$repo"
-      display_path="$REPLY"
-    else
-      parent="${repos[index-1]}"
-      display_path="${repo#$parent/}"
-    fi
-    _AI_CANDY_SMART_PATH_SEGMENTS+=("$display_path")
-    _ai_candy_prompt_text_width "$display_path"
-    _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
-  done
-  if [[ -n "$subdir" ]]; then
-    _AI_CANDY_SMART_PATH_SEGMENTS+=("$subdir")
-    _ai_candy_prompt_text_width "$subdir"
-    _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
-  fi
-
-  for index in "${_AI_CANDY_SMART_PATH_SEGMENT_LENGTHS[@]}"; do
-    (( total_length += index ))
-  done
-  (( ${#_AI_CANDY_SMART_PATH_SEGMENTS} > 1 )) && (( total_length += ${#_AI_CANDY_SMART_PATH_SEGMENTS} - 1 ))
-  _AI_CANDY_SMART_PATH_TOTAL_LENGTH="$total_length"
-
-  [[ "$PWD" == *" "* ]] && has_space=1
-  if (( ! has_space )); then
-    for segment in "${_AI_CANDY_SMART_PATH_SEGMENTS[@]}"; do
-      if [[ "$segment" == *" "* ]]; then
-        has_space=1
-        break
-      fi
-    done
-  fi
-  (( _AI_CANDY_PROMPT_PATH_SEP_MODE && ! has_space )) && _AI_CANDY_SMART_PATH_SEPARATOR=" "
-}
-
-function _ai_candy_render_plain_smart_path() {
-  local display_path="$1"
-  integer target_width="${2:-0}"
-  integer content_width tail_width display_width
-
-  _ai_candy_prompt_text_width "$display_path"
-  display_width="$REPLY"
-  if (( target_width > 0 && display_width + 2 > target_width )); then
-    content_width=$(( target_width - 2 ))
-    (( content_width < 0 )) && content_width=0
-    if (( content_width <= 2 )); then
-      _ai_candy_prompt_text_tail_by_width "$display_path" "$content_width"
-      display_path="$REPLY"
-    else
-      tail_width=$(( content_width - 2 ))
-      _ai_candy_prompt_text_tail_by_width "$display_path" "$tail_width"
-      display_path="..${REPLY}"
-    fi
-  fi
-
-  _ai_candy_prompt_escape_text "$display_path"
-  _AI_CANDY_PP_PATH="%{$fg[white]%}[${REPLY}]%{$reset_color%}"
-}
-
-function _ai_candy_compute_smart_path_direct() {
-  local use_short="${1:-full}"
-  integer requested_width="${2:-0}"
-  _ai_candy_prepare_smart_path_context
-
-  local prompt_bang="${options[promptbang]}"
-  local render_key="${#use_short}:${use_short}|${requested_width}|${prompt_bang}|${_AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP}|${#_AI_CANDY_SMART_PATH_CONTEXT_KEY}:${_AI_CANDY_SMART_PATH_CONTEXT_KEY}"
-  if [[ "$_AI_CANDY_SMART_PATH_RENDER_KEY" == "$render_key" ]]; then
-    _AI_CANDY_PP_PATH="$_AI_CANDY_SMART_PATH_RENDER_VALUE"
-    return 0
-  fi
-
-  integer total_length=$_AI_CANDY_SMART_PATH_TOTAL_LENGTH
-  integer target_width=0
-  if [[ "$use_short" == "short" ]]; then
-    if (( requested_width > 0 )); then
-      target_width=$requested_width
-    else
-      target_width=${_AI_CANDY_PATH_TARGET_WIDTH_SHORT:-40}
-    fi
-  elif (( requested_width > 0 && total_length > requested_width )); then
-    target_width=$requested_width
-  fi
-
-  if [[ -n "$_AI_CANDY_SMART_PATH_FALLBACK" ]]; then
-    _ai_candy_render_plain_smart_path "$_AI_CANDY_SMART_PATH_FALLBACK" "$target_width"
-    _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
-    _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
-    return 0
-  fi
-
-  local -a segments=("${_AI_CANDY_SMART_PATH_SEGMENTS[@]}")
-  local -a segment_lengths=("${_AI_CANDY_SMART_PATH_SEGMENT_LENGTHS[@]}")
-  integer total_segments=${#segments}
-  integer start_index=1
-
-  if (( target_width > 0 && total_length > target_width )); then
-    while (( start_index < total_segments && total_length > target_width )); do
-      (( total_length -= segment_lengths[start_index] + 1 ))
-      (( start_index++ ))
-      (( start_index == 2 )) && (( total_length += 3 ))
-    done
-  fi
-
-  if (( target_width > 0 && total_length > target_width )); then
-    _ai_candy_abbreviate_home_path "$PWD"
-    _ai_candy_render_plain_smart_path "$REPLY" "$target_width"
-    _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
-    _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
-    return 0
-  fi
-
-  local ESC=$'\e'
-  local result="["
-  local output_separator=""
-  local segment bg_num
-  integer index level
-  if (( start_index > 1 )); then
-    result+="%{$FG[$_AI_CANDY_CLR_TRUNCATED]%}..%{$reset_color%}${_AI_CANDY_SMART_PATH_SEPARATOR}"
-  fi
-
-  for (( index=start_index; index<=total_segments; index++ )); do
-    _ai_candy_prompt_escape_text "${segments[index]}"
-    segment="$REPLY"
-    if (( index <= _AI_CANDY_SMART_PATH_NUM_REPOS )); then
-      level=$(( index - start_index ))
-      (( level >= ${#_AI_CANDY_PATH_BG_COLORS} )) && level=$(( ${#_AI_CANDY_PATH_BG_COLORS} - 1 ))
-      bg_num="${_AI_CANDY_PATH_BG_COLORS[level+1]}"
-      result+="${output_separator}%{${ESC}[48;5;${bg_num}m${ESC}[38;5;16m%}${segment}%{$reset_color%}"
-    else
-      result+="${output_separator}%{$fg[white]%}${segment}%{$reset_color%}"
-    fi
-    output_separator="$_AI_CANDY_SMART_PATH_SEPARATOR"
-  done
-
-  _AI_CANDY_PP_PATH="${result}]"
-  _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
-  _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
 }
 
 # Optional-tool version status for the prompt

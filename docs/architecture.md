@@ -31,6 +31,17 @@ background task started in another shell from restoring stale data after `u`.
 SQLite is therefore optional persistence, not a requirement for a fast warm
 prompt. If the operation journal reaches its configured bound, a new
 persistence reservation is skipped rather than evicting an active reservation.
+Git configuration metadata participates in repository cache identities. On
+filesystems with whole-second timestamps, a bounded session-only content
+generation distinguishes in-place rewrites; configuration text is never
+persisted and is discarded on the next stable metadata observation. Git itself
+resolves the active `include.path` and `includeIf` graph. The theme retains only
+the discovered file paths and their bounded fingerprints, rescanning when a
+file or branch selector changes. Graph discovery is timeout- and size-bounded;
+an incomplete or unsupported graph disables caching for that context. A
+relative `GIT_CONFIG` path is resolved from the shell's physical working
+directory before internal `git -C` calls, so probes and their cache identities
+read the same file.
 
 Cache data is stored below:
 

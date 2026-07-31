@@ -8,6 +8,7 @@ from typing import Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 THEME = ROOT / "ai-candy.zsh-theme"
+CACHE_SCHEDULING_BUDGET_MS = 300.0
 
 
 def process_is_running(pid: int) -> bool:

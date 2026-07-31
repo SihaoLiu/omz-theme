@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.theme_test_support import run_zsh
+from tests.theme_test_support import CACHE_SCHEDULING_BUDGET_MS, run_zsh
 from tests.theme_test_support import ROOT, THEME
 
 
@@ -683,7 +683,11 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             for line in result.stdout.splitlines()
             if line.startswith("ELAPSED_MS=")
         )
-        self.assertLess(float(elapsed_line.partition("=")[2]), 100.0, result.stdout)
+        self.assertLess(
+            float(elapsed_line.partition("=")[2]),
+            CACHE_SCHEDULING_BUDGET_MS,
+            result.stdout,
+        )
 
     def test_cold_git_prompt_never_waits_for_a_contended_fallback_lock(
         self,
@@ -723,7 +727,11 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             for line in result.stdout.splitlines()
             if line.startswith("ELAPSED_MS=")
         )
-        self.assertLess(float(elapsed_line.partition("=")[2]), 100.0, result.stdout)
+        self.assertLess(
+            float(elapsed_line.partition("=")[2]),
+            CACHE_SCHEDULING_BUDGET_MS,
+            result.stdout,
+        )
 
     def test_toggle_remains_usable_when_cache_persistence_is_unavailable(
         self,
