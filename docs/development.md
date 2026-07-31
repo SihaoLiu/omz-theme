@@ -36,6 +36,7 @@ Regenerate the animated terminal demo:
 zsh scripts/generate-demo.zsh
 ```
 
+The generator requires Zsh and Git plus either a local VHS toolchain or Docker.
 Install VHS without `sudo` when Go is available:
 
 ```sh
@@ -43,16 +44,20 @@ GOBIN="$HOME/.local/bin" go install github.com/charmbracelet/vhs@v0.11.0
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The generator requires `vhs`, `ttyd`, and `ffmpeg` on `PATH`. The Go command
-above installs VHS itself; `ttyd` and `ffmpeg` remain separate dependencies.
-On macOS, `brew install vhs` installs the supported package and its runtime
-dependencies.
+The Go command above installs VHS itself; `ttyd` and `ffmpeg` remain separate
+dependencies. On macOS, `brew install vhs` installs the supported package and
+its runtime dependencies. When the complete local toolchain is unavailable,
+the generator uses a digest-pinned official VHS container. Docker may need
+network access to obtain that image once, but the renderer runs with its network
+disabled.
 
-Rendering uses a fresh synthetic fixture, an empty synthetic home, a minimal
-environment, and a fail-closed worker stub that rejects background work. VHS is
-a trusted host process and retains normal host filesystem and network access so
-it can resolve the requested user-installed font. The fresh render
-directory is removed after generation.
+Host Zsh first renders the real theme into ANSI snapshots in a fresh synthetic
+Git repository, an empty synthetic home, and a minimal environment. A
+fail-closed worker stub rejects background work. Local or containerized VHS then
+records a POSIX playback script, so the container does not need Zsh. A local VHS
+process retains normal host filesystem and network access so it can resolve the
+requested user-installed font; the container receives only the tape and fresh
+render directory. The render directory is removed after generation.
 
 `demo.gif` and the static `demo.png` frame are published only after text and
 binary privacy checks pass; generation fails closed when `strings` is missing.

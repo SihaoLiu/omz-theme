@@ -11,6 +11,7 @@ import time
 import unittest
 from pathlib import Path
 from typing import Optional
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -277,17 +278,27 @@ def run_interactive_zsh(
 
     output = bytearray()
     child_status: Optional[int] = None
+    pty_open = True
     timed_out = False
     deadline = time.monotonic() + timeout
     try:
         while child_status is None:
-            readable, _, _ = select.select([master_fd], [], [], 0.05)
-            if readable:
-                try:
-                    output.extend(os.read(master_fd, 4096))
-                except OSError as error:
-                    if error.errno != errno.EIO:
-                        raise
+            if pty_open:
+                readable, _, _ = select.select([master_fd], [], [], 0.05)
+                if readable:
+                    try:
+                        chunk = os.read(master_fd, 4096)
+                    except OSError as error:
+                        if error.errno != errno.EIO:
+                            raise
+                        pty_open = False
+                    else:
+                        if chunk:
+                            output.extend(chunk)
+                        else:
+                            pty_open = False
+            else:
+                time.sleep(0.01)
             waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
             if waited_pid == child_pid:
                 child_status = status
@@ -296,16 +307,19 @@ def run_interactive_zsh(
                 os.kill(child_pid, 9)
                 _, child_status = os.waitpid(child_pid, 0)
 
-        while True:
+        while pty_open:
             readable, _, _ = select.select([master_fd], [], [], 0)
             if not readable:
                 break
             try:
-                output.extend(os.read(master_fd, 4096))
+                chunk = os.read(master_fd, 4096)
             except OSError as error:
                 if error.errno != errno.EIO:
                     raise
                 break
+            if not chunk:
+                break
+            output.extend(chunk)
     finally:
         os.close(master_fd)
         if child_status is None:
@@ -365,6 +379,28 @@ class ThemeSafetyTest(unittest.TestCase):
 
     def test_zsh_syntax_is_valid(self) -> None:
         subprocess.run(["zsh", "-n", str(THEME)], check=True)
+
+    def test_interactive_pty_reader_stops_at_end_of_file(self) -> None:
+        with (
+            mock.patch.object(pty, "fork", return_value=(12345, 9)),
+            mock.patch.object(
+                select,
+                "select",
+                side_effect=[([9], [], []), ([9], [], []), ([], [], [])],
+            ) as select_mock,
+            mock.patch.object(os, "read", return_value=b"") as read_mock,
+            mock.patch.object(os, "waitpid", return_value=(12345, 0)),
+            mock.patch.object(os, "close"),
+        ):
+            returncode, output, timed_out = run_interactive_zsh(
+                ":", Path("unused-cache")
+            )
+
+        self.assertEqual(0, returncode)
+        self.assertEqual("", output)
+        self.assertFalse(timed_out)
+        self.assertEqual(1, read_mock.call_count)
+        self.assertEqual(1, select_mock.call_count)
 
     def test_source_has_no_raw_terminal_control_payload(self) -> None:
         self.assertNotIn(b"\x00", self.data)

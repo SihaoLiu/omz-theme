@@ -8,6 +8,7 @@ typeset -gr REPO_ROOT="${SCRIPT_DIR:h}"
 typeset -gr THEME_FILE="${REPO_ROOT}/ai-candy.zsh-theme"
 typeset -gr TAPE_FILE="${SCRIPT_DIR}/demo.tape"
 typeset -gr PRIVACY_MARKER_FILE="${SCRIPT_DIR}/privacy-markers.zsh"
+typeset -gr VHS_IMAGE="ghcr.io/charmbracelet/vhs@sha256:9d5fc3dc0c160b0fb1d2212baff07e6bdf3fa9438c504a3237484567302fcf93"
 typeset -gr ACTUAL_HOME="${HOME:-}"
 typeset -gr ACTUAL_XDG_DATA_HOME="${XDG_DATA_HOME:-}"
 typeset -gr ACTUAL_USER="${USER:-${LOGNAME:-${USERNAME:-}}}"
@@ -15,6 +16,8 @@ typeset -gr ACTUAL_HOST="$(hostname 2>/dev/null || true)"
 typeset -g _DEMO_PUBLICATION_ACTIVE=0
 typeset -g _DEMO_PUBLICATION_BACKUP_DIR=""
 typeset -g _DEMO_RENDERER_PID=""
+typeset -g _DEMO_DOCKER_COMMAND=""
+typeset -g _DEMO_DOCKER_CONTAINER_NAME=""
 typeset -ga _DEMO_RENDERER_PROCESS_TREE=()
 typeset -g _DEMO_CLEANUP_STARTED=0
 typeset -g _DEMO_CLEANUP_STATUS=0
@@ -66,6 +69,13 @@ source "${fixture_dir}/ai-candy.zsh-theme"
 typeset -g _DEMO_COLUMNS=160
 typeset -g _DEMO_TITLE="RICH / LONG"
 typeset -g _DEMO_MESSAGE=""
+typeset -g _DEMO_CAPTURE_DIR=""
+typeset -g _DEMO_FRAME_NAME="rich"
+
+if (( $# )); then
+  [[ "$1" == "--capture" && $# == 2 ]] || exit 2
+  _DEMO_CAPTURE_DIR="${2:A}"
+fi
 
 # A renderer regression must fail closed instead of reaching the network.
 function _ai_candy_start_registered_background_worker() {
@@ -110,7 +120,7 @@ function _demo_seed_path_context() {
 
 function _demo_compute_prompt() {
   setopt localoptions noerrexit noerrreturn
-  local pr_key="demo-remote|main"
+  local pr_key=""
   (( ++_AI_CANDY_PROMPT_RENDER_ID ))
   _AI_CANDY_USE_OMZ_ASYNC=0
   _AI_CANDY_LAST_EXIT_STATUS=0
@@ -128,22 +138,17 @@ function _demo_compute_prompt() {
   (( _AI_CANDY_PROMPT_EMOJI_MODE )) && \
     _AI_CANDY_PP_JOBS="$_AI_CANDY_SYM_JOBS" || _AI_CANDY_PP_JOBS="J"
 
-  _AI_CANDY_GIT_SNAPSHOT_VALID=1
-  _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE=1
-  _AI_CANDY_GIT_SNAPSHOT_BRANCH=main
-  _AI_CANDY_GIT_SNAPSHOT_UPSTREAM=origin/main
-  _AI_CANDY_GIT_SNAPSHOT_OID=0123456789abcdef
-  _AI_CANDY_GIT_SNAPSHOT_DIRTY=1
-  _AI_CANDY_GIT_SNAPSHOT_AHEAD=2
-  _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
-  _AI_CANDY_GIT_SNAPSHOT_STASH=1
-  _AI_CANDY_GIT_HIDE_INFO=0
-  _AI_CANDY_GIT_HIDE_DIRTY=0
+  _demo_seed_path_context
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
   ZSH_THEME_GIT_SHOW_UPSTREAM=1
+  _ai_candy_collect_git_snapshot
   _ai_candy_format_git_snapshot
   _AI_CANDY_PP_GIT_INFO="$_AI_CANDY_GIT_FORMATTED_INFO"
   _AI_CANDY_PP_GIT_EXT="$_AI_CANDY_GIT_FORMATTED_EXT"
   _AI_CANDY_PP_GIT_SPECIAL=""
+
+  _ai_candy_get_cached_git_remote_branch
+  pr_key="$REPLY"
 
   _AI_CANDY_GH_AUTH_MEM_CACHE=1
   _AI_CANDY_GH_AUTH_MEM_CACHE_TIME="$EPOCHSECONDS"
@@ -168,7 +173,6 @@ function _demo_compute_prompt() {
   _AI_CANDY_PP_SYSINFO_KERNEL_SHORT=", Linux-5.14"
   _ai_candy_sysinfo_set_emoji_variants
 
-  _demo_seed_path_context
   COLUMNS="$_DEMO_COLUMNS"
   _ai_candy_compute_layout_mode
 }
@@ -203,13 +207,21 @@ function _demo_render_prompt() {
   [[ -n "$second_line" ]] && builtin print -Pn -- "$second_line"
 }
 
-function _demo_show_frame() {
+function _demo_print_frame() {
   builtin print -n -- $'\e[2J\e[H'
   builtin print -r -- "AI Candy | $_DEMO_TITLE"
   builtin print -r -- "Workspace: ~/src/ai-candy | Identity: demo@workstation"
   [[ -n "$_DEMO_MESSAGE" ]] && builtin print -r -- "$_DEMO_MESSAGE"
   builtin print
   _demo_render_prompt
+}
+
+function _demo_show_frame() {
+  if [[ -n "$_DEMO_CAPTURE_DIR" ]]; then
+    _demo_print_frame >| "${_DEMO_CAPTURE_DIR}/${_DEMO_FRAME_NAME}.ansi"
+  else
+    _demo_print_frame
+  fi
 }
 
 function _demo_run_toggle() {
@@ -220,76 +232,167 @@ function _demo_run_toggle() {
   _ai_candy_cache_remove_path "$message_file"
 }
 
-_demo_seed_caches
-_demo_show_frame
-while IFS= builtin read -r demo_command; do
+function _demo_apply_command() {
+  local demo_command="$1"
   case "$demo_command" in
     e)
       _demo_run_toggle _ai_candy_prompt_toggle_emoji
       _DEMO_TITLE="PLAIN / LONG"
+      _DEMO_FRAME_NAME="plain"
       ;;
     p)
       _demo_run_toggle _ai_candy_prompt_toggle_path_sep
       _DEMO_TITLE="PLAIN / SLASH PATH"
+      _DEMO_FRAME_NAME="slash"
       ;;
     n)
       _demo_run_toggle _ai_candy_prompt_toggle_network
       _DEMO_TITLE="NETWORK OFF"
+      _DEMO_FRAME_NAME="offline"
       ;;
     a)
       _demo_run_toggle _ai_candy_prompt_toggle_ai
       _DEMO_TITLE="TOOLS OFF"
+      _DEMO_FRAME_NAME="no-tools"
       ;;
     o)
       _demo_run_toggle _ai_candy_prompt_toggle_os
       _DEMO_TITLE="OS OFF"
+      _DEMO_FRAME_NAME="no-os"
       ;;
     off)
       _demo_run_toggle _ai_candy_prompt_all_off
       _DEMO_TITLE="ALL OPTIONAL FEATURES OFF"
+      _DEMO_FRAME_NAME="off"
       ;;
     on)
       _demo_run_toggle _ai_candy_prompt_all_on
       _DEMO_COLUMNS=160
       _DEMO_TITLE="RICH / LONG"
+      _DEMO_FRAME_NAME="on"
       ;;
     compact)
       _DEMO_COLUMNS=112
       _DEMO_MESSAGE="Layout: COMPACT"
       _DEMO_TITLE="RICH / COMPACT"
+      _DEMO_FRAME_NAME="compact"
       ;;
     minimal)
       _DEMO_COLUMNS=72
       _DEMO_MESSAGE="Layout: MINIMAL"
       _DEMO_TITLE="RICH / MINIMAL"
+      _DEMO_FRAME_NAME="minimal"
       ;;
     clean)
       _DEMO_COLUMNS=160
       _DEMO_MESSAGE=""
       _DEMO_TITLE="RICH / LONG"
+      _DEMO_FRAME_NAME="clean"
       ;;
     quit|exit)
       builtin print
-      exit 0
+      return 1
       ;;
     *)
       _DEMO_MESSAGE="Commands: e p n a o off on compact minimal quit"
       ;;
   esac
   _demo_show_frame
-done
+}
+
+_demo_seed_caches
+_demo_show_frame
+if [[ -n "$_DEMO_CAPTURE_DIR" ]]; then
+  for demo_command in e p n a o off on compact minimal clean; do
+    _demo_apply_command "$demo_command"
+  done
+else
+  while IFS= builtin read -r demo_command; do
+    _demo_apply_command "$demo_command" || exit 0
+  done
+fi
 SESSION
   command chmod 700 "$temp_file"
   command mv -f "$temp_file" "$session_file"
+
+  local playback_file="${output_dir}/session.sh"
+  temp_file=$(command mktemp "${output_dir}/.session.XXXXXX")
+  command cat >| "$temp_file" <<'PLAYBACK'
+#!/bin/sh
+set -eu
+
+case $0 in
+  */*) script_dir=${0%/*} ;;
+  *) script_dir=. ;;
+esac
+fixture_dir=$(CDPATH= cd "$script_dir" && pwd -P)
+mode=rich
+
+show_frame() {
+  command cat "${fixture_dir}/${mode}.ansi"
+}
+
+show_frame
+while IFS= read -r demo_command; do
+  case "$demo_command" in
+    e) mode=plain ;;
+    p) mode=slash ;;
+    n) mode=offline ;;
+    a) mode=no-tools ;;
+    o) mode=no-os ;;
+    off) mode=off ;;
+    on) mode=on ;;
+    compact) mode=compact ;;
+    minimal) mode=minimal ;;
+    clean) mode=clean ;;
+    quit|exit)
+      printf '\n'
+      exit 0
+      ;;
+  esac
+  show_frame
+done
+PLAYBACK
+  command chmod 700 "$temp_file"
+  command mv -f "$temp_file" "$playback_file"
+}
+
+function _demo_text_contains_path_marker() {
+  local content="$1"
+  local marker="$2"
+  local before=""
+  integer next_index
+
+  while [[ "$content" == *${(b)marker}* ]]; do
+    before="${content%%${(b)marker}*}"
+    if [[ -z "$before" || "${before[-1]}" != [[:alnum:]] ]]; then
+      return 0
+    fi
+    next_index=$(( ${#before} + ${#marker} + 1 ))
+    content="${content[$next_index,-1]}"
+  done
+  return 1
 }
 
 function _demo_assert_private_text_absent() {
   local file="$1"
   local content="$(<"$file")"
   local marker=""
-  local -a markers=("$ACTUAL_HOME" "$ACTUAL_USER" "$ACTUAL_HOST" "$REPO_ROOT")
+  local -a path_markers=("$ACTUAL_HOME" "$REPO_ROOT")
+  local -a identity_markers=("$ACTUAL_USER" "$ACTUAL_HOST")
 
-  for marker in "${markers[@]}"; do
+  for marker in "${path_markers[@]}"; do
+    if (( ${#marker} < 4 )); then
+      print -u2 -r -- \
+        "Refusing to publish demo data with an unscannable identity marker."
+      return 1
+    fi
+    if _demo_text_contains_path_marker "$content" "$marker"; then
+      print -u2 -r -- "Refusing to publish demo data containing a local identity marker."
+      return 1
+    fi
+  done
+  for marker in "${identity_markers[@]}"; do
     [[ "$marker" == "root" || "$marker" == "demo" ]] && continue
     if (( ${#marker} < 4 )); then
       print -u2 -r -- \
@@ -348,6 +451,84 @@ function _demo_validate_directory_target() {
   REPLY="$directory"
 }
 
+function _demo_prepare_repository() {
+  setopt localoptions err_return
+  local workspace="${1:a}"
+  local git_command="" env_command="" initial_oid=""
+  local tracked_file="${workspace}/theme-demo.txt"
+  local -a git_environment
+  integer commit_index
+
+  git_command=$(builtin whence -p git 2>/dev/null) || git_command=""
+  env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
+  [[ -x "$git_command" && -x "$env_command" ]] || {
+    print -u2 -r -- "Git and env are required to prepare the demo fixture."
+    return 1
+  }
+  git_environment=(
+    "$env_command"
+    -i
+    HOME="${workspace:h:h}"
+    PATH=/usr/bin:/bin
+    LANG=C
+    LC_ALL=C
+    TZ=UTC
+    GIT_CONFIG_NOSYSTEM=1
+    GIT_CONFIG_GLOBAL=/dev/null
+  )
+
+  "${git_environment[@]}" "$git_command" init -q "$workspace"
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    symbolic-ref HEAD refs/heads/main
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    config user.name "Demo User"
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    config user.email "demo@example.invalid"
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    config commit.gpgsign false
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    remote add origin "https://example.invalid/demo/ai-candy.git"
+
+  builtin print -r -- "AI Candy demo fixture" >| "$tracked_file"
+  "${git_environment[@]}" "$git_command" -C "$workspace" add theme-demo.txt
+  "${git_environment[@]}" \
+    GIT_AUTHOR_NAME="Demo User" \
+    GIT_AUTHOR_EMAIL="demo@example.invalid" \
+    GIT_AUTHOR_DATE="2000-01-01T00:00:00Z" \
+    GIT_COMMITTER_NAME="Demo User" \
+    GIT_COMMITTER_EMAIL="demo@example.invalid" \
+    GIT_COMMITTER_DATE="2000-01-01T00:00:00Z" \
+    "$git_command" -C "$workspace" commit -q --no-gpg-sign -m "Initial demo"
+  initial_oid=$("${git_environment[@]}" "$git_command" -C "$workspace" \
+    rev-parse HEAD)
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    update-ref refs/remotes/origin/main "$initial_oid"
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    config branch.main.remote origin
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    config branch.main.merge refs/heads/main
+
+  for commit_index in 1 2; do
+    builtin print -r -- "Demo change ${commit_index}" >> "$tracked_file"
+    "${git_environment[@]}" "$git_command" -C "$workspace" add theme-demo.txt
+    "${git_environment[@]}" \
+      GIT_AUTHOR_NAME="Demo User" \
+      GIT_AUTHOR_EMAIL="demo@example.invalid" \
+      GIT_AUTHOR_DATE="2000-01-01T00:00:0${commit_index}Z" \
+      GIT_COMMITTER_NAME="Demo User" \
+      GIT_COMMITTER_EMAIL="demo@example.invalid" \
+      GIT_COMMITTER_DATE="2000-01-01T00:00:0${commit_index}Z" \
+      "$git_command" -C "$workspace" commit -q --no-gpg-sign \
+      -m "Demo change ${commit_index}"
+  done
+
+  builtin print -r -- "Stashed demo change" >> "$tracked_file"
+  "${git_environment[@]}" "$git_command" -C "$workspace" add theme-demo.txt
+  "${git_environment[@]}" "$git_command" -C "$workspace" \
+    stash push -q -m "Demo stash"
+  builtin print -r -- "Visible demo change" >> "$tracked_file"
+}
+
 function _demo_prepare_fixture() {
   setopt localoptions err_return
   local output_dir="${1:a}"
@@ -372,10 +553,12 @@ function _demo_prepare_fixture() {
   local fixture_data="${output_dir}/data"
   local fixture_tmp="${output_dir}/tmp"
   local fixture_workspace="${fixture_home}/src/ai-candy"
+  local env_command="" zsh_command=""
   command mkdir -p "$fixture_workspace" "$fixture_cache" "$fixture_config" \
     "$fixture_data" "$fixture_tmp"
   command chmod 700 "$fixture_home" "$fixture_cache" "$fixture_config" \
     "$fixture_data" "$fixture_tmp" "${fixture_home}/src" "$fixture_workspace"
+  _demo_prepare_repository "$fixture_workspace"
 
   local theme_copy="${output_dir}/ai-candy.zsh-theme"
   local theme_temp
@@ -389,7 +572,38 @@ function _demo_prepare_fixture() {
   for old_frame in "$output_dir"/*.ansi(N); do
     command rm -f "$old_frame"
   done
-  _demo_assert_private_text_absent "${output_dir}/session.zsh"
+  env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
+  zsh_command=$(builtin whence -p zsh 2>/dev/null) || zsh_command=""
+  [[ -x "$env_command" && -x "$zsh_command" ]] || {
+    print -u2 -r -- "Env and Zsh are required to capture the demo fixture."
+    return 1
+  }
+  command "$env_command" -i \
+    HOME="$fixture_home" \
+    XDG_DATA_HOME="$fixture_data" \
+    XDG_CACHE_HOME="$fixture_cache" \
+    XDG_CONFIG_HOME="$fixture_config" \
+    TMPDIR="$fixture_tmp" \
+    USER=demo \
+    LOGNAME=demo \
+    HOST=workstation \
+    HOSTNAME=workstation \
+    LANG=C \
+    LC_ALL=C \
+    TZ=UTC \
+    TERM=xterm-256color \
+    PATH=/usr/bin:/bin \
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null \
+    "$zsh_command" "${output_dir}/session.zsh" --capture "$output_dir"
+  local fixture_file
+  for fixture_file in "$output_dir"/*.ansi(N); do
+    command chmod 600 "$fixture_file"
+  done
+  for fixture_file in "$output_dir"/*.ansi(N) \
+      "${output_dir}/session.zsh" "${output_dir}/session.sh"; do
+    _demo_assert_private_text_absent "$fixture_file"
+  done
 }
 
 function _demo_collect_renderer_process_tree() {
@@ -434,13 +648,36 @@ function _demo_collect_renderer_process_tree() {
   done
 }
 
+function _demo_remove_docker_container() {
+  local docker_command="$_DEMO_DOCKER_COMMAND"
+  local container_name="$_DEMO_DOCKER_CONTAINER_NAME"
+  integer attempt
+
+  [[ -x "$docker_command" && -n "$container_name" ]] || return 0
+  for attempt in {1..6}; do
+    command "$docker_command" rm -f "$container_name" \
+      >/dev/null 2>&1 && return 0
+    if (( ${+builtins[zselect]} )); then
+      builtin zselect -t 5 2>/dev/null || true
+    else
+      command sleep 0.05
+    fi
+  done
+  return 1
+}
+
 function _demo_stop_renderer() {
   setopt localoptions noerrexit
   local renderer_pid="$_DEMO_RENDERER_PID"
   local process_pid=""
   integer attempt previous_count=-1 index
 
-  [[ "$renderer_pid" == <-> ]] || return 0
+  _demo_remove_docker_container || true
+  if [[ "$renderer_pid" != <-> ]]; then
+    _DEMO_DOCKER_COMMAND=""
+    _DEMO_DOCKER_CONTAINER_NAME=""
+    return 0
+  fi
   builtin kill -STOP "$renderer_pid" 2>/dev/null || true
   for attempt in {1..4}; do
     _demo_collect_renderer_process_tree "$renderer_pid"
@@ -455,7 +692,10 @@ function _demo_stop_renderer() {
       2>/dev/null || true
   done
   builtin wait "$renderer_pid" 2>/dev/null || true
+  _demo_remove_docker_container || true
   _DEMO_RENDERER_PID=""
+  _DEMO_DOCKER_COMMAND=""
+  _DEMO_DOCKER_CONTAINER_NAME=""
   _DEMO_RENDERER_PROCESS_TREE=()
   return 0
 }
@@ -479,39 +719,68 @@ function _demo_render_with_vhs() {
   setopt localoptions err_return
   local render_dir="${1:a}"
   local vhs_command="" ttyd_command="" ffmpeg_command=""
-  local env_command=""
+  local docker_command="" env_command=""
   local font_home="${ACTUAL_HOME:-${render_dir}/home}"
   local -a render_environment
+  integer renderer_status=0
 
   vhs_command=$(builtin whence -p vhs 2>/dev/null) || vhs_command=""
   ttyd_command=$(builtin whence -p ttyd 2>/dev/null) || ttyd_command=""
   ffmpeg_command=$(builtin whence -p ffmpeg 2>/dev/null) || ffmpeg_command=""
-  [[ -x "$vhs_command" && -x "$ttyd_command" && -x "$ffmpeg_command" ]] || {
-    print -u2 -r -- "Install VHS, ttyd, and ffmpeg to generate demo assets."
+  if [[ -x "$vhs_command" && -x "$ttyd_command" && -x "$ffmpeg_command" ]]; then
+    env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
+    [[ -x "$env_command" ]] || {
+      print -u2 -r -- "The env command is required for isolated rendering."
+      return 1
+    }
+    render_environment=(
+      HOME="$font_home"
+      ZDOTDIR="${render_dir}/config"
+      XDG_CACHE_HOME="${render_dir}/cache"
+      XDG_CONFIG_HOME="${render_dir}/config"
+      USER=demo
+      LOGNAME=demo
+      HOST=workstation
+      HOSTNAME=workstation
+      LANG=C
+      TERM="${TERM:-xterm-256color}"
+      PATH="${PATH:-/usr/bin:/bin}"
+    )
+    [[ -n "$ACTUAL_XDG_DATA_HOME" ]] && \
+      render_environment+=(XDG_DATA_HOME="$ACTUAL_XDG_DATA_HOME")
+    _demo_run_renderer_command "$render_dir" "$env_command" -i \
+      "${render_environment[@]}" "$vhs_command" "$TAPE_FILE"
+    return $?
+  fi
+
+  docker_command=$(builtin whence -p docker 2>/dev/null) || docker_command=""
+  [[ -x "$docker_command" ]] || {
+    print -u2 -r -- \
+      "Install VHS with ttyd and ffmpeg, or install Docker."
     return 1
   }
-  env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
-  [[ -x "$env_command" ]] || {
-    print -u2 -r -- "The env command is required for isolated rendering."
-    return 1
-  }
-  render_environment=(
-    HOME="$font_home"
-    ZDOTDIR="${render_dir}/config"
-    XDG_CACHE_HOME="${render_dir}/cache"
-    XDG_CONFIG_HOME="${render_dir}/config"
-    USER=demo
-    LOGNAME=demo
-    HOST=workstation
-    HOSTNAME=workstation
-    LANG=C
-    TERM="${TERM:-xterm-256color}"
-    PATH="${PATH:-/usr/bin:/bin}"
-  )
-  [[ -n "$ACTUAL_XDG_DATA_HOME" ]] && \
-    render_environment+=(XDG_DATA_HOME="$ACTUAL_XDG_DATA_HOME")
-  _demo_run_renderer_command "$render_dir" "$env_command" -i \
-    "${render_environment[@]}" "$vhs_command" "$TAPE_FILE"
+  _DEMO_DOCKER_COMMAND="$docker_command"
+  _DEMO_DOCKER_CONTAINER_NAME="ai-candy-${render_dir:t}"
+  _demo_run_renderer_command "$render_dir" "$docker_command" run --rm \
+    --name "$_DEMO_DOCKER_CONTAINER_NAME" \
+    --network none \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/work/home \
+    -e XDG_DATA_HOME=/work/data \
+    -e XDG_CACHE_HOME=/work/cache \
+    -e XDG_CONFIG_HOME=/work/config \
+    -e USER=demo \
+    -e LOGNAME=demo \
+    -e HOST=workstation \
+    -e HOSTNAME=workstation \
+    -e LANG=C \
+    -v "${TAPE_FILE}:/tape/demo.tape:ro" \
+    -v "${render_dir}:/work:rw" \
+    -w /work \
+    "$VHS_IMAGE" /tape/demo.tape || renderer_status=$?
+  _DEMO_DOCKER_COMMAND=""
+  _DEMO_DOCKER_CONTAINER_NAME=""
+  return "$renderer_status"
 }
 
 function _demo_remove_publication_backup() {

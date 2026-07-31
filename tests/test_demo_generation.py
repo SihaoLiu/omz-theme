@@ -52,6 +52,20 @@ def private_markers() -> list[str]:
     return result.stdout.splitlines()
 
 
+def text_contains_path_marker(content: str, marker: str) -> bool:
+    search_start = 0
+    while True:
+        marker_index = content.find(marker, search_start)
+        if marker_index < 0:
+            return False
+        if marker_index == 0:
+            return True
+        previous = content[marker_index - 1]
+        if not previous.isalnum():
+            return True
+        search_start = marker_index + len(marker)
+
+
 class DemoGenerationTest(unittest.TestCase):
     def test_renderer_must_capture_the_real_theme_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -599,6 +613,100 @@ class DemoGenerationTest(unittest.TestCase):
             self.assertNotEqual(0, prepared.returncode)
             self.assertIn("identity marker", prepared.stderr)
 
+    def test_fixture_ignores_ambient_git_repository_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture_dir = root / "fixture"
+            outside = root / "outside"
+            subprocess.run(["git", "init", "-q", str(outside)], check=True)
+            (outside / "outside.txt").write_text("outside\n", encoding="ascii")
+            subprocess.run(["git", "-C", str(outside), "add", "outside.txt"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(outside),
+                    "-c",
+                    "user.name=Outside User",
+                    "-c",
+                    "user.email=outside@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "Outside commit",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(outside), "branch", "-m", "private"],
+                check=True,
+            )
+
+            prepared = subprocess.run(
+                [
+                    shutil.which("zsh") or "zsh",
+                    str(GENERATOR),
+                    "--prepare-only",
+                    str(fixture_dir),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={
+                    **os.environ,
+                    "GIT_DIR": str(outside / ".git"),
+                    "GIT_WORK_TREE": str(outside),
+                },
+                check=False,
+            )
+
+            self.assertEqual(0, prepared.returncode, prepared.stderr)
+            workspace = fixture_dir / "home" / "src" / "ai-candy"
+            self.assertEqual(
+                "true",
+                subprocess.run(
+                    ["git", "-C", str(workspace), "rev-parse", "--is-inside-work-tree"],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                ).stdout.strip(),
+            )
+            self.assertFalse((outside / "theme-demo.txt").exists())
+            snapshot = (fixture_dir / "rich.ansi").read_text(encoding="utf-8")
+            self.assertIn("origin/main", snapshot)
+            self.assertNotIn("private", snapshot)
+
+    def test_root_home_does_not_match_a_relative_demo_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture_dir = Path(tmp) / "fixture"
+            prepared = subprocess.run(
+                [
+                    shutil.which("zsh") or "zsh",
+                    str(GENERATOR),
+                    "--prepare-only",
+                    str(fixture_dir),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={
+                    **os.environ,
+                    "HOME": "/root",
+                    "USER": "root",
+                    "LOGNAME": "root",
+                },
+                check=False,
+            )
+
+            self.assertEqual(0, prepared.returncode, prepared.stderr)
+            self.assertIn(
+                "repo/root/submodule",
+                (fixture_dir / "slash.ansi").read_text(encoding="utf-8"),
+            )
+
     def test_local_renderer_preserves_font_home_and_isolates_shell_config(
         self,
     ) -> None:
@@ -671,16 +779,20 @@ printf 'png\\n' > demo.png
             self.assertIn("HOST=workstation", captured)
             self.assertIn("PRIVATE=unset", captured)
 
-    def test_missing_local_renderer_dependencies_do_not_fall_back_to_docker(self) -> None:
+    def test_missing_local_renderer_dependencies_use_offline_container(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             fake_bin = project / "bin"
             scripts_dir = copy_demo_sources(project)
             fake_bin.mkdir()
-            capture = project / "docker.called"
+            capture = project / "docker.args"
             docker = fake_bin / "docker"
             docker.write_text(
-                f"#!/bin/sh\nprintf 'called\\n' > '{capture}'\nexit 99\n",
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$@\" > '{capture}'\n"
+                f"{VALID_DEMO_OUTPUT}"
+                "printf 'gif\\n' > demo.gif\n"
+                "printf 'png\\n' > demo.png\n",
                 encoding="ascii",
             )
             docker.chmod(0o755)
@@ -699,9 +811,104 @@ printf 'png\\n' > demo.png
                 timeout=8,
             )
 
+            self.assertEqual(0, generated.returncode, generated.stderr)
+            arguments = capture.read_text(encoding="ascii").splitlines()
+            self.assertEqual("run", arguments[0])
+            self.assertIn("--rm", arguments)
+            network_index = arguments.index("--network")
+            self.assertEqual("none", arguments[network_index + 1])
+            self.assertTrue(
+                any(
+                    argument.startswith("ghcr.io/charmbracelet/vhs@sha256:")
+                    for argument in arguments
+                )
+            )
+
+    def test_termination_removes_the_named_container_renderer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            fake_bin = project / "bin"
+            scripts_dir = copy_demo_sources(project)
+            fake_bin.mkdir()
+            ready_file = project / "docker.ready"
+            renderer_pid_file = project / "docker.pid"
+            child_pid_file = project / "docker-child.pid"
+            run_name_file = project / "docker-run.name"
+            removed_name_file = project / "docker-removed.name"
+            docker = fake_bin / "docker"
+            docker.write_text(
+                "#!/bin/sh\n"
+                "action=$1\n"
+                "shift\n"
+                'case "$action" in\n'
+                "  run)\n"
+                "    container_name=\n"
+                '    while [ "$#" -gt 0 ]; do\n'
+                '      if [ "$1" = --name ]; then\n'
+                "        container_name=$2\n"
+                "        shift 2\n"
+                "      else\n"
+                "        shift\n"
+                "      fi\n"
+                "    done\n"
+                f"    printf '%s\\n' \"$container_name\" > '{run_name_file}'\n"
+                f"    printf '%s\\n' \"$$\" > '{renderer_pid_file}'\n"
+                "    sleep 30 &\n"
+                f"    printf '%s\\n' \"$!\" > '{child_pid_file}'\n"
+                f"    printf 'ready\\n' > '{ready_file}'\n"
+                "    wait\n"
+                "    ;;\n"
+                "  rm)\n"
+                f"    printf '%s\\n' \"$*\" > '{removed_name_file}'\n"
+                "    ;;\n"
+                "esac\n",
+                encoding="ascii",
+            )
+            docker.chmod(0o755)
+
+            generated = subprocess.Popen(
+                ["zsh", str(scripts_dir / GENERATOR.name)],
+                cwd=project,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**os.environ, "PATH": f"{fake_bin}:/usr/bin:/bin"},
+            )
+            renderer_pid = None
+            child_pid = None
+            try:
+                deadline = time.monotonic() + 5
+                while not ready_file.exists() and generated.poll() is None:
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(0.01)
+                self.assertTrue(ready_file.exists(), "container renderer did not start")
+                renderer_pid = int(renderer_pid_file.read_text(encoding="ascii"))
+                child_pid = int(child_pid_file.read_text(encoding="ascii"))
+
+                started = time.monotonic()
+                os.kill(generated.pid, signal.SIGTERM)
+                stdout, stderr = generated.communicate(timeout=3)
+                self.assertLess(time.monotonic() - started, 1.5, f"{stdout}\n{stderr}")
+                deadline = time.monotonic() + 1
+                while (
+                    process_is_running(renderer_pid) or process_is_running(child_pid)
+                ) and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertFalse(process_is_running(renderer_pid))
+                self.assertFalse(process_is_running(child_pid))
+            finally:
+                if generated.poll() is None:
+                    generated.kill()
+                for process_pid in (renderer_pid, child_pid):
+                    if process_pid is not None and process_is_running(process_pid):
+                        os.kill(process_pid, signal.SIGKILL)
+                generated.communicate(timeout=2)
+
+            run_name = run_name_file.read_text(encoding="ascii").strip()
+            removed = removed_name_file.read_text(encoding="ascii").strip()
+            self.assertRegex(run_name, r"^ai-candy-demo-render\.[A-Za-z0-9]+$")
+            self.assertEqual(f"-f {run_name}", removed)
             self.assertNotEqual(0, generated.returncode)
-            self.assertIn("VHS, ttyd, and ffmpeg", generated.stderr)
-            self.assertFalse(capture.exists())
 
     def test_binary_privacy_scan_fails_closed_without_strings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -730,9 +937,11 @@ printf 'png\\n' > demo.png
                 "cat",
                 "cp",
                 "env",
+                "git",
                 "mv",
                 "rm",
                 "id",
+                "zsh",
             ):
                 executable = shutil.which(name)
                 self.assertIsNotNone(executable, name)
@@ -766,8 +975,10 @@ printf 'png\\n' > demo.png
             self.assertEqual(0, prepared.returncode, prepared.stderr)
 
             session = fixture_dir / "session.zsh"
+            playback_session = fixture_dir / "session.sh"
             fixture_theme = fixture_dir / "ai-candy.zsh-theme"
             self.assertTrue(session.is_file())
+            self.assertTrue(playback_session.is_file())
             self.assertTrue(fixture_theme.is_file())
             self.assertTrue((fixture_dir / "data").is_dir())
             self.assertEqual(
@@ -775,6 +986,7 @@ printf 'png\\n' > demo.png
                 fixture_theme.read_bytes(),
             )
             subprocess.run(["zsh", "-n", str(session)], check=True)
+            subprocess.run(["sh", "-n", str(playback_session)], check=True)
             session_text = session.read_text(encoding="ascii")
             self.assertIn("ai-candy.zsh-theme", session_text)
             self.assertIn("PROMPT", session_text)
@@ -785,7 +997,78 @@ printf 'png\\n' > demo.png
             self.assertIn(
                 'export XDG_DATA_HOME="${fixture_dir}/data"', session_text
             )
-            self.assertEqual([], list(fixture_dir.glob("*.ansi")))
+            self.assertEqual(
+                {
+                    "clean.ansi",
+                    "compact.ansi",
+                    "minimal.ansi",
+                    "no-os.ansi",
+                    "no-tools.ansi",
+                    "off.ansi",
+                    "offline.ansi",
+                    "on.ansi",
+                    "plain.ansi",
+                    "rich.ansi",
+                    "slash.ansi",
+                },
+                {path.name for path in fixture_dir.glob("*.ansi")},
+            )
+
+            workspace = fixture_dir / "home" / "src" / "ai-candy"
+            repository = subprocess.run(
+                ["git", "-C", str(workspace), "rev-parse", "--is-inside-work-tree"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(0, repository.returncode, repository.stderr)
+            self.assertEqual("true", repository.stdout.strip())
+            self.assertEqual(
+                "https://example.invalid/demo/ai-candy.git",
+                subprocess.run(
+                    ["git", "-C", str(workspace), "remote", "get-url", "origin"],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    check=True,
+                ).stdout.strip(),
+            )
+            self.assertEqual(
+                "2",
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(workspace),
+                        "rev-list",
+                        "--count",
+                        "origin/main..HEAD",
+                    ],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    check=True,
+                ).stdout.strip(),
+            )
+            self.assertEqual(
+                1,
+                len(
+                    subprocess.run(
+                        ["git", "-C", str(workspace), "stash", "list"],
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        check=True,
+                    ).stdout.splitlines()
+                ),
+            )
+            self.assertNotEqual(
+                "",
+                subprocess.run(
+                    ["git", "-C", str(workspace), "status", "--porcelain"],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    check=True,
+                ).stdout,
+            )
 
             recorded = subprocess.run(
                 [str(session)],
@@ -810,18 +1093,34 @@ printf 'png\\n' > demo.png
             self.assertIn("Layout: COMPACT", recorded.stdout)
             self.assertIn("Layout: MINIMAL", recorded.stdout)
 
+            replayed = subprocess.run(
+                [str(playback_session)],
+                cwd=fixture_dir,
+                input="e\np\nn\na\no\noff\non\ncompact\nminimal\nquit\n",
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(0, replayed.returncode, replayed.stderr)
+            self.assertIn("demo@workstation", replayed.stdout)
+            self.assertIn("Network mode: OFF", replayed.stdout)
+            self.assertIn("Layout: MINIMAL", replayed.stdout)
+
             fixture_text = "\n".join(
                 path.read_text(encoding="utf-8", errors="strict")
                 for path in sorted(fixture_dir.iterdir())
                 if path.is_file() and path.name != "ai-candy.zsh-theme"
             )
-            forbidden = [
-                str(Path.home()),
-                os.environ.get("USER", ""),
-                socket.gethostname(),
-                *private_markers(),
+            for marker in (str(Path.home()), str(ROOT)):
+                if len(marker) >= 4:
+                    self.assertFalse(
+                        text_contains_path_marker(fixture_text, marker), marker
+                    )
+            identity_markers = [
+                os.environ.get("USER", ""), socket.gethostname(), *private_markers()
             ]
-            for marker in forbidden:
+            for marker in identity_markers:
                 if len(marker) >= 4 and marker not in {"root", "demo"}:
                     self.assertNotIn(marker, fixture_text)
             self.assertNotIn("checkip.amazonaws.com", session_text)
@@ -835,8 +1134,8 @@ printf 'png\\n' > demo.png
         tape = TAPE.read_text(encoding="utf-8")
         self.assertIn("Output demo.gif", tape)
         self.assertIn("Screenshot demo.png", tape)
-        self.assertIn('Set Shell "zsh"', tape)
-        self.assertIn('Type "exec ./session.zsh"', tape)
+        self.assertIn('Set Shell "bash"', tape)
+        self.assertIn('Type "exec ./session.sh"', tape)
         self.assertIn("Set LetterSpacing 0", tape)
 
     def test_committed_demo_assets_have_expected_formats(self) -> None:

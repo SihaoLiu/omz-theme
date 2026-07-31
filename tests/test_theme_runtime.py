@@ -382,7 +382,8 @@ for index in {1..60}; do
   _ai_candy_hex_encode "value${index}"
   hex_value="$REPLY"
   _ai_candy_cache_update_line_by_prefix \
-    "$cache_file" "${hex_key}|" "${hex_key}|${hex_value}|${EPOCHSECONDS}" &
+    "$cache_file" "${hex_key}|" "${hex_key}|${hex_value}|${EPOCHSECONDS}" \
+    1000 &
 done
 wait
 lines=("${(@f)$(<"$cache_file")}")

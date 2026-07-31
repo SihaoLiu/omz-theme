@@ -85,6 +85,22 @@ def public_text_files(root: Path = ROOT) -> list[Path]:
 
 
 class DistributionTest(unittest.TestCase):
+    def test_handwritten_code_files_stay_within_the_hard_size_limit(self) -> None:
+        code_files = [
+            INSTALLER,
+            *sorted((ROOT / "scripts").glob("*.zsh")),
+            *sorted((ROOT / "src").glob("*.zsh")),
+            *sorted((ROOT / "tests").glob("*.py")),
+            ZSH_54_SMOKE,
+        ]
+
+        oversized = {}
+        for path in code_files:
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            if line_count > 1800:
+                oversized[path.relative_to(ROOT).as_posix()] = line_count
+        self.assertEqual({}, oversized)
+
     def test_supported_zsh_floor_matches_the_compatibility_image(self) -> None:
         bootstrap = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="ascii")
         readme = (ROOT / "README.md").read_text(encoding="ascii")
