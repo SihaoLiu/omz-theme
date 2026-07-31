@@ -34,7 +34,7 @@ Required:
 Optional integrations:
 
 - `git` with porcelain-v2 support for repository status and path hierarchy;
-  stash counts fall back to the reflog on Git versions older than 2.35
+  stash counts are derived from the reflog and cached by its metadata
 - `sqlite3` for the persistent cache backend
 - `curl` for public IP and tool update checks
 - `gh` for GitHub identity, pull request, and CI status

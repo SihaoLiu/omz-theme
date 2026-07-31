@@ -14,6 +14,7 @@ PRIVACY_MARKERS = ROOT / "scripts" / "privacy-markers.zsh"
 THEME = ROOT / "ai-candy.zsh-theme"
 COMPATIBILITY_WORKFLOW = ROOT / ".github" / "workflows" / "compatibility.yml"
 ZSH_54_SMOKE = ROOT / "tests" / "zsh54-smoke.zsh"
+INSTALLER = ROOT / "install.sh"
 INSTALLATION_DOC = ROOT / "docs" / "installation.md"
 CONFIGURATION_DOC = ROOT / "docs" / "configuration.md"
 ARCHITECTURE_DOC = ROOT / "docs" / "architecture.md"
@@ -405,6 +406,18 @@ exec zsh "$3"
 
                     self.assertNotEqual(0, result.returncode)
                     self.assertFalse(marker.exists())
+
+    def test_installation_docs_cover_every_public_installer_option(self) -> None:
+        installer = INSTALLER.read_text(encoding="ascii")
+        installation = INSTALLATION_DOC.read_text(encoding="ascii")
+        usage_match = re.search(r'Usage: install\.sh ([^"]+)', installer)
+
+        self.assertIsNotNone(usage_match)
+        options = re.findall(r"\[(--[a-z-]+)\]", usage_match.group(1))
+        self.assertTrue(options)
+        for option in options:
+            with self.subTest(option=option):
+                self.assertIn(option, installation)
 
     def test_configuration_docs_document_that_short_aliases_are_opt_in(self) -> None:
         configuration = CONFIGURATION_DOC.read_text(encoding="utf-8")

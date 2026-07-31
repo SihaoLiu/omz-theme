@@ -24,6 +24,15 @@ To prevent the installer from creating a missing `.zshrc`:
 sh -c 'installer=$(curl -fsSL https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh) && [ -n "$installer" ] && exec sh -c "$installer" sh "$@"' sh --no-modify-zshrc
 ```
 
+## Confirm Before Installing
+
+To require an explicit `CONFIRM` before installing or replacing a theme whose
+content differs from the downloaded release:
+
+```sh
+sh -c 'installer=$(curl -fsSL https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh) && [ -n "$installer" ] && exec sh -c "$installer" sh "$@"' sh --confirm
+```
+
 ## Mirrors And Reproducible Installs
 
 `AI_CANDY_THEME_URL` may be exported before running the installer to use a

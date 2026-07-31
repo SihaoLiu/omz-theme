@@ -875,7 +875,7 @@ print -r -- "STATE=${state}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("STATE=alive\n", result.stdout)
 
-    def test_background_cleanup_does_not_resume_a_root_that_loses_identity(
+    def test_background_cleanup_resumes_a_root_stopped_before_identity_loss(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -888,6 +888,7 @@ function _test_background_worker() {
     builtin print -r -- resumed >| "$RESUMED_FILE"
     exit 0
   }
+  builtin print -r -- ready >| "$READY_FILE"
   while true; do
     zselect -t 100
   done
@@ -895,6 +896,11 @@ function _test_background_worker() {
 _test_background_worker </dev/null &>/dev/null &!
 worker_pid=$!
 _ai_candy_register_background_pid "$worker_pid" || return 70
+for attempt in {1..100}; do
+  [[ -f "$READY_FILE" ]] && break
+  zselect -t 1
+done
+[[ -f "$READY_FILE" ]] || return 71
 functions[_identity_before_failure]="${functions[_ai_candy_background_pid_identity]}"
 typeset -gi IDENTITY_CALLS=0
 function _ai_candy_background_pid_identity() {
@@ -903,18 +909,25 @@ function _ai_candy_background_pid_identity() {
   _identity_before_failure "$@"
 }
 _ai_candy_stop_registered_background_jobs
+for attempt in {1..100}; do
+  [[ -f "$RESUMED_FILE" ]] && break
+  zselect -t 1
+done
 [[ -f "$RESUMED_FILE" ]] && state=resumed || state=stopped
 builtin kill -KILL "$worker_pid" 2>/dev/null || true
 builtin wait "$worker_pid" 2>/dev/null || true
 builtin print -r -- "STATE=${state}"
 """,
                 cache_home=root / "cache",
-                env={"RESUMED_FILE": str(root / "resumed")},
+                env={
+                    "READY_FILE": str(root / "ready"),
+                    "RESUMED_FILE": str(root / "resumed"),
+                },
                 timeout=3,
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("STATE=stopped\n", result.stdout)
+        self.assertEqual("STATE=resumed\n", result.stdout)
 
     def test_timeout_runner_localizes_hostile_shell_options(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,6 +4,7 @@ import os
 import pty
 import re
 import select
+import shutil
 import subprocess
 import tempfile
 import time
@@ -249,6 +250,75 @@ print -r -- READY
     )
 
 
+def run_interactive_zsh(
+    script: str,
+    cache_home: Path,
+    *,
+    environment: Optional[dict[str, str]] = None,
+    timeout: float = 5,
+) -> tuple[int, str, bool]:
+    child_environment = {
+        **os.environ,
+        "XDG_CACHE_HOME": str(cache_home),
+        "TERM": "dumb",
+        **(environment or {}),
+    }
+    child_pid, master_fd = pty.fork()
+    if child_pid == 0:
+        try:
+            os.chdir(ROOT)
+            os.execvpe(
+                "zsh",
+                ["zsh", "-dfi", "-c", script, "zsh", str(THEME)],
+                child_environment,
+            )
+        finally:
+            os._exit(127)
+
+    output = bytearray()
+    child_status: Optional[int] = None
+    timed_out = False
+    deadline = time.monotonic() + timeout
+    try:
+        while child_status is None:
+            readable, _, _ = select.select([master_fd], [], [], 0.05)
+            if readable:
+                try:
+                    output.extend(os.read(master_fd, 4096))
+                except OSError as error:
+                    if error.errno != errno.EIO:
+                        raise
+            waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
+            if waited_pid == child_pid:
+                child_status = status
+            elif time.monotonic() >= deadline:
+                timed_out = True
+                os.kill(child_pid, 9)
+                _, child_status = os.waitpid(child_pid, 0)
+
+        while True:
+            readable, _, _ = select.select([master_fd], [], [], 0)
+            if not readable:
+                break
+            try:
+                output.extend(os.read(master_fd, 4096))
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                break
+    finally:
+        os.close(master_fd)
+        if child_status is None:
+            os.kill(child_pid, 9)
+            _, child_status = os.waitpid(child_pid, 0)
+
+    return (
+        os.waitstatus_to_exitcode(child_status),
+        output.decode("utf-8", errors="replace"),
+        timed_out,
+    )
+
+
 def render_first_prompt(cache_home: Path, bin_dir: Optional[Path] = None) -> float:
     prompt_cache = cache_home / "zsh-prompt"
     prompt_cache.mkdir(parents=True, exist_ok=True)
@@ -337,57 +407,89 @@ builtin print -r -- WORKER_STARTED
 _ai_candy_stop_registered_background_jobs
 """
         with tempfile.TemporaryDirectory() as tmp:
-            environment = {
-                **os.environ,
-                "XDG_CACHE_HOME": str(Path(tmp) / "cache"),
-                "TERM": "dumb",
-            }
-            child_pid, master_fd = pty.fork()
-            if child_pid == 0:
-                try:
-                    os.chdir(ROOT)
-                    os.execvpe(
-                        "zsh",
-                        ["zsh", "-dfi", "-c", script, "zsh", str(THEME)],
-                        environment,
-                    )
-                finally:
-                    os._exit(127)
+            returncode, rendered_output, timed_out = run_interactive_zsh(
+                script, Path(tmp) / "cache"
+            )
 
-            output = bytearray()
-            child_status: Optional[int] = None
-            timed_out = False
-            deadline = time.monotonic() + 5
-            try:
-                while child_status is None:
-                    waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
-                    if waited_pid == child_pid:
-                        child_status = status
-                    readable, _, _ = select.select([master_fd], [], [], 0.05)
-                    if readable:
-                        try:
-                            output.extend(os.read(master_fd, 4096))
-                        except OSError as error:
-                            if error.errno != errno.EIO:
-                                raise
-                    if child_status is None and time.monotonic() >= deadline:
-                        timed_out = True
-                        os.kill(child_pid, 9)
-                        _, child_status = os.waitpid(child_pid, 0)
-            finally:
-                os.close(master_fd)
-                if child_status is None:
-                    os.kill(child_pid, 9)
-                    os.waitpid(child_pid, 0)
-
-        rendered_output = output.decode("utf-8", errors="replace")
         self.assertFalse(timed_out, rendered_output)
-        self.assertEqual(0, os.waitstatus_to_exitcode(child_status), rendered_output)
+        self.assertEqual(0, returncode, rendered_output)
         self.assertIn("WORKER_STARTED", rendered_output)
         self.assertIsNone(
-            re.search(r"(?m)^\[[0-9]+\][ \t]+[0-9]+", rendered_output),
+            re.search(r"(?m)^\[[0-9]+\]", rendered_output),
             rendered_output,
         )
+
+    def test_timeout_backends_are_silent_in_an_interactive_tty(self) -> None:
+        backends = [
+            (
+                "native",
+                "_ai_candy_run_native_timeout 0.05 command sleep 0.2",
+                {},
+            )
+        ]
+        external_timeout = shutil.which("timeout") or shutil.which("gtimeout")
+        if external_timeout is not None:
+            backends.append(
+                (
+                    "external",
+                    '_ai_candy_run_external_timeout "$EXTERNAL_TIMEOUT" '
+                    "0.05 command sleep 0.2",
+                    {"EXTERNAL_TIMEOUT": external_timeout},
+                )
+            )
+
+        for backend, invocation, environment in backends:
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                script = f'''\
+source "$1"
+{invocation} >/dev/null 2>&1
+builtin print -r -- TIMEOUT_DONE
+'''
+                returncode, output, timed_out = run_interactive_zsh(
+                    script,
+                    Path(tmp) / "cache",
+                    environment=environment,
+                )
+
+            self.assertFalse(timed_out, output)
+            self.assertEqual(0, returncode, output)
+            self.assertIn("TIMEOUT_DONE", output)
+            self.assertIsNone(re.search(r"(?m)^\[[0-9]+\]", output), output)
+
+    def test_tool_status_is_silent_in_an_interactive_tty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            write_command(
+                bin_dir,
+                "gh",
+                """case "$1" in
+  --version) printf '%s\\n' 'gh version 2.0.0' ;;
+  auth) /bin/sleep 0.2; exit 1 ;;
+esac""",
+            )
+            script = r"""
+source "$1"
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_HAS_TIMEOUT=1
+_AI_CANDY_TIMEOUT_CMD=zsh-native
+_AI_CANDY_NETWORK_TIMEOUT=0.05
+command rm -f -- "$_AI_CANDY_GH_AUTH_CACHE_FILE"
+_ai_candy_prompt_tool_status >/dev/null 2>&1
+builtin print -r -- TOOL_STATUS_DONE
+_ai_candy_stop_registered_background_jobs
+"""
+            returncode, output, timed_out = run_interactive_zsh(
+                script,
+                root / "cache",
+                environment={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+            )
+
+        self.assertFalse(timed_out, output)
+        self.assertEqual(0, returncode, output)
+        self.assertIn("TOOL_STATUS_DONE", output)
+        self.assertIsNone(re.search(r"(?m)^\[[0-9]+\]", output), output)
 
     def test_github_ssh_probe_cannot_read_from_tty(self) -> None:
         ssh_lines = [

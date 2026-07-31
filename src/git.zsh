@@ -1186,7 +1186,7 @@ function _ai_candy_collect_git_snapshot() {
   fi
 
   local -a status_args
-  status_args=(status --porcelain=v2 --branch --show-stash)
+  status_args=(status --porcelain=v2 --branch)
   [[ "${DISABLE_UNTRACKED_FILES_DIRTY:-}" == "true" ]] && status_args+=(--untracked-files=no)
   if [[ "${GIT_STATUS_IGNORE_SUBMODULES:-}" != "git" ]]; then
     status_args+=("--ignore-submodules=${GIT_STATUS_IGNORE_SUBMODULES:-dirty}")

@@ -626,9 +626,7 @@ print -r -- "SNAPSHOT=${_AI_CANDY_GIT_SNAPSHOT_BRANCH}|${_AI_CANDY_GIT_SNAPSHOT_
         self.assertIn("STATUS_CALLS=1 CONFIG_CALLS=1", result.stdout)
         self.assertIn("SNAPSHOT=main|2|3|4|1", result.stdout)
 
-    def test_git_snapshot_counts_stashes_without_a_porcelain_stash_header(
-        self,
-    ) -> None:
+    def test_git_snapshot_does_not_require_status_show_stash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = root / "repo"
@@ -653,13 +651,14 @@ print -r -- "SNAPSHOT=${_AI_CANDY_GIT_SNAPSHOT_BRANCH}|${_AI_CANDY_GIT_SNAPSHOT_
             )
             (repo / "tracked").write_text("stashed\n", encoding="ascii")
             subprocess.run([real_git, "-C", str(repo), "stash", "push", "-qm", "one"], check=True)
+            (repo / "tracked").write_text("dirty\n", encoding="ascii")
 
             git = bin_dir / "git"
             git.write_text(
                 "#!/bin/sh\n"
                 "printf '%s\\n' \"$*\" >> \"$GIT_LOG\"\n"
                 "case \" $* \" in\n"
-                "  *' status '*) \"$REAL_GIT\" \"$@\" | sed '/^# stash /d' ;;\n"
+                "  *' --show-stash '*) exit 129 ;;\n"
                 "  *) exec \"$REAL_GIT\" \"$@\" ;;\n"
                 "esac\n",
                 encoding="ascii",
@@ -672,15 +671,15 @@ source "$1"
 _AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
 _AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot || return 70
-first="$_AI_CANDY_GIT_SNAPSHOT_STASH"
+first="${_AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE}:${_AI_CANDY_GIT_SNAPSHOT_DIRTY}:${_AI_CANDY_GIT_SNAPSHOT_STASH}"
 _AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_collect_git_snapshot || return 71
-second="$_AI_CANDY_GIT_SNAPSHOT_STASH"
+second="${_AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE}:${_AI_CANDY_GIT_SNAPSHOT_DIRTY}:${_AI_CANDY_GIT_SNAPSHOT_STASH}"
 calls=0
 for line in "${(@f)$(<"$GIT_LOG")}"; do
   [[ "$line" == *' rev-list '* ]] && (( calls++ ))
 done
-builtin print -r -- "STASH=${first}/${second} FALLBACK_CALLS=${calls}"
+builtin print -r -- "SNAPSHOT=${first}/${second} FALLBACK_CALLS=${calls}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -692,7 +691,9 @@ builtin print -r -- "STASH=${first}/${second} FALLBACK_CALLS=${calls}"
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("STASH=1/1 FALLBACK_CALLS=1\n", result.stdout)
+        self.assertEqual(
+            "SNAPSHOT=1:1:1/1:1:1 FALLBACK_CALLS=1\n", result.stdout
+        )
 
     def test_omz_async_git_handler_is_registered_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

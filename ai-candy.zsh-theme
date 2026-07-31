@@ -757,6 +757,7 @@ function _ai_candy_redispatch_timeout_signal() {
 function _ai_candy_run_native_timeout() {
   emulate -L zsh
   setopt localtraps
+  unsetopt monitor
 
   integer entry_hup_trap_set=${+functions[TRAPHUP]}
   integer entry_int_trap_set=${+functions[TRAPINT]}
@@ -938,6 +939,7 @@ function _ai_candy_run_native_timeout() {
 function _ai_candy_run_external_timeout() {
   emulate -L zsh
   setopt localtraps
+  unsetopt monitor
   integer entry_hup_trap_set=${+functions[TRAPHUP]}
   integer entry_int_trap_set=${+functions[TRAPINT]}
   integer entry_term_trap_set=${+functions[TRAPTERM]}
@@ -1312,8 +1314,8 @@ function _ai_candy_stop_registered_background_jobs() {
   emulate -L zsh
   local background_pid process_pid process_state process_table=""
   local process_signature="" stopped_signature=""
-  local -a owned_pids verified_pids descendants cleanup_pids
-  local -A owned_identities
+  local -a owned_pids stopped_pids verified_pids descendants cleanup_pids
+  local -A owned_identities stopped_pid_seen
   integer attempt index all_stopped forest_stable=0 descendant_alive
 
   for background_pid in "${_AI_CANDY_BACKGROUND_PIDS[@]}"; do
@@ -1327,7 +1329,10 @@ function _ai_candy_stop_registered_background_jobs() {
   (( ${#owned_pids} )) || return 0
 
   for background_pid in "${owned_pids[@]}"; do
-    builtin kill -STOP "$background_pid" 2>/dev/null
+    if builtin kill -STOP "$background_pid" 2>/dev/null; then
+      stopped_pids+=("$background_pid")
+      stopped_pid_seen[$background_pid]=1
+    fi
   done
   for attempt in {1..25}; do
     _ai_candy_read_process_table || break
@@ -1345,7 +1350,11 @@ function _ai_candy_stop_registered_background_jobs() {
               "${process_state[1]}" != "Z" ]]; then
           all_stopped=0
         fi
-        builtin kill -STOP "$process_pid" 2>/dev/null
+        if builtin kill -STOP "$process_pid" 2>/dev/null && \
+           [[ -z "${stopped_pid_seen[$process_pid]-}" ]]; then
+          stopped_pids+=("$process_pid")
+          stopped_pid_seen[$process_pid]=1
+        fi
       done
     done
     if (( all_stopped )); then
@@ -1369,6 +1378,9 @@ function _ai_candy_stop_registered_background_jobs() {
         builtin wait "$background_pid" 2>/dev/null || true
       fi
     done
+    for process_pid in "${stopped_pids[@]}"; do
+      builtin kill -CONT "$process_pid" 2>/dev/null
+    done
     _AI_CANDY_TIMEOUT_PROCESS_TREE=()
     _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
     _AI_CANDY_PROCESS_STATE_BY_PID=()
@@ -1391,11 +1403,9 @@ function _ai_candy_stop_registered_background_jobs() {
       builtin kill -TERM "$background_pid" 2>/dev/null
     fi
   done
-  for process_pid in "${descendants[@]}"; do
+  # Do not leave a process stopped if its identity changes after STOP.
+  for process_pid in "${stopped_pids[@]}"; do
     builtin kill -CONT "$process_pid" 2>/dev/null
-  done
-  for background_pid in "${verified_pids[@]}"; do
-    builtin kill -CONT "$background_pid" 2>/dev/null
   done
   cleanup_pids=("${verified_pids[@]}" "${descendants[@]}")
   if (( ! ${#cleanup_pids} )); then
@@ -6625,7 +6635,7 @@ function _ai_candy_collect_git_snapshot() {
   fi
 
   local -a status_args
-  status_args=(status --porcelain=v2 --branch --show-stash)
+  status_args=(status --porcelain=v2 --branch)
   [[ "${DISABLE_UNTRACKED_FILES_DIRTY:-}" == "true" ]] && status_args+=(--untracked-files=no)
   if [[ "${GIT_STATUS_IGNORE_SUBMODULES:-}" != "git" ]]; then
     status_args+=("--ignore-submodules=${GIT_STATUS_IGNORE_SUBMODULES:-dirty}")
