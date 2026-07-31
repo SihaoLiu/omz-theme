@@ -339,31 +339,72 @@ exec zsh "$3"
 
         self.assertEqual([], findings)
 
-    def test_documented_installers_download_before_executing(self) -> None:
+    def test_documented_installers_use_a_concise_shell_bootstrap(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         installation = INSTALLATION_DOC.read_text(encoding="utf-8")
+        installer_url = (
+            "https://raw.githubusercontent.com/SihaoLiu/ai-candy/"
+            "refs/heads/main/install.sh"
+        )
+        install_command = (
+            f"sh -c 'installer=$(curl -fsSL {installer_url}) && "
+            '[ -n "$installer" ] && exec sh -c "$installer" sh "$@"\' sh'
+        )
 
+        self.assertEqual(1, readme.count(install_command))
+        self.assertEqual(
+            1,
+            installation.count(f"{install_command} --no-modify-zshrc"),
+        )
         for document in (readme, installation):
-            self.assertNotIn('sh -c "$(curl', document)
-            self.assertIn('curl -fsSL --proto "=https"', document)
-            self.assertIn("--connect-timeout 5 --max-time 30", document)
-            self.assertEqual(1, document.count("installer_max_bytes=262144"))
-            self.assertEqual(1, document.count("installer_limit_unit=512"))
-            self.assertEqual(
-                1,
-                document.count(
-                    '[ -n "${BASH_VERSION:-}" ] && installer_limit_unit=1024'
-                ),
+            self.assertNotIn("installer_url=", document)
+            self.assertNotIn("installer_max_bytes=", document)
+            self.assertNotIn("installer_limit_blocks=", document)
+
+    def test_documented_installer_rejects_failed_partial_downloads(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        command_match = re.search(
+            r"^## Installation.*?^```sh\n([^\n]+)\n```$",
+            readme,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(command_match)
+        install_command = command_match.group(1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_curl = fake_bin / "curl"
+            fake_curl.write_text(
+                "#!/bin/sh\n"
+                'if [ "${CURL_FAILURE_MODE:-}" = partial ]; then\n'
+                "  printf '%s\\n' 'printf partial > \"$EXEC_MARKER\"'\n"
+                "fi\n"
+                "exit 22\n",
+                encoding="ascii",
             )
-            self.assertEqual(
-                1, document.count('--max-filesize "$installer_max_bytes"')
-            )
-            self.assertEqual(
-                1, document.count('ulimit -f "$installer_limit_blocks"')
-            )
-            self.assertIn('-o "$installer" -- "$installer_url"', document)
-            self.assertEqual(1, document.count('wc -c < "$installer"'))
-            self.assertIn('&& sh "$installer" "$@"', document)
+            fake_curl.chmod(0o755)
+
+            for failure_mode in ("empty", "partial"):
+                with self.subTest(failure_mode=failure_mode):
+                    marker = root / f"executed-{failure_mode}"
+                    result = subprocess.run(
+                        ["sh", "-c", install_command],
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        env={
+                            **os.environ,
+                            "CURL_FAILURE_MODE": failure_mode,
+                            "EXEC_MARKER": str(marker),
+                            "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                        },
+                        check=False,
+                    )
+
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertFalse(marker.exists())
 
     def test_configuration_docs_document_that_short_aliases_are_opt_in(self) -> None:
         configuration = CONFIGURATION_DOC.read_text(encoding="utf-8")

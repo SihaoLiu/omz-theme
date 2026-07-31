@@ -78,6 +78,7 @@ function _ai_candy_git_scan_config_graph_paths() {
        "${(L)key}" == includeif.*.path ]] || return 1
     [[ -n "$include_path" && ${#include_path} -le 4096 && \
        "$include_path" != *$'\n'* ]] || return 1
+    [[ "$include_path" != '%(prefix)/'* ]] || return 1
     include_base="$command_root"
     [[ -n "$config_path" ]] && include_base="${config_path:h}"
     case "$include_path" in

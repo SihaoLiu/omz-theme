@@ -5,10 +5,11 @@ The primary one-line installation command is in the
 Zsh installation. It validates the downloaded standalone theme with Zsh before
 atomically publishing it below the Oh My Zsh custom theme directory.
 
-Downloads are restricted to HTTPS, bounded to 1 MiB, and have finite connection
-and total deadlines. An identical installed theme is not replaced or backed up,
-although unsafe group or other write permissions are removed. An upgrade
-preserves the previous file beside the new theme.
+The theme download performed by the installer is restricted to HTTPS, bounded
+to 1 MiB, and has finite connection and total deadlines. An identical installed
+theme is not replaced or backed up, although unsafe group or other write
+permissions are removed. An upgrade preserves the previous file beside the new
+theme.
 
 Existing `.zshrc` files, including symbolic links, are never rewritten. The
 installer prints the exact setting to change manually. If `.zshrc` does not
@@ -20,7 +21,7 @@ selects `ai-candy` there.
 To prevent the installer from creating a missing `.zshrc`:
 
 ```sh
-sh -c 'installer_url="https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh"; installer_max_bytes=262144; installer_limit_unit=512; [ -n "${BASH_VERSION:-}" ] && installer_limit_unit=1024; installer_limit_blocks=$(( (installer_max_bytes + installer_limit_unit - 1) / installer_limit_unit )); installer=$(mktemp) && (ulimit -f "$installer_limit_blocks" && exec curl -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 5 --max-time 30 --max-filesize "$installer_max_bytes" -o "$installer" -- "$installer_url") && installer_size=$(LC_ALL=C wc -c < "$installer") && [ "$installer_size" -gt 0 ] && [ "$installer_size" -le "$installer_max_bytes" ] && sh "$installer" "$@"; status=$?; rm -f "${installer:-}"; exit "$status"' sh --no-modify-zshrc
+sh -c 'installer=$(curl -fsSL https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh) && [ -n "$installer" ] && exec sh -c "$installer" sh "$@"' sh --no-modify-zshrc
 ```
 
 ## Mirrors And Reproducible Installs
@@ -29,9 +30,11 @@ sh -c 'installer_url="https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/h
 self-hosted HTTPS mirror of the standalone theme. Leave it unset for the
 standard GitHub-hosted installation.
 
-The one-line command follows the Oh My Zsh installer trust model and fetches the
-current `main` branch. For a reproducible installation, inspect the script and
-replace both raw URLs with URLs pinned to a reviewed tag or commit.
+The short command follows the Oh My Zsh installer trust model: it downloads and
+executes the installer from the current `main` branch. Inspect the script before
+running it when that trust model is not appropriate. For a reproducible
+installation, use an installer URL pinned to a reviewed tag or commit and set
+`AI_CANDY_THEME_URL` to the matching pinned theme URL.
 
 ## Manual Installation
 

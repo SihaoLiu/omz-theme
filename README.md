@@ -17,7 +17,7 @@ Author: Sihao Liu <sihao@cs.ucla.edu>
 Install the theme with one command:
 
 ```sh
-sh -c 'installer_url="https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh"; installer_max_bytes=262144; installer_limit_unit=512; [ -n "${BASH_VERSION:-}" ] && installer_limit_unit=1024; installer_limit_blocks=$(( (installer_max_bytes + installer_limit_unit - 1) / installer_limit_unit )); installer=$(mktemp) && (ulimit -f "$installer_limit_blocks" && exec curl -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 5 --max-time 30 --max-filesize "$installer_max_bytes" -o "$installer" -- "$installer_url") && installer_size=$(LC_ALL=C wc -c < "$installer") && [ "$installer_size" -gt 0 ] && [ "$installer_size" -le "$installer_max_bytes" ] && sh "$installer" "$@"; status=$?; rm -f "${installer:-}"; exit "$status"' sh
+sh -c 'installer=$(curl -fsSL https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/install.sh) && [ -n "$installer" ] && exec sh -c "$installer" sh "$@"' sh
 ```
 
 The installer requires an existing Oh My Zsh installation. Existing `.zshrc`

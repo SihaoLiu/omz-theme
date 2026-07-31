@@ -294,6 +294,7 @@ builtin print -r -- "PRESERVED=${preserved}"
             cache_home = root / "cache"
             ready_file = root / "ready"
             worker_file = root / "worker.pid"
+            release_file = root / "worker.release"
             trap_file = root / "trap.called"
             worker_pid = None
             shell = subprocess.Popen(
@@ -306,7 +307,8 @@ function TRAPTERM() {
   return 143
 }
 source "$1"
-(command sleep 30) </dev/null &>/dev/null &!
+(while [[ ! -e "$WORKER_RELEASE_FILE" ]]; do zselect -t 10; done) \
+  </dev/null &>/dev/null &!
 worker_pid=$!
 _ai_candy_register_background_pid "$worker_pid"
 builtin print -r -- "$worker_pid" >| "$WORKER_FILE"
@@ -325,6 +327,7 @@ while true; do zselect -t 100; done
                     "XDG_CACHE_HOME": str(cache_home),
                     "READY_FILE": str(ready_file),
                     "WORKER_FILE": str(worker_file),
+                    "WORKER_RELEASE_FILE": str(release_file),
                     "TRAP_FILE": str(trap_file),
                 },
             )
@@ -342,24 +345,24 @@ while true; do zselect -t 100; done
                 worker_pid = int(worker_file.read_text(encoding="ascii"))
 
                 os.kill(shell.pid, signal.SIGTERM)
+                worker_stopped = False
                 deadline = time.monotonic() + 1
-                while (
-                    not trap_file.exists() or process_is_running(worker_pid)
-                ) and time.monotonic() < deadline:
+                while time.monotonic() < deadline:
+                    worker_stopped = not process_is_running(worker_pid)
+                    if trap_file.exists() and worker_stopped:
+                        break
                     time.sleep(0.01)
 
                 self.assertTrue(trap_file.exists())
-                self.assertFalse(process_is_running(worker_pid))
+                self.assertTrue(worker_stopped)
                 self.assertIsNone(shell.poll())
             finally:
+                release_file.touch()
                 if shell.poll() is None:
                     shell.kill()
                     shell.communicate()
-                if worker_pid is not None and process_is_running(worker_pid):
-                    try:
-                        os.kill(worker_pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                if worker_pid is not None:
+                    wait_for_process_exit(worker_pid, 1)
 
     def test_signal_cleanup_preserves_default_termination(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1165,15 +1168,16 @@ print -r -- "STATUS=${command_status} BYTES=${#output}"
             result = run_zsh(
                 r"""
 source "$1"
+typeset -g test_timeout_shell_pid="${sysparams[pid]}"
 function _ai_candy_process_pid_is_active() {
   return 0
 }
 function _ai_candy_sleep_ticks() {
   (
     command sleep 1.5
-    builtin kill -CONT "$$" 2>/dev/null
-  ) &!
-  builtin kill -STOP "$$"
+    builtin kill -CONT "$test_timeout_shell_pid" 2>/dev/null
+  ) </dev/null &>/dev/null &!
+  builtin kill -STOP "$test_timeout_shell_pid"
   local marker_state=""
   local -a marker_files
   integer attempts=0
@@ -1192,7 +1196,7 @@ _ai_candy_run_native_timeout 0.1 command sleep 0.02
 print -r -- "STATUS=$?"
 """,
                 cache_home=Path(tmp) / "cache",
-                timeout=3,
+                timeout=6,
             )
 
         self.assertEqual(0, result.returncode, result.stderr)

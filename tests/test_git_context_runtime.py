@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import shutil
 import subprocess
 import tempfile
@@ -986,28 +985,7 @@ builtin print -r -- "DIRECT=${direct_remote}|${direct_hide}"
             home = root / "home"
             included_config = root / "included.config"
             configure_repository(repo)
-            prefix_probe = "ai-candy-prefix-probe"
-            resolved_probe = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(repo),
-                    "-c",
-                    f"ai-candy.prefix=%(prefix)/{prefix_probe}",
-                    "config",
-                    "--path",
-                    "--get",
-                    "ai-candy.prefix",
-                ],
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-            ).stdout.strip()
-            git_prefix = Path(resolved_probe).parent
-            include_value = "%(prefix)/" + os.path.relpath(
-                included_config,
-                git_prefix,
-            )
+            include_value = f"%(prefix)/{included_config.as_posix()}"
             write_global_config_with_relative_include(
                 home / ".gitconfig",
                 "alpha.git",
@@ -1025,6 +1003,38 @@ builtin print -r -- "DIRECT=${direct_remote}|${direct_hide}"
                     "XDG_CONFIG_HOME": str(root / "xdg"),
                 },
             )
+
+    def test_raw_prefix_include_path_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_file = root / "global.config"
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+function _ai_candy_run_git_probe_at_root() {
+  if (( ${@[(Ie)--list]} )); then
+    builtin print -rn -- "file:${CONFIG_FILE}"
+    builtin print -rn -- $'\0'"include.path"$'\0'
+  elif (( ${@[(Ie)--get-regexp]} )); then
+    builtin print -rn -- "file:${CONFIG_FILE}"
+    builtin print -rn -- \
+      $'\0'"include.path"$'\n'"%(prefix)/nested.config"$'\0'
+  else
+    return 1
+  fi
+}
+scan_status=0
+_ai_candy_git_scan_config_graph_paths "$PWD" "$PWD" || scan_status=$?
+builtin print -r -- "STATUS=${scan_status} BYTES=${#REPLY}"
+""",
+                cache_home=root / "cache",
+                cwd=root,
+                env={"CONFIG_FILE": str(config_file)},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=1 BYTES=0\n", result.stdout)
 
     def test_onbranch_include_switch_partitions_pr_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
