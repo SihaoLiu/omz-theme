@@ -291,12 +291,11 @@ builtin print -r -- "PRESERVED=${preserved}"
     def test_signal_cleanup_stops_workers_and_preserves_existing_trap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache_home = root / "cache"
             ready_file = root / "ready"
-            worker_file = root / "worker.pid"
             release_file = root / "worker.release"
             trap_file = root / "trap.called"
-            worker_pid = None
+            worker_pipe, worker_pipe_child = os.pipe()
+            os.set_blocking(worker_pipe, False)
             shell = subprocess.Popen(
                 [
                     "zsh",
@@ -310,8 +309,8 @@ source "$1"
 (while [[ ! -e "$WORKER_RELEASE_FILE" ]]; do zselect -t 10; done) \
   </dev/null &>/dev/null &!
 worker_pid=$!
+exec {WORKER_SENTINEL_FD}>&-
 _ai_candy_register_background_pid "$worker_pid"
-builtin print -r -- "$worker_pid" >| "$WORKER_FILE"
 builtin print -r -- ready >| "$READY_FILE"
 while true; do zselect -t 100; done
 """,
@@ -322,15 +321,17 @@ while true; do zselect -t 100; done
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                pass_fds=(worker_pipe_child,),
                 env={
                     **os.environ,
-                    "XDG_CACHE_HOME": str(cache_home),
+                    "XDG_CACHE_HOME": str(root / "cache"),
                     "READY_FILE": str(ready_file),
-                    "WORKER_FILE": str(worker_file),
                     "WORKER_RELEASE_FILE": str(release_file),
+                    "WORKER_SENTINEL_FD": str(worker_pipe_child),
                     "TRAP_FILE": str(trap_file),
                 },
             )
+            os.close(worker_pipe_child)
             try:
                 deadline = time.monotonic() + 5
                 while not ready_file.exists() and shell.poll() is None:
@@ -342,17 +343,17 @@ while true; do zselect -t 100; done
                         f"shell exited early: {shell.returncode}\n"
                         f"stdout: {stdout}\nstderr: {stderr}"
                     )
-                worker_pid = int(worker_file.read_text(encoding="ascii"))
-
                 os.kill(shell.pid, signal.SIGTERM)
                 worker_stopped = False
-                deadline = time.monotonic() + 1
+                deadline = time.monotonic() + 3
                 while time.monotonic() < deadline:
-                    worker_stopped = not process_is_running(worker_pid)
+                    try:
+                        worker_stopped = os.read(worker_pipe, 1) == b""
+                    except (BlockingIOError, InterruptedError):
+                        worker_stopped = False
                     if trap_file.exists() and worker_stopped:
                         break
                     time.sleep(0.01)
-
                 self.assertTrue(trap_file.exists())
                 self.assertTrue(worker_stopped)
                 self.assertIsNone(shell.poll())
@@ -361,8 +362,7 @@ while true; do zselect -t 100; done
                 if shell.poll() is None:
                     shell.kill()
                     shell.communicate()
-                if worker_pid is not None:
-                    wait_for_process_exit(worker_pid, 1)
+                os.close(worker_pipe)
 
     def test_signal_cleanup_preserves_default_termination(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

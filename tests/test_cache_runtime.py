@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.theme_test_support import CACHE_SCHEDULING_BUDGET_MS, run_zsh
+from tests.theme_test_support import run_zsh
 from tests.theme_test_support import ROOT, THEME
 
 
@@ -659,17 +659,25 @@ source "$1"
 (( _AI_CANDY_HAS_ZSH_SYSTEM )) || return 77
 _AI_CANDY_CACHE_BACKEND_STATE=1
 _AI_CANDY_CACHE_BACKEND=file
-start=$EPOCHREALTIME
+functions[_lock_acquire_without_record]="${functions[_ai_candy_cache_lock_acquire]}"
+typeset -gi max_operation_wait_ticks=0
+function _ai_candy_cache_lock_acquire() {
+  if [[ "$1" == "${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d" ]] && \
+     (( ${3:-0} > max_operation_wait_ticks )); then
+    max_operation_wait_ticks="${3:-0}"
+  fi
+  _lock_acquire_without_record "$@"
+}
 _ai_candy_get_cached_git_root
 git_root="$REPLY"
 _AI_CANDY_PP_CACHED_GIT_ROOT="$git_root"
 _ai_candy_get_git_hierarchy
-elapsed_ms=$(( (EPOCHREALTIME - start) * 1000 ))
 print -r -- "ROOT=${git_root} HIERARCHY=${REPLY}"
-builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
+builtin print -r -- "MAX_WAIT_TICKS=${max_operation_wait_ticks}"
 """,
                     cache_home=cache_home,
                     cwd=repo,
+                    timeout=4,
                 )
             finally:
                 release_file.touch()
@@ -678,16 +686,12 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(f"ROOT={repo} HIERARCHY={repo}", result.stdout)
-        elapsed_line = next(
+        wait_line = next(
             line
             for line in result.stdout.splitlines()
-            if line.startswith("ELAPSED_MS=")
+            if line.startswith("MAX_WAIT_TICKS=")
         )
-        self.assertLess(
-            float(elapsed_line.partition("=")[2]),
-            CACHE_SCHEDULING_BUDGET_MS,
-            result.stdout,
-        )
+        self.assertEqual("MAX_WAIT_TICKS=2", wait_line, result.stdout)
 
     def test_cold_git_prompt_never_waits_for_a_contended_fallback_lock(
         self,
@@ -707,31 +711,35 @@ source "$1"
 _AI_CANDY_HAS_ZSH_SYSTEM=0
 _AI_CANDY_CACHE_BACKEND_STATE=1
 _AI_CANDY_CACHE_BACKEND=file
-start=$EPOCHREALTIME
+functions[_lock_acquire_without_record]="${functions[_ai_candy_cache_lock_acquire]}"
+typeset -gi max_operation_wait_ticks=0
+function _ai_candy_cache_lock_acquire() {
+  if [[ "$1" == "${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d" ]] && \
+     (( ${3:-0} > max_operation_wait_ticks )); then
+    max_operation_wait_ticks="${3:-0}"
+  fi
+  _lock_acquire_without_record "$@"
+}
 _ai_candy_get_cached_git_root
 git_root="$REPLY"
 _AI_CANDY_PP_CACHED_GIT_ROOT="$git_root"
 _ai_candy_get_git_hierarchy
-elapsed_ms=$(( (EPOCHREALTIME - start) * 1000 ))
 print -r -- "ROOT=${git_root} HIERARCHY=${REPLY}"
-builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
+builtin print -r -- "MAX_WAIT_TICKS=${max_operation_wait_ticks}"
 """,
                 cache_home=cache_home,
                 cwd=repo,
+                timeout=4,
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn(f"ROOT={repo} HIERARCHY={repo}", result.stdout)
-        elapsed_line = next(
+        wait_line = next(
             line
             for line in result.stdout.splitlines()
-            if line.startswith("ELAPSED_MS=")
+            if line.startswith("MAX_WAIT_TICKS=")
         )
-        self.assertLess(
-            float(elapsed_line.partition("=")[2]),
-            CACHE_SCHEDULING_BUDGET_MS,
-            result.stdout,
-        )
+        self.assertEqual("MAX_WAIT_TICKS=2", wait_line, result.stdout)
 
     def test_toggle_remains_usable_when_cache_persistence_is_unavailable(
         self,
