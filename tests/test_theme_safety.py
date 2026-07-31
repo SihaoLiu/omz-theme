@@ -91,19 +91,19 @@ def render_path_for(
     script = r"""
 cd "$1" || exit 2
 source "$2"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
-_PROMPT_PATH_SEP_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_PATH_SEP_MODE=0
 eval "$3"
 _ai_candy_prompt_bump_render_id
 _ai_candy_get_cached_git_root
-_PP_CACHED_GIT_ROOT="$REPLY"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
 _ai_candy_get_git_hierarchy
 hierarchy="$REPLY"
-print -r -- "HIER=${hierarchy//$_GIT_HIERARCHY_SEP/|}"
+print -r -- "HIER=${hierarchy//$_AI_CANDY_GIT_HIERARCHY_SEP/|}"
 _ai_candy_compute_smart_path_direct full
-print -r -- "PATH=$_PP_PATH"
+print -r -- "PATH=$_AI_CANDY_PP_PATH"
 """
     result = subprocess.run(
         ["zsh", "-fc", script, "zsh", str(logical_dir), str(THEME), before_render],
@@ -155,27 +155,27 @@ def render_git_ext_around_push(work: Path, cache_home: Path) -> dict[str, str]:
     script = r"""
 cd "$1" || exit 2
 source "$2"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
-_PROMPT_EMOJI_MODE=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_EMOJI_MODE=1
 _ai_candy_prompt_bump_render_id
 _ai_candy_get_cached_git_root
-_PP_CACHED_GIT_ROOT="$REPLY"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
 _ai_candy_compute_git_extended_direct
-print -r -- "BEFORE=$_PP_GIT_EXT"
+print -r -- "BEFORE=$_AI_CANDY_PP_GIT_EXT"
 for fn in "${preexec_functions[@]}"; do
   "$fn" "git push" "git push" "git push"
 done
 git push -q
 push_status=$?
-_LAST_EXIT_STATUS=$push_status
+_AI_CANDY_LAST_EXIT_STATUS=$push_status
 for fn in "${precmd_functions[@]}"; do
   [[ "$fn" == "_ai_candy_capture_exit_status" ]] && continue
   "$fn"
 done
 print -r -- "PUSH_STATUS=$push_status"
-print -r -- "AFTER=$_PP_GIT_EXT"
+print -r -- "AFTER=$_AI_CANDY_PP_GIT_EXT"
 """
     result = subprocess.run(
         ["zsh", "-fc", script, "zsh", str(work), str(THEME)],
@@ -196,16 +196,16 @@ print -r -- "AFTER=$_PP_GIT_EXT"
 def run_public_ip_refresh_with_slow_curl(cache_home: Path, bin_dir: Path) -> None:
     script = r"""
 source "$1"
-_NETWORK_TIMEOUT=1
-_HAS_CURL=1
-rm -f "$_PUBLIC_IP_CACHE_FILE"
-rmdir "${_PUBLIC_IP_UPDATING}.d" 2>/dev/null
+_AI_CANDY_NETWORK_TIMEOUT=1
+_AI_CANDY_HAS_CURL=1
+rm -f "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
+rmdir "${_AI_CANDY_PUBLIC_IP_UPDATING}.d" 2>/dev/null
 _ai_candy_public_ip_update_background
 deadline=$(( EPOCHSECONDS + 5 ))
-while [[ ! -f "$_PUBLIC_IP_CACHE_FILE" && EPOCHSECONDS -lt deadline ]]; do
+while [[ ! -f "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" && EPOCHSECONDS -lt deadline ]]; do
   sleep 0.05
 done
-[[ -f "$_PUBLIC_IP_CACHE_FILE" ]] || exit 3
+[[ -f "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" ]] || exit 3
 """
     subprocess.run(
         ["zsh", "-fc", script, "zsh", str(THEME)],
@@ -336,7 +336,7 @@ class ThemeSafetyTest(unittest.TestCase):
         )
 
     def test_network_timeout_is_at_most_three_seconds(self) -> None:
-        match = re.search(r"typeset -g _NETWORK_TIMEOUT=(\d+)", self.text)
+        match = re.search(r"typeset -g _AI_CANDY_NETWORK_TIMEOUT=(\d+)", self.text)
 
         self.assertIsNotNone(match)
         self.assertLessEqual(int(match.group(1)), 3)
@@ -526,7 +526,22 @@ class ThemeSafetyTest(unittest.TestCase):
             root = Path(tmp)
             cache_home = root / "cache"
 
-            for codepoint in (0x2028, 0x2029, 0x202E):
+            for codepoint in (
+                0x00AD,
+                0x061C,
+                0x180E,
+                0x200B,
+                0x200C,
+                0x200D,
+                0x2028,
+                0x2029,
+                0x202E,
+                0x2060,
+                0xFEFF,
+                0xFFF9,
+                0xE0001,
+                0xE0020,
+            ):
                 with self.subTest(codepoint=hex(codepoint)):
                     control = chr(codepoint)
                     repo = root / f"repo-{codepoint:x}" / f"left{control}right"
@@ -568,8 +583,8 @@ class ThemeSafetyTest(unittest.TestCase):
             logical_repo.symlink_to(real_repo)
 
             stale_cache = (
-                f"bad='{real_repo}'\"$_GIT_HIERARCHY_SEP\"'{logical_repo}'; "
-                '_MEM_CACHE_GIT_HIERARCHY[$PWD]="$bad|$EPOCHSECONDS"'
+                f"bad='{real_repo}'\"$_AI_CANDY_GIT_HIERARCHY_SEP\"'{logical_repo}'; "
+                '_AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$PWD]="$bad|$EPOCHSECONDS"'
             )
             output = render_path_for(logical_repo, cache_home, stale_cache)
 

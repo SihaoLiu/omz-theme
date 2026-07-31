@@ -33,11 +33,11 @@ colors
 typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 _ai_candy_precmd_compute_prompt
-print -r -- "ROOT_COUNT=${#_MEM_CACHE_GIT_ROOT}"
+print -r -- "ROOT_COUNT=${#_AI_CANDY_MEM_CACHE_GIT_ROOT}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -76,7 +76,7 @@ print -r -- "ROOT_COUNT=${#_MEM_CACHE_GIT_ROOT}"
     def test_native_timeout_is_preferred_when_zsh_modules_are_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(
-                'source "$1"\nprint -r -- "TIMEOUT=${_TIMEOUT_CMD}"\n',
+                'source "$1"\nprint -r -- "TIMEOUT=${_AI_CANDY_TIMEOUT_CMD}"\n',
                 cache_home=Path(tmp) / "cache",
             )
 
@@ -91,7 +91,7 @@ print -r -- "ROOT_COUNT=${#_MEM_CACHE_GIT_ROOT}"
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 function git() { print -r -- /forged/root; }
 _ai_candy_get_cached_git_root
 print -r -- "ROOT=${REPLY}"
@@ -124,11 +124,11 @@ print -r -- "ROOT=${REPLY}"
             result = run_zsh(
                 r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
 _ai_candy_compute_sysinfo_direct
-print -r -- "OS=${_PP_SYSINFO_OS_LONG}"
-print -r -- "KERNEL=${_PP_SYSINFO_KERNEL_LONG}"
+print -r -- "OS=${_AI_CANDY_PP_SYSINFO_OS_LONG}"
+print -r -- "KERNEL=${_AI_CANDY_PP_SYSINFO_KERNEL_LONG}"
 """,
                 cache_home=root / "cache",
                 env={
@@ -169,9 +169,9 @@ colors
 typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 zselect -t 20
 : >| "$SQLITE_LOG"
 _ai_candy_precmd_compute_prompt
@@ -232,7 +232,7 @@ print -r -- "VALUE=${REPLY}"
                 r"""
 source "$1"
 _ai_candy_cache_persist_write test key value "$EPOCHSECONDS"
-print -r -- "BACKEND=${_CACHE_BACKEND}"
+print -r -- "BACKEND=${_AI_CANDY_CACHE_BACKEND}"
 """,
                 cache_home=cache_home,
             )
@@ -293,7 +293,7 @@ print -r -- "SYNTAX=$([[ -f "$SQLITE_LOG" ]] && print replace || print missing)"
                 r"""
 source "$1"
 _ai_candy_cache_backend_init
-print -r -- "BACKEND=${_CACHE_BACKEND}"
+print -r -- "BACKEND=${_AI_CANDY_CACHE_BACKEND}"
 """,
                 cache_home=cache_home,
             )
@@ -320,7 +320,7 @@ print -r -- "BACKEND=${_CACHE_BACKEND}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_STAT_BUILTIN=0
+_AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
 OSTYPE=darwin
 _ai_candy_file_mtime "$PROBE_FILE"
 print -r -- "MTIME=${REPLY}"
@@ -349,7 +349,7 @@ print -r -- "ARGS=$(<"$STAT_LOG")"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_FILE_BUILTINS=0
+_AI_CANDY_HAS_ZSH_FILE_BUILTINS=0
 _ai_candy_cache_remove_path "$FILE_PATH"
 _ai_candy_cache_remove_directory "$DIRECTORY_PATH"
 print -r -- "FILE=$([[ -e "$FILE_PATH" ]] && print present || print absent)"
@@ -371,7 +371,7 @@ print -r -- "DIRECTORY=$([[ -e "$DIRECTORY_PATH" ]] && print present || print ab
             result = run_zsh(
                 r"""
 source "$1"
-cache_file="${_CACHE_DIR}/concurrent_cache"
+cache_file="${_AI_CANDY_CACHE_DIR}/concurrent_cache"
 for index in {1..60}; do
   _ai_candy_hex_encode "key${index}"
   hex_key="$REPLY"
@@ -400,7 +400,7 @@ print -r -- "COUNT=${#lines}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
 _ai_candy_cache_lock_acquire "$LOCK_DIR" 1 0
 lock_status=$?
 (( lock_status == 0 )) && _ai_candy_cache_lock_release "$LOCK_DIR"
@@ -419,7 +419,7 @@ print -r -- "STATUS=${lock_status} EXISTS=$([[ -d "$LOCK_DIR" ]] && print 1 || p
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
 _ai_candy_cache_lock_acquire "$LOCK_DIR" 300 0 || exit 3
 command mv "$LOCK_DIR" "${LOCK_DIR}.old"
 command mkdir -m 700 "$LOCK_DIR"
@@ -470,7 +470,7 @@ print -r -- "BEFORE=${REPLY}"
 cd "$PARENT"
 _ai_candy_prompt_mark_git_cache_invalidation "git init -q" "git init -q" "git init -q"
 git init -q
-_LAST_EXIT_STATUS=$?
+_AI_CANDY_LAST_EXIT_STATUS=$?
 _ai_candy_prompt_apply_git_cache_invalidation
 for index in {1..32}; do
   _ai_candy_record_git_topology_invalidation "/unrelated/${index}"
@@ -497,9 +497,9 @@ print -r -- "AFTER=${REPLY}"
                 r"""
 source "$1"
 _ai_candy_sync_git_topology_generation || exit 2
-cache_key="${_GIT_TOPOLOGY_GENERATION}:$PWD"
+cache_key="${_AI_CANDY_GIT_TOPOLOGY_GENERATION}:$PWD"
 _ai_candy_cache_persist_write git_root "$cache_key" NOT_GIT "$EPOCHSECONDS" || exit 3
-unset "_MEM_CACHE_GIT_ROOT[$PWD]"
+unset "_AI_CANDY_MEM_CACHE_GIT_ROOT[$PWD]"
 git init -q
 _ai_candy_get_cached_git_root
 print -r -- "ROOT=${REPLY}"
@@ -519,15 +519,15 @@ print -r -- "ROOT=${REPLY}"
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=7
-_GIT_SNAPSHOT_RENDER_ID=7
-_GIT_SNAPSHOT_ROOT="$PWD"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=7
+_AI_CANDY_GIT_SNAPSHOT_RENDER_ID=7
+_AI_CANDY_GIT_SNAPSHOT_CONTEXT="$PWD"
 _ai_candy_prompt_mark_git_cache_invalidation "git reset --hard missing-ref" "git reset --hard missing-ref" "git reset --hard missing-ref"
 git reset --hard missing-ref >/dev/null 2>&1
-_LAST_EXIT_STATUS=$?
+_AI_CANDY_LAST_EXIT_STATUS=$?
 _ai_candy_prompt_apply_git_cache_invalidation
-print -r -- "SNAPSHOT=${_GIT_SNAPSHOT_RENDER_ID}"
+print -r -- "SNAPSHOT=${_AI_CANDY_GIT_SNAPSHOT_RENDER_ID}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -562,16 +562,16 @@ colors
 typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 _ai_candy_prompt_bump_render_id
 _ai_candy_precmd_compute_prompt
-print -r -- "BEFORE=${_PP_GIT_INFO}"
+print -r -- "BEFORE=${_AI_CANDY_PP_GIT_INFO}"
 git switch -q -c 'evil%F{red}'
 _ai_candy_prompt_bump_render_id
 _ai_candy_precmd_compute_prompt
-print -r -- "AFTER=${_PP_GIT_INFO}"
+print -r -- "AFTER=${_AI_CANDY_PP_GIT_INFO}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -598,8 +598,8 @@ print -r -- "AFTER=${_PP_GIT_INFO}"
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 calls=("${(@f)$(<"$GIT_LOG")}")
 status_calls=0
@@ -609,7 +609,7 @@ for call in "${calls[@]}"; do
   [[ "$call" == *' config --get-regexp '* ]] && (( config_calls++ ))
 done
 print -r -- "STATUS_CALLS=${status_calls} CONFIG_CALLS=${config_calls}"
-print -r -- "SNAPSHOT=${_GIT_SNAPSHOT_BRANCH}|${_GIT_SNAPSHOT_AHEAD}|${_GIT_SNAPSHOT_BEHIND}|${_GIT_SNAPSHOT_STASH}|${_GIT_SNAPSHOT_DIRTY}"
+print -r -- "SNAPSHOT=${_AI_CANDY_GIT_SNAPSHOT_BRANCH}|${_AI_CANDY_GIT_SNAPSHOT_AHEAD}|${_AI_CANDY_GIT_SNAPSHOT_BEHIND}|${_AI_CANDY_GIT_SNAPSHOT_STASH}|${_AI_CANDY_GIT_SNAPSHOT_DIRTY}"
 """,
                 cache_home=root / "cache",
                 env={
@@ -621,6 +621,74 @@ print -r -- "SNAPSHOT=${_GIT_SNAPSHOT_BRANCH}|${_GIT_SNAPSHOT_AHEAD}|${_GIT_SNAP
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("STATUS_CALLS=1 CONFIG_CALLS=1", result.stdout)
         self.assertIn("SNAPSHOT=main|2|3|4|1", result.stdout)
+
+    def test_git_snapshot_counts_stashes_without_a_porcelain_stash_header(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            bin_dir = root / "bin"
+            log_file = root / "git.log"
+            repo.mkdir()
+            bin_dir.mkdir()
+            real_git = shutil.which("git") or "/usr/bin/git"
+            subprocess.run([real_git, "-C", str(repo), "init", "-q"], check=True)
+            subprocess.run(
+                [real_git, "-C", str(repo), "config", "user.name", "Demo"],
+                check=True,
+            )
+            subprocess.run(
+                [real_git, "-C", str(repo), "config", "user.email", "demo@example.com"],
+                check=True,
+            )
+            (repo / "tracked").write_text("base\n", encoding="ascii")
+            subprocess.run([real_git, "-C", str(repo), "add", "tracked"], check=True)
+            subprocess.run(
+                [real_git, "-C", str(repo), "commit", "-qm", "base"], check=True
+            )
+            (repo / "tracked").write_text("stashed\n", encoding="ascii")
+            subprocess.run([real_git, "-C", str(repo), "stash", "push", "-qm", "one"], check=True)
+
+            git = bin_dir / "git"
+            git.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$GIT_LOG\"\n"
+                "case \" $* \" in\n"
+                "  *' status '*) \"$REAL_GIT\" \"$@\" | sed '/^# stash /d' ;;\n"
+                "  *) exec \"$REAL_GIT\" \"$@\" ;;\n"
+                "esac\n",
+                encoding="ascii",
+            )
+            git.chmod(0o755)
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
+_ai_candy_collect_git_snapshot || return 70
+first="$_AI_CANDY_GIT_SNAPSHOT_STASH"
+_AI_CANDY_PROMPT_RENDER_ID=2
+_ai_candy_collect_git_snapshot || return 71
+second="$_AI_CANDY_GIT_SNAPSHOT_STASH"
+calls=0
+for line in "${(@f)$(<"$GIT_LOG")}"; do
+  [[ "$line" == *' rev-list '* ]] && (( calls++ ))
+done
+builtin print -r -- "STASH=${first}/${second} FALLBACK_CALLS=${calls}"
+""",
+                cache_home=root / "cache",
+                cwd=repo,
+                env={
+                    "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                    "REAL_GIT": real_git,
+                    "GIT_LOG": str(log_file),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STASH=1/1 FALLBACK_CALLS=1\n", result.stdout)
 
     def test_omz_async_git_handler_is_registered_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -698,13 +766,13 @@ print -r -- "REGISTERED=${REGISTERED}"
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_GIT_CONFIG_CACHE_TTL=0
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_GIT_CONFIG_CACHE_TTL=0
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_get_cached_git_remote_branch
 print -r -- "FIRST=${REPLY%%|*}"
 /bin/sh -c 'git remote set-url origin https://example.test/two.git'
-_PROMPT_RENDER_ID=2
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_get_cached_git_remote_branch
 print -r -- "SECOND=${REPLY%%|*}"
 """,
@@ -725,8 +793,8 @@ print -r -- "SECOND=${REPLY%%|*}"
 source "$1"
 _ai_candy_prompt_mark_git_cache_invalidation \
   "git commit -m init" "git commit -m init" "git commit -m init"
-print -r -- "STATUS=${_PROMPT_GIT_CACHE_INVALIDATE}"
-print -r -- "TOPOLOGY=${_PROMPT_GIT_TOPOLOGY_INVALIDATE}"
+print -r -- "STATUS=${_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE}"
+print -r -- "TOPOLOGY=${_AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -748,9 +816,9 @@ done
 setopt nounset
 unset VIRTUAL_ENV SSH_CONNECTION XDG_SESSION_DESKTOP XDG_SESSION_TYPE
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 _ai_candy_precmd_compute_prompt
 print -r -- READY
 """,
@@ -788,9 +856,9 @@ typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 setopt errexit nounset pipefail
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=1
 _ai_candy_precmd_compute_prompt
 [[ -o errexit ]]
 print -r -- READY
@@ -822,16 +890,16 @@ typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 setopt errexit nounset pipefail
 source "$1"
-_NETWORK_TIMEOUT=1
+_AI_CANDY_NETWORK_TIMEOUT=1
 _ai_candy_gh_username_update_ssh
 for attempt in {1..300}; do
-  if [[ -f "$_GH_USERNAME_SSH_CACHE_FILE" ]]; then
+  if [[ -f "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE" ]]; then
     break
   fi
   zselect -t 1 || true
 done
-[[ -f "$_GH_USERNAME_SSH_CACHE_FILE" ]]
-cache_value=$(<"$_GH_USERNAME_SSH_CACHE_FILE")
+[[ -f "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE" ]]
+cache_value=$(<"$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE")
 print -r -- "CACHE=${cache_value%%|*}"
 """,
                 cache_home=root / "cache",
@@ -858,7 +926,7 @@ typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 setopt nounset
 source "$1"
-_PROMPT_OS_MODE=1
+_AI_CANDY_PROMPT_OS_MODE=1
 _ai_candy_compute_sysinfo_direct
 print -r -- READY
 """,
@@ -886,7 +954,7 @@ typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 setopt nounset
 source "$1"
-_PROMPT_OS_MODE=1
+_AI_CANDY_PROMPT_OS_MODE=1
 _ai_candy_compute_sysinfo_direct
 print -r -- READY
 """,
@@ -919,35 +987,35 @@ colors
 typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 source "$1"
-_PROMPT_NETWORK_MODE=1
-_HAS_GH=0
-_HAS_SSH=0
-_HAS_CURL=1
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_HAS_GH=0
+_AI_CANDY_HAS_SSH=0
+_AI_CANDY_HAS_CURL=1
 function _ai_candy_public_ip_update_background() { :; }
 _ai_candy_compute_public_ip_direct
 _ai_candy_compute_gh_username_direct
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=1
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=1
-_HAS_CODEX=0
-_HAS_GEMINI=0
-_HAS_KIMI=0
-_AI_PROCESS_SNAPSHOT_TIME=$EPOCHSECONDS
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=1
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
+_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=$EPOCHSECONDS
 _ai_candy_compute_ai_tools_direct
 function _ai_candy_gh_is_authenticated() { return 0; }
 function _ai_candy_get_cached_git_remote_branch() { REPLY='remote|branch'; }
 function _ai_candy_gh_pr_update_cache() { :; }
-_PROMPT_NETWORK_MODE=1
-_HAS_GH=1
-_HAS_HASH_CMD=1
-_PROMPT_RENDER_ID=9
-_MEM_CACHE_GH_PR['remote|branch']="%F{red}|pass|${EPOCHSECONDS}"
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_HAS_HASH_CMD=1
+_AI_CANDY_PROMPT_RENDER_ID=9
+_AI_CANDY_MEM_CACHE_GH_PR['remote|branch']="%F{red}|pass|${EPOCHSECONDS}"
 _ai_candy_compute_pr_status_direct
-print -r -- "PUBLIC=${_PP_PUBLIC_IP}"
-print -r -- "GH=${_PP_GH_USER}"
-print -r -- "AI=${_PP_AI_STATUS}"
-print -r -- "PR=${_PP_PR}"
+print -r -- "PUBLIC=${_AI_CANDY_PP_PUBLIC_IP}"
+print -r -- "GH=${_AI_CANDY_PP_GH_USER}"
+print -r -- "AI=${_AI_CANDY_PP_AI_STATUS}"
+print -r -- "PR=${_AI_CANDY_PP_PR}"
 """,
                 cache_home=root / "cache",
             )
@@ -981,28 +1049,28 @@ fi
             result = run_zsh(
                 r"""
 source "$1"
-COLUMNS=80
-_PROMPT_EMOJI_MODE=0
-_PROMPT_OS_MODE=0
-_PP_SYSINFO_OS_LONG="${(l:200::X:)}"
-_PP_SYSINFO_OS_SHORT="${(l:200::X:)}"
-_PP_SYSINFO_KERNEL_LONG=""
-_PP_SYSINFO_KERNEL_SHORT=""
-_PP_AI_STATUS=""
-_PP_AI_STATUS_LONG=""
-_PP_GIT_INFO=""
-_PP_GIT_EXT=""
-_PP_GIT_SPECIAL=""
-_PP_PR=""
-_PP_GH_USER=""
-_PP_EXIT=""
-_PP_SSH=""
-_PP_PUBLIC_IP=""
-_PP_CACHED_GIT_ROOT="NOT_GIT"
+COLUMNS=160
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PP_SYSINFO_OS_LONG="${(l:200::X:)}"
+_AI_CANDY_PP_SYSINFO_OS_SHORT="${(l:200::X:)}"
+_AI_CANDY_PP_SYSINFO_KERNEL_LONG=""
+_AI_CANDY_PP_SYSINFO_KERNEL_SHORT=""
+_AI_CANDY_PP_AI_STATUS=""
+_AI_CANDY_PP_AI_STATUS_LONG=""
+_AI_CANDY_PP_GIT_INFO=""
+_AI_CANDY_PP_GIT_EXT=""
+_AI_CANDY_PP_GIT_SPECIAL=""
+_AI_CANDY_PP_PR=""
+_AI_CANDY_PP_GH_USER=""
+_AI_CANDY_PP_EXIT=""
+_AI_CANDY_PP_SSH=""
+_AI_CANDY_PP_PUBLIC_IP=""
+_AI_CANDY_PP_CACHED_GIT_ROOT="NOT_GIT"
 typeset -g _TEST_PATH_CALLS=""
 function _ai_candy_compute_smart_path_direct() {
   _TEST_PATH_CALLS+="${1},"
-  _PP_PATH="[x]"
+  _AI_CANDY_PP_PATH="[x]"
 }
 _ai_candy_compute_layout_mode
 print -r -- "CALLS=${_TEST_PATH_CALLS}"
@@ -1032,8 +1100,8 @@ function _ai_candy_run_local_probe() {
   fi
   return 1
 }
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 calls=0
 if [[ -f "$STATUS_LOG" ]]; then
@@ -1074,14 +1142,14 @@ function _ai_candy_run_local_probe() {
   fi
   _probe_without_snapshot_failure "$@"
 }
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
-first="${_GIT_SNAPSHOT_VALID}:${_GIT_SNAPSHOT_BRANCH}"
+first="${_AI_CANDY_GIT_SNAPSHOT_VALID}:${_AI_CANDY_GIT_SNAPSHOT_BRANCH}"
 ZSH_THEME_GIT_PROMPT_CLEAN=CLEAN
 _ai_candy_format_git_snapshot
-first_info="$_GIT_FORMATTED_INFO"
-_PROMPT_RENDER_ID=2
+first_info="$_AI_CANDY_GIT_FORMATTED_INFO"
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_collect_git_snapshot
 status_calls=0
 if [[ -f "$STATUS_LOG" ]]; then
@@ -1089,7 +1157,7 @@ if [[ -f "$STATUS_LOG" ]]; then
   status_calls=${#calls}
 fi
 print -r -- \
-  "FIRST=${first} SECOND=${_GIT_SNAPSHOT_VALID}:${_GIT_SNAPSHOT_BRANCH} CALLS=${status_calls} INFO=${first_info}"
+  "FIRST=${first} SECOND=${_AI_CANDY_GIT_SNAPSHOT_VALID}:${_AI_CANDY_GIT_SNAPSHOT_BRANCH} CALLS=${status_calls} INFO=${first_info}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -1127,12 +1195,12 @@ print -r -- READY
             result = run_zsh(
                 r"""
 source "$1"
-_GH_AUTH_REFRESH_RETRY_DELAY=3
+_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY=3
 function _ai_candy_gh_auth_update_background() {
-  _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}"
+  _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}"
 }
 if _ai_candy_gh_is_authenticated; then before=1; else before=0; fi
-(( _GH_AUTH_MEM_CACHE_TIME -= 4 ))
+(( _AI_CANDY_GH_AUTH_MEM_CACHE_TIME -= 4 ))
 if _ai_candy_gh_is_authenticated; then after=1; else after=0; fi
 print -r -- "BEFORE=${before} AFTER=${after}"
 """,
@@ -1181,13 +1249,13 @@ print -r -- "INVALID4=${REPLY}"
                 r"""
 source "$1"
 typeset -g REFRESH_CALLS=0
-_PROMPT_NETWORK_MODE=1
-_HAS_CURL=1
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_HAS_CURL=1
 function _ai_candy_public_ip_update_background() { (( REFRESH_CALLS++ )); }
 _ai_candy_compute_public_ip_direct
 _ai_candy_cache_timestamp_is_fresh "$(( EPOCHSECONDS + 10000 ))" 300 "$EPOCHSECONDS"
 future_status=$?
-print -r -- "IP=${_PP_PUBLIC_IP} REFRESH=${REFRESH_CALLS} FUTURE=${future_status}"
+print -r -- "IP=${_AI_CANDY_PP_PUBLIC_IP} REFRESH=${REFRESH_CALLS} FUTURE=${future_status}"
 """,
                 cache_home=root / "cache",
             )
@@ -1210,12 +1278,12 @@ autoload -Uz colors
 colors
 source "$1"
 typeset -g REFRESH_CALLS=0
-_PROMPT_NETWORK_MODE=1
-_HAS_CURL=1
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_HAS_CURL=1
 function _ai_candy_public_ip_update_background() { (( REFRESH_CALLS++ )); }
 _ai_candy_compute_public_ip_direct
 _ai_candy_compute_public_ip_direct
-print -r -- "CALLS=${REFRESH_CALLS} DISPLAY=${_PP_PUBLIC_IP}"
+print -r -- "CALLS=${REFRESH_CALLS} DISPLAY=${_AI_CANDY_PP_PUBLIC_IP}"
 """,
                 cache_home=root / "cache",
             )
@@ -1234,8 +1302,8 @@ print -r -- "CALLS=${REFRESH_CALLS} DISPLAY=${_PP_PUBLIC_IP}"
                 r"""
 source "$1"
 typeset -g REFRESH_CALLS=0
-_PROMPT_NETWORK_MODE=1
-_HAS_CURL=1
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_HAS_CURL=1
 function _ai_candy_public_ip_update_background() { (( REFRESH_CALLS++ )); }
 _ai_candy_compute_public_ip_direct
 print -r -- "CALLS=${REFRESH_CALLS}"
@@ -1254,7 +1322,7 @@ print -r -- "CALLS=${REFRESH_CALLS}"
             result = run_zsh(
                 r"""
 source "$1"
-_MEM_CACHE_GIT_ROOT[$PWD]="/wrong|$(( EPOCHSECONDS + 10000 ))"
+_AI_CANDY_MEM_CACHE_GIT_ROOT[$PWD]="/wrong|$(( EPOCHSECONDS + 10000 ))"
 _ai_candy_get_cached_git_root
 print -r -- "ROOT=${REPLY}"
 """,
@@ -1272,14 +1340,14 @@ print -r -- "ROOT=${REPLY}"
 source "$1"
 function _append_ai_tool() { print -r -- USER_APPEND; }
 function _tsl() { print -r -- USER_TSL; }
-_PROMPT_AI_MODE=1
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=0
-_HAS_CODEX=0
-_HAS_GEMINI=0
-_HAS_KIMI=0
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
 _ai_candy_compute_ai_tools_direct
-_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
 _ai_candy_prompt_tool_status >/dev/null
 _append_ai_tool
 _tsl
@@ -1359,6 +1427,22 @@ print -r -- "PROMPT=ok"
         self.assertIn("WIDTH=2", result.stdout)
         self.assertIn("PROMPT=ok", result.stdout)
 
+    def test_source_preserves_a_readonly_legacy_global_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy_name = "_CACHE" + "_DIR"
+            result = run_zsh(
+                r"""
+typeset -gr "${LEGACY_GLOBAL}=reserved"
+source "$1" || return
+print -r -- "VALUE=${(P)LEGACY_GLOBAL}"
+""",
+                cache_home=Path(tmp) / "cache",
+                env={"LEGACY_GLOBAL": legacy_name},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("VALUE=reserved\n", result.stdout)
+
     def test_omz_git_visibility_settings_and_exact_tags_are_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1393,11 +1477,11 @@ typeset -gA FG
 for color in {{0..255}}; do FG[$color]=""; done
 source "$1"
 {extra}
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 _ai_candy_format_git_snapshot
-print -r -- "INFO=${{_GIT_FORMATTED_INFO}}"
+print -r -- "INFO=${{_AI_CANDY_GIT_FORMATTED_INFO}}"
 """,
                     cache_home=root / "cache",
                     cwd=repo,
@@ -1456,17 +1540,17 @@ print -r -- "INFO=${{_GIT_FORMATTED_INFO}}"
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_GIT_CONFIG_CACHE_TTL=0
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_GIT_CONFIG_CACHE_TTL=0
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 _ai_candy_format_git_snapshot
-print -r -- "BEFORE=${_GIT_FORMATTED_INFO}"
+print -r -- "BEFORE=${_AI_CANDY_GIT_FORMATTED_INFO}"
 /bin/sh -c 'git config oh-my-zsh.hide-info 1'
-_PROMPT_RENDER_ID=2
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_collect_git_snapshot
 _ai_candy_format_git_snapshot
-print -r -- "AFTER=${_GIT_FORMATTED_INFO}"
+print -r -- "AFTER=${_AI_CANDY_GIT_FORMATTED_INFO}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -1504,17 +1588,17 @@ autoload -Uz colors
 colors
 setopt errexit nounset pipefail
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
-print -r -- "BRANCH=${_GIT_SNAPSHOT_VALID}"
+print -r -- "BRANCH=${_AI_CANDY_GIT_SNAPSHOT_VALID}"
 git checkout -q --detach
-_PROMPT_RENDER_ID=2
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_collect_git_snapshot
-print -r -- "DETACHED=${_GIT_SNAPSHOT_VALID} TAG=${_GIT_SNAPSHOT_TAG}"
+print -r -- "DETACHED=${_AI_CANDY_GIT_SNAPSHOT_VALID} TAG=${_AI_CANDY_GIT_SNAPSHOT_TAG}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -1541,7 +1625,7 @@ print -r -- "DETACHED=${_GIT_SNAPSHOT_VALID} TAG=${_GIT_SNAPSHOT_TAG}"
             result = run_zsh(
                 r"""
 source "$1"
-print -r -- "VALUES=${_PROMPT_EMOJI_MODE}${_PROMPT_PATH_SEP_MODE}${_PROMPT_NETWORK_MODE}${_PROMPT_AI_MODE}${_PROMPT_OS_MODE}"
+print -r -- "VALUES=${_AI_CANDY_PROMPT_EMOJI_MODE}${_AI_CANDY_PROMPT_PATH_SEP_MODE}${_AI_CANDY_PROMPT_NETWORK_MODE}${_AI_CANDY_PROMPT_AI_MODE}${_AI_CANDY_PROMPT_OS_MODE}"
 """,
                 cache_home=cache_home,
             )
@@ -1562,7 +1646,7 @@ print -r -- "VALUES=${_PROMPT_EMOJI_MODE}${_PROMPT_PATH_SEP_MODE}${_PROMPT_NETWO
             result = run_zsh(
                 r"""
 source "$1"
-print -r -- "EMOJI=${_PROMPT_EMOJI_MODE}"
+print -r -- "EMOJI=${_AI_CANDY_PROMPT_EMOJI_MODE}"
 """,
                 cache_home=cache_home,
             )
@@ -1579,7 +1663,7 @@ print -r -- "EMOJI=${_PROMPT_EMOJI_MODE}"
 source "$1"
 false
 _ai_candy_capture_exit_status
-print -r -- "STATUS=${_LAST_EXIT_STATUS}"
+print -r -- "STATUS=${_AI_CANDY_LAST_EXIT_STATUS}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -1601,6 +1685,8 @@ matches=("${(@)preexec_functions:#_ai_candy_prompt_mark_git_cache_invalidation}"
 print -r -- "_ai_candy_prompt_mark_git_cache_invalidation=$(( ${#preexec_functions} - ${#matches} ))"
 matches=("${(@)zshexit_functions:#_ai_candy_stop_registered_background_jobs}")
 print -r -- "_ai_candy_stop_registered_background_jobs=$(( ${#zshexit_functions} - ${#matches} ))"
+matches=("${(@)chpwd_functions:#_ai_candy_capture_physical_pwd}")
+print -r -- "_ai_candy_capture_physical_pwd=$(( ${#chpwd_functions} - ${#matches} ))"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -1618,7 +1704,7 @@ colors
 source "$1"
 VIRTUAL_ENV='/tmp/venv%F{red}'
 _ai_candy_compute_venv_direct
-print -r -- "VENV=${_PP_VENV}"
+print -r -- "VENV=${_AI_CANDY_PP_VENV}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -1637,7 +1723,7 @@ print -r -- "VENV=${_PP_VENV}"
             result = run_zsh(
                 r"""
 source "$1"
-cache_file="${_CACHE_DIR}/slow_tool_cache"
+cache_file="${_AI_CANDY_CACHE_DIR}/slow_tool_cache"
 start=$EPOCHREALTIME
 _ai_candy_ai_tool_update_cache "$cache_file" slow-tool 'https://invalid.example/version'
 worker_pid="${_AI_CANDY_BACKGROUND_PIDS[-1]-}"

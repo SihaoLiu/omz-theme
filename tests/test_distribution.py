@@ -13,6 +13,11 @@ BUILD_SCRIPT = ROOT / "scripts" / "build-theme.zsh"
 PRIVACY_MARKERS = ROOT / "scripts" / "privacy-markers.zsh"
 THEME = ROOT / "ai-candy.zsh-theme"
 COMPATIBILITY_WORKFLOW = ROOT / ".github" / "workflows" / "compatibility.yml"
+ZSH_54_SMOKE = ROOT / "tests" / "zsh54-smoke.zsh"
+INSTALLATION_DOC = ROOT / "docs" / "installation.md"
+CONFIGURATION_DOC = ROOT / "docs" / "configuration.md"
+ARCHITECTURE_DOC = ROOT / "docs" / "architecture.md"
+DEVELOPMENT_DOC = ROOT / "docs" / "development.md"
 MODULES = (
     ROOT / "src" / "bootstrap.zsh",
     ROOT / "src" / "unicode-width.zsh",
@@ -79,13 +84,22 @@ class DistributionTest(unittest.TestCase):
     def test_supported_zsh_floor_matches_the_compatibility_image(self) -> None:
         bootstrap = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="ascii")
         readme = (ROOT / "README.md").read_text(encoding="ascii")
+        configuration = CONFIGURATION_DOC.read_text(encoding="ascii")
         workflow = COMPATIBILITY_WORKFLOW.read_text(encoding="ascii")
+        smoke = ZSH_54_SMOKE.read_text(encoding="ascii")
 
         self.assertIn("if ! is-at-least 5.4.2; then", bootstrap)
         self.assertIn("Requires zsh 5.4.2+", bootstrap)
-        self.assertEqual(2, readme.count("Zsh 5.4.2 or newer"))
+        self.assertIn("Zsh 5.4.2 or newer", readme)
+        self.assertIn("Zsh 5.4.2 or newer", configuration)
         self.assertIn("Zsh 5.4.2 compatibility", workflow)
-        self.assertIn('[[ "$ZSH_VERSION" == 5.4.2 ]]', workflow)
+        self.assertIn('[[ "$ZSH_VERSION" == 5.4.2 ]]', smoke)
+
+    def test_minimum_zsh_job_runs_the_standalone_smoke_script(self) -> None:
+        workflow = COMPATIBILITY_WORKFLOW.read_text(encoding="ascii")
+
+        self.assertTrue(ZSH_54_SMOKE.is_file())
+        self.assertIn("zsh tests/zsh54-smoke.zsh", workflow)
 
     def test_standalone_theme_declares_its_generation_source(self) -> None:
         theme = THEME.read_text(encoding="utf-8")
@@ -121,6 +135,17 @@ class DistributionTest(unittest.TestCase):
             timeout = re.search(r"^    timeout-minutes: ([0-9]+)$", job["body"], re.MULTILINE)
             self.assertIsNotNone(timeout, job_name)
             self.assertLessEqual(int(timeout.group(1)), 30, job_name)
+
+    def test_macos_job_uses_a_physical_temporary_directory(self) -> None:
+        workflow = COMPATIBILITY_WORKFLOW.read_text(encoding="ascii")
+        job = re.search(
+            r"^  macos:\n(?P<body>.*?)(?=^  [a-z0-9-]+:\n|\Z)",
+            workflow,
+            re.MULTILINE | re.DOTALL,
+        )
+
+        self.assertIsNotNone(job)
+        self.assertIn("TMPDIR: /private/tmp", job["body"])
 
     def test_theme_sources_do_not_use_zsh_namerefs(self) -> None:
         nameref = re.compile(r"^[ \t]*(?:local|typeset)[ \t]+-n(?:[ \t]|$)", re.MULTILINE)
@@ -188,6 +213,20 @@ class DistributionTest(unittest.TestCase):
             for function_name in definition.findall(module.read_text(encoding="utf-8")):
                 if not function_name.startswith(("_ai_candy_", "_AI_CANDY_")):
                     findings.append(f"{module.name}: {function_name}")
+
+        self.assertEqual([], findings)
+
+    def test_theme_internal_identifiers_use_the_project_namespace(self) -> None:
+        internal_identifier = re.compile(r"\b_[A-Z][A-Z0-9_]*\b")
+        findings = []
+
+        for module in MODULES:
+            identifiers = set(
+                internal_identifier.findall(module.read_text(encoding="utf-8"))
+            )
+            for identifier in sorted(identifiers):
+                if not identifier.startswith(("_AI_CANDY_", "_OMZ_ASYNC_")):
+                    findings.append(f"{module.name}: {identifier}")
 
         self.assertEqual([], findings)
 
@@ -297,28 +336,57 @@ exec zsh "$3"
 
         self.assertEqual([], findings)
 
-    def test_readme_downloads_installer_before_executing_it(self) -> None:
+    def test_documented_installers_download_before_executing(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        installation = INSTALLATION_DOC.read_text(encoding="utf-8")
+
+        for document in (readme, installation):
+            self.assertNotIn('sh -c "$(curl', document)
+            self.assertIn('curl -fsSL --proto "=https"', document)
+            self.assertIn("--connect-timeout 5 --max-time 30", document)
+            self.assertEqual(1, document.count("installer_max_bytes=262144"))
+            self.assertEqual(1, document.count("installer_limit_unit=512"))
+            self.assertEqual(
+                1,
+                document.count(
+                    '[ -n "${BASH_VERSION:-}" ] && installer_limit_unit=1024'
+                ),
+            )
+            self.assertEqual(
+                1, document.count('--max-filesize "$installer_max_bytes"')
+            )
+            self.assertEqual(
+                1, document.count('ulimit -f "$installer_limit_blocks"')
+            )
+            self.assertIn('-o "$installer" -- "$installer_url"', document)
+            self.assertEqual(1, document.count('wc -c < "$installer"'))
+            self.assertIn('&& sh "$installer" "$@"', document)
+
+    def test_configuration_docs_document_that_short_aliases_are_opt_in(self) -> None:
+        configuration = CONFIGURATION_DOC.read_text(encoding="utf-8")
+
+        self.assertIn("Short aliases are disabled by default", configuration)
+        self.assertIn("AI_CANDY_ENABLE_SHORT_ALIASES=1", configuration)
+
+    def test_readme_is_a_concise_entry_point(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertNotIn('sh -c "$(curl', readme)
-        self.assertIn('curl -fsSL --proto "=https"', readme)
-        self.assertIn("--connect-timeout 5 --max-time 30", readme)
-        self.assertEqual(2, readme.count("installer_max_bytes=262144"))
+        self.assertLessEqual(len(readme.splitlines()), 100)
         self.assertEqual(
-            2, readme.count('--max-filesize "$installer_max_bytes"')
+            ["## Installation", "## Documentation"],
+            re.findall(r"^## .+$", readme, re.MULTILINE),
         )
-        self.assertEqual(
-            2, readme.count('ulimit -f "$installer_limit_blocks"')
-        )
-        self.assertIn('-o "$installer" -- "$installer_url"', readme)
-        self.assertEqual(2, readme.count('wc -c < "$installer"'))
-        self.assertIn('&& sh "$installer" "$@"', readme)
-
-    def test_readme_documents_that_short_aliases_are_opt_in(self) -> None:
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-        self.assertIn("Short aliases are disabled by default", readme)
-        self.assertIn("AI_CANDY_ENABLE_SHORT_ALIASES=1", readme)
+        for document in (
+            INSTALLATION_DOC,
+            CONFIGURATION_DOC,
+            ARCHITECTURE_DOC,
+            DEVELOPMENT_DOC,
+        ):
+            self.assertTrue(document.is_file())
+            self.assertIn(
+                f"]({document.relative_to(ROOT).as_posix()})",
+                readme,
+            )
 
 
 if __name__ == "__main__":

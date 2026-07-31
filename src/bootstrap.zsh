@@ -61,35 +61,35 @@ fi
 
 # Prefer Zsh builtins for local file operations. They avoid GNU/BSD command
 # differences and cannot be shadowed by a slow executable earlier in PATH.
-typeset -g _HAS_ZSH_FILE_BUILTINS=0
-typeset -g _HAS_ZSH_CHMOD_BUILTIN=0
+typeset -g _AI_CANDY_HAS_ZSH_FILE_BUILTINS=0
+typeset -g _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN=0
 if builtin zmodload zsh/files 2>/dev/null && \
    (( $+builtins[zf_mkdir] && $+builtins[zf_rm] && \
       $+builtins[zf_mv] && $+builtins[zf_rmdir] )); then
-  _HAS_ZSH_FILE_BUILTINS=1
+  _AI_CANDY_HAS_ZSH_FILE_BUILTINS=1
 fi
-(( $+builtins[zf_chmod] )) && _HAS_ZSH_CHMOD_BUILTIN=1
+(( $+builtins[zf_chmod] )) && _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN=1
 
 function _ai_candy_chmod() {
-  if (( _HAS_ZSH_CHMOD_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN )); then
     builtin zf_chmod "$@"
   else
     command chmod "$@"
   fi
 }
 
-typeset -g _HAS_ZSH_STAT_BUILTIN=0
+typeset -g _AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
 if builtin zmodload -F zsh/stat b:zstat 2>/dev/null; then
-  _HAS_ZSH_STAT_BUILTIN=1
+  _AI_CANDY_HAS_ZSH_STAT_BUILTIN=1
 fi
 
 # zsh/datetime supplies the prompt's high-resolution session clock. zsh/system
 # and zsh/zselect enable the native timeout and descriptor-lock fast paths.
-typeset -g _HAS_ZSH_SYSTEM=0
-typeset -g _HAS_ZSH_ZSELECT=0
-typeset -g _HAS_ZSH_NATIVE_TIMEOUT=0
+typeset -g _AI_CANDY_HAS_ZSH_SYSTEM=0
+typeset -g _AI_CANDY_HAS_ZSH_ZSELECT=0
+typeset -g _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
 if builtin zmodload zsh/system 2>/dev/null; then
-  _HAS_ZSH_SYSTEM=1
+  _AI_CANDY_HAS_ZSH_SYSTEM=1
 fi
 if ! builtin zmodload zsh/datetime 2>/dev/null; then
   builtin print -P "%F{red}[ai-candy.zsh-theme]%f Requires the standard zsh/datetime module"
@@ -98,11 +98,26 @@ if ! builtin zmodload zsh/datetime 2>/dev/null; then
   return 1
 fi
 if builtin zmodload zsh/zselect 2>/dev/null; then
-  _HAS_ZSH_ZSELECT=1
+  _AI_CANDY_HAS_ZSH_ZSELECT=1
 fi
-if (( _HAS_ZSH_SYSTEM && _HAS_ZSH_ZSELECT )); then
-  _HAS_ZSH_NATIVE_TIMEOUT=1
+if (( _AI_CANDY_HAS_ZSH_SYSTEM && _AI_CANDY_HAS_ZSH_ZSELECT )); then
+  _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=1
 fi
+
+typeset -g _AI_CANDY_PHYSICAL_PWD=""
+function _ai_candy_capture_physical_pwd() {
+  emulate -L zsh
+  local captured_pwd=""
+
+  if ! captured_pwd="$(builtin pwd -P 2>/dev/null)" || \
+     [[ "$captured_pwd" != /* ]]; then
+    _AI_CANDY_PHYSICAL_PWD=""
+    return 1
+  fi
+  _AI_CANDY_PHYSICAL_PWD="$captured_pwd"
+  return 0
+}
+_ai_candy_capture_physical_pwd || true
 
 # ============================================================================
 # COMMAND AVAILABILITY - Checked once at load time for performance
@@ -113,22 +128,22 @@ fi
 # Optional tools use lazy detection because shell-managed installations may not
 # be in PATH when the theme first loads.
 
-typeset -g _HAS_SQLITE3=0
-typeset -g _HAS_TIMEOUT=0
-typeset -g _TIMEOUT_CMD=""
-typeset -g _HAS_GH=0
-typeset -g _HAS_SSH=0
-typeset -g _HAS_CURL=0
+typeset -g _AI_CANDY_HAS_SQLITE3=0
+typeset -g _AI_CANDY_HAS_TIMEOUT=0
+typeset -g _AI_CANDY_TIMEOUT_CMD=""
+typeset -g _AI_CANDY_HAS_GH=0
+typeset -g _AI_CANDY_HAS_SSH=0
+typeset -g _AI_CANDY_HAS_CURL=0
 
 # Optional tools are detected on first prompt render.
-typeset -g _HAS_CLAUDE=0
-typeset -g _HAS_CODEX=0
-typeset -g _HAS_GEMINI=0
-typeset -g _HAS_KIMI=0
-typeset -g _AI_TOOLS_DETECTED=0  # Triggers one-time optional-tool detection
+typeset -g _AI_CANDY_HAS_CLAUDE=0
+typeset -g _AI_CANDY_HAS_CODEX=0
+typeset -g _AI_CANDY_HAS_GEMINI=0
+typeset -g _AI_CANDY_HAS_KIMI=0
+typeset -g _AI_CANDY_AI_TOOLS_DETECTED=0  # Triggers one-time optional-tool detection
 
-typeset -g _HASH_CMD=""
-typeset -g _HAS_HASH_CMD=0
+typeset -g _AI_CANDY_HASH_CMD=""
+typeset -g _AI_CANDY_HAS_HASH_CMD=0
 
 function _ai_candy_resolve_external_command() {
   emulate -L zsh
@@ -171,54 +186,54 @@ function _ai_candy_resolve_external_command() {
 }
 
 function _ai_candy_detect_core_commands() {
-  _HAS_SQLITE3=0
-  _HAS_TIMEOUT=0
-  _TIMEOUT_CMD=""
-  _HAS_GH=0
-  _HAS_SSH=0
-  _HAS_CURL=0
-  _HASH_CMD=""
-  _HAS_HASH_CMD=0
+  _AI_CANDY_HAS_SQLITE3=0
+  _AI_CANDY_HAS_TIMEOUT=0
+  _AI_CANDY_TIMEOUT_CMD=""
+  _AI_CANDY_HAS_GH=0
+  _AI_CANDY_HAS_SSH=0
+  _AI_CANDY_HAS_CURL=0
+  _AI_CANDY_HASH_CMD=""
+  _AI_CANDY_HAS_HASH_CMD=0
 
-  _ai_candy_resolve_external_command sqlite3 && _HAS_SQLITE3=1
-  if (( _HAS_ZSH_NATIVE_TIMEOUT )); then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="zsh-native"
+  _ai_candy_resolve_external_command sqlite3 && _AI_CANDY_HAS_SQLITE3=1
+  if (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT )); then
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="zsh-native"
   elif _ai_candy_resolve_external_command timeout; then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="$REPLY"
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="$REPLY"
   elif _ai_candy_resolve_external_command gtimeout; then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="$REPLY"
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="$REPLY"
   fi
-  _ai_candy_resolve_external_command gh && _HAS_GH=1
-  _ai_candy_resolve_external_command ssh && _HAS_SSH=1
-  _ai_candy_resolve_external_command curl && _HAS_CURL=1
+  _ai_candy_resolve_external_command gh && _AI_CANDY_HAS_GH=1
+  _ai_candy_resolve_external_command ssh && _AI_CANDY_HAS_SSH=1
+  _ai_candy_resolve_external_command curl && _AI_CANDY_HAS_CURL=1
 
   # Remote URLs are hashed before becoming persistent PR cache keys.
   if _ai_candy_resolve_external_command sha256sum; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   elif _ai_candy_resolve_external_command shasum; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   elif _ai_candy_resolve_external_command openssl; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   fi
 }
 
 function _ai_candy_detect_optional_commands() {
-  _HAS_CLAUDE=0
-  _HAS_CODEX=0
-  _HAS_GEMINI=0
-  _HAS_KIMI=0
+  _AI_CANDY_HAS_CLAUDE=0
+  _AI_CANDY_HAS_CODEX=0
+  _AI_CANDY_HAS_GEMINI=0
+  _AI_CANDY_HAS_KIMI=0
 
-  _ai_candy_resolve_external_command claude && _HAS_CLAUDE=1
-  _ai_candy_resolve_external_command codex && _HAS_CODEX=1
-  _ai_candy_resolve_external_command gemini && _HAS_GEMINI=1
-  _ai_candy_resolve_external_command kimi && _HAS_KIMI=1
-  _AI_TOOLS_DETECTED=1
+  _ai_candy_resolve_external_command claude && _AI_CANDY_HAS_CLAUDE=1
+  _ai_candy_resolve_external_command codex && _AI_CANDY_HAS_CODEX=1
+  _ai_candy_resolve_external_command gemini && _AI_CANDY_HAS_GEMINI=1
+  _ai_candy_resolve_external_command kimi && _AI_CANDY_HAS_KIMI=1
+  _AI_CANDY_AI_TOOLS_DETECTED=1
 }
 
 _ai_candy_detect_core_commands
@@ -234,13 +249,20 @@ function _ai_candy_sleep_ticks() {
   return 0
 }
 
+function _ai_candy_terminal_codepoint_is_emoji_joinable() {
+  integer codepoint="$1"
+  (( (codepoint >= 0x2300 && codepoint <= 0x23ff) ||
+      (codepoint >= 0x2600 && codepoint <= 0x27ff) ||
+      (codepoint >= 0x1f000 && codepoint <= 0x1faff) ))
+}
+
 function _ai_candy_sanitize_terminal_text() {
   emulate -L zsh
   local LC_ALL=C
   local value="$1"
-  local byte second third fourth
+  local byte second third fourth pending_joiner_text=""
   integer index=1 length=${#value} code second_code third_code fourth_code width
-  integer codepoint
+  integer codepoint previous_joinable=0 pending_joiner=0
   REPLY=""
 
   while (( index <= length )); do
@@ -249,11 +271,23 @@ function _ai_candy_sanitize_terminal_text() {
     width=0
 
     if (( code >= 32 && code <= 126 )); then
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="$byte"
+      previous_joinable=0
       (( index++ ))
       continue
     elif (( code < 128 )); then
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="?"
+      previous_joinable=0
       (( index++ ))
       continue
     fi
@@ -299,19 +333,55 @@ function _ai_candy_sanitize_terminal_text() {
         3) codepoint=$(( (code - 224) * 4096 + (second_code - 128) * 64 + third_code - 128 )) ;;
         4) codepoint=$(( (code - 240) * 262144 + (second_code - 128) * 4096 + (third_code - 128) * 64 + fourth_code - 128 )) ;;
       esac
-      if (( codepoint == 1564 || codepoint == 8206 || codepoint == 8207 ||
+      if (( pending_joiner )); then
+        if _ai_candy_terminal_codepoint_is_emoji_joinable "$codepoint"; then
+          REPLY+="$pending_joiner_text"
+        else
+          REPLY+="?"
+        fi
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
+      if (( codepoint == 8205 )); then
+        if (( previous_joinable )); then
+          pending_joiner=1
+          pending_joiner_text="${value[index,index+width-1]}"
+        else
+          REPLY+="?"
+        fi
+        previous_joinable=0
+        (( index += width ))
+        continue
+      fi
+      if (( codepoint == 173 || codepoint == 1564 || codepoint == 6158 ||
+            (codepoint >= 8203 && codepoint <= 8207 && codepoint != 8205) ||
             (codepoint >= 8232 && codepoint <= 8238) ||
-            (codepoint >= 8294 && codepoint <= 8297) )); then
+            (codepoint >= 8288 && codepoint <= 8303) ||
+            codepoint == 65279 ||
+            (codepoint >= 65529 && codepoint <= 65531) ||
+            (codepoint >= 917504 && codepoint <= 917631) )); then
         REPLY+="?"
       else
         REPLY+="${value[index,index+width-1]}"
       fi
+      if _ai_candy_terminal_codepoint_is_emoji_joinable "$codepoint"; then
+        previous_joinable=1
+      elif (( codepoint != 65039 )); then
+        previous_joinable=0
+      fi
       (( index += width ))
     else
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="?"
+      previous_joinable=0
       (( index++ ))
     fi
   done
+  (( pending_joiner )) && REPLY+="?"
 }
 
 function _ai_candy_prompt_escape_text() {
@@ -329,17 +399,17 @@ function _ai_candy_prompt_escape_text() {
 # COLOR CONSTANTS - Centralized color definitions for easy customization
 # ============================================================================
 # 256-color palette (FG[N] format)
-typeset -g _CLR_TIME_MORNING=214      # Warm yellow (6am-12pm)
-typeset -g _CLR_TIME_AFTERNOON=255    # Bright white (12pm-6pm)
-typeset -g _CLR_TIME_EVENING=208      # Soft orange (6pm-10pm)
-typeset -g _CLR_TIME_NIGHT=111        # Dim blue (10pm-6am)
-typeset -g _CLR_TRUNCATED=240         # Gray for truncated path indicator
-typeset -g _CLR_CLAUDE=173            # Coral
-typeset -g _CLR_CODEX=250             # Light gray
-typeset -g _CLR_GEMINI=141            # Purple
-typeset -g _CLR_KIMI=75               # Sky blue
-typeset -g _CLR_PR=213                # Pink - GitHub PR
-typeset -g _CLR_USER_HOST=136         # Brown - user@host
+typeset -g _AI_CANDY_CLR_TIME_MORNING=214      # Warm yellow (6am-12pm)
+typeset -g _AI_CANDY_CLR_TIME_AFTERNOON=255    # Bright white (12pm-6pm)
+typeset -g _AI_CANDY_CLR_TIME_EVENING=208      # Soft orange (6pm-10pm)
+typeset -g _AI_CANDY_CLR_TIME_NIGHT=111        # Dim blue (10pm-6am)
+typeset -g _AI_CANDY_CLR_TRUNCATED=240         # Gray for truncated path indicator
+typeset -g _AI_CANDY_CLR_CLAUDE=173            # Coral
+typeset -g _AI_CANDY_CLR_CODEX=250             # Light gray
+typeset -g _AI_CANDY_CLR_GEMINI=141            # Purple
+typeset -g _AI_CANDY_CLR_KIMI=75               # Sky blue
+typeset -g _AI_CANDY_CLR_PR=213                # Pink - GitHub PR
+typeset -g _AI_CANDY_CLR_USER_HOST=136         # Brown - user@host
 
 # Standard color names (fg[name] format) - for reference/documentation
 # cyan    - SSH indicator, system info
@@ -350,47 +420,47 @@ typeset -g _CLR_USER_HOST=136         # Brown - user@host
 # white   - path segments, optional-tool brackets
 # blue    - prompt arrow
 
-typeset -g _SYM_CHECK=$'\xe2\x9c\x93'
-typeset -g _SYM_CROSS=$'\xe2\x9c\x97'
-typeset -g _SYM_UP=$'\xe2\x86\x91'
-typeset -g _SYM_DOWN=$'\xe2\x86\x93'
-typeset -g _SYM_STASH=$'\xe2\x9a\x91'
-typeset -g _SYM_WARNING=$'\xe2\x9a\xa0'
-typeset -g _SYM_JOBS=$'\xe2\x9a\x99'
-typeset -g _SYM_PENDING=$'\xe2\x8f\xb3'
-typeset -g _SYM_HOST=$'\xf0\x9f\x92\xbb'
-typeset -g _SYM_BRANCH=$'\xf0\x9f\x94\x80'
-typeset -g _SYM_CHERRY=$'\xf0\x9f\x8d\x92'
-typeset -g _SYM_REWIND=$'\xe2\x8f\xaa'
-typeset -g _SYM_SEARCH=$'\xf0\x9f\x94\x8d'
-typeset -g _SYM_PLUG=$'\xf0\x9f\x94\x8c'
-typeset -g _BOX_TL=$'\xe2\x95\x94'
-typeset -g _BOX_TR=$'\xe2\x95\x97'
-typeset -g _BOX_BL=$'\xe2\x95\x9a'
-typeset -g _BOX_BR=$'\xe2\x95\x9d'
-typeset -g _BOX_ML=$'\xe2\x95\xa0'
-typeset -g _BOX_MR=$'\xe2\x95\xa3'
-typeset -g _BOX_H=$'\xe2\x95\x90'
-typeset -g _BOX_V=$'\xe2\x95\x91'
+typeset -g _AI_CANDY_SYM_CHECK=$'\xe2\x9c\x93'
+typeset -g _AI_CANDY_SYM_CROSS=$'\xe2\x9c\x97'
+typeset -g _AI_CANDY_SYM_UP=$'\xe2\x86\x91'
+typeset -g _AI_CANDY_SYM_DOWN=$'\xe2\x86\x93'
+typeset -g _AI_CANDY_SYM_STASH=$'\xe2\x9a\x91'
+typeset -g _AI_CANDY_SYM_WARNING=$'\xe2\x9a\xa0'
+typeset -g _AI_CANDY_SYM_JOBS=$'\xe2\x9a\x99'
+typeset -g _AI_CANDY_SYM_PENDING=$'\xe2\x8f\xb3'
+typeset -g _AI_CANDY_SYM_HOST=$'\xf0\x9f\x92\xbb'
+typeset -g _AI_CANDY_SYM_BRANCH=$'\xf0\x9f\x94\x80'
+typeset -g _AI_CANDY_SYM_CHERRY=$'\xf0\x9f\x8d\x92'
+typeset -g _AI_CANDY_SYM_REWIND=$'\xe2\x8f\xaa'
+typeset -g _AI_CANDY_SYM_SEARCH=$'\xf0\x9f\x94\x8d'
+typeset -g _AI_CANDY_SYM_PLUG=$'\xf0\x9f\x94\x8c'
+typeset -g _AI_CANDY_BOX_TL=$'\xe2\x95\x94'
+typeset -g _AI_CANDY_BOX_TR=$'\xe2\x95\x97'
+typeset -g _AI_CANDY_BOX_BL=$'\xe2\x95\x9a'
+typeset -g _AI_CANDY_BOX_BR=$'\xe2\x95\x9d'
+typeset -g _AI_CANDY_BOX_ML=$'\xe2\x95\xa0'
+typeset -g _AI_CANDY_BOX_MR=$'\xe2\x95\xa3'
+typeset -g _AI_CANDY_BOX_H=$'\xe2\x95\x90'
+typeset -g _AI_CANDY_BOX_V=$'\xe2\x95\x91'
 
 # Background colors for git path segments (256-color palette)
 # Level 0 (outermost/top repo): light cyan
 # Level 1 (first submodule): light yellow
 # Level 2 (second submodule): light green
 # Level 3+ (deeper): light magenta
-typeset -ga _PATH_BG_COLORS=(159 229 157 225)
+typeset -ga _AI_CANDY_PATH_BG_COLORS=(159 229 157 225)
 
 # Internal separator for git hierarchy cache (avoid common path characters).
 # ASCII Unit Separator bytes are neutralized by the hierarchy encoder.
 # IMPORTANT: When splitting strings with this separator in zsh, use:
 #   ${(@ps.$sep.)string}   -- CORRECT (p flag + s.$var. syntax)
 #   ${(@s:$sep:)string}    -- WRONG (s:X: requires literal X, not variable)
-typeset -g _GIT_HIERARCHY_SEP=$'\x1f'
+typeset -g _AI_CANDY_GIT_HIERARCHY_SEP=$'\x1f'
 
 # GitHub username badge background color (white background for normal, red for mismatch)
-typeset -g _CLR_GH_USER_BG=255        # White background
-typeset -g _CLR_GH_USER_FG=16         # Black foreground
-typeset -g _CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
+typeset -g _AI_CANDY_CLR_GH_USER_BG=255        # White background
+typeset -g _AI_CANDY_CLR_GH_USER_FG=16         # Black foreground
+typeset -g _AI_CANDY_CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
 
 # ============================================================================
 # TIMING CONSTANTS - Centralized timeout and cache TTL settings
@@ -398,43 +468,43 @@ typeset -g _CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
 # All timing values in seconds for easy adjustment
 
 # Network timeout (prevents hanging on slow/unreachable services)
-typeset -g _NETWORK_TIMEOUT=3         # 3 seconds
+typeset -g _AI_CANDY_NETWORK_TIMEOUT=3         # 3 seconds
 
 # Local probe timeout (prevents optional local tools from blocking prompt startup)
-typeset -g _LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
+typeset -g _AI_CANDY_LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
 
 # Background and user-requested probes do not block prompt rendering.
-typeset -g _BACKGROUND_LOCAL_PROBE_TIMEOUT=1 # 1 second
+typeset -g _AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT=1 # 1 second
 
 # Process count timeout (tool instance counts are optional prompt decoration)
-typeset -g _PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
+typeset -g _AI_CANDY_PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
 
 # High frequency cache (fast-changing data, checked frequently)
-typeset -g _CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
+typeset -g _AI_CANDY_CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
 
 # Medium frequency cache (moderately changing data)
-typeset -g _CACHE_TTL_MEDIUM=300      # 5 minutes - git status, GitHub username
+typeset -g _AI_CANDY_CACHE_TTL_MEDIUM=300      # 5 minutes - git status, GitHub username
 
 # Low frequency cache (rarely changing data)
-typeset -g _CACHE_TTL_LOW=3600        # 1 hour - system info, tool versions, auth status
+typeset -g _AI_CANDY_CACHE_TTL_LOW=3600        # 1 hour - system info, tool versions, auth status
 
 # ============================================================================
 # PATH & LAYOUT CONSTANTS - Centralized settings for path display and layout
 # ============================================================================
 # Maximum depth for git hierarchy traversal (prevents infinite loops)
-typeset -g _GIT_HIERARCHY_MAX_DEPTH=20
+typeset -g _AI_CANDY_GIT_HIERARCHY_MAX_DEPTH=20
 
 # Bump when git hierarchy serialization changes in a way that makes old cache
 # entries visually incorrect.
-typeset -g _GIT_HIERARCHY_CACHE_VERSION=2
+typeset -g _AI_CANDY_GIT_HIERARCHY_CACHE_VERSION=2
 
 # Target width for path truncation
-typeset -g _PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
-typeset -g _PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
+typeset -g _AI_CANDY_PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
+typeset -g _AI_CANDY_PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
 
 # Layout margin - minimum free space to leave before switching to shorter format
 # If remaining terminal width is less than this, trigger RPROMPT or shorter mode
-typeset -g _LAYOUT_MARGIN=8
+typeset -g _AI_CANDY_LAYOUT_MARGIN=8
 
 # ============================================================================
 # TIMEOUT WRAPPER - Universal timeout command abstraction
@@ -446,13 +516,14 @@ typeset -g _LAYOUT_MARGIN=8
 # Usage: _ai_candy_run_with_timeout <timeout_seconds> <command> [args...]
 # Returns: command output on success, empty string on timeout or error
 # Exit code: mirrors the underlying command's exit code
-# Note: _HAS_TIMEOUT and _TIMEOUT_CMD are set in COMMAND AVAILABILITY section
+# Note: _AI_CANDY_HAS_TIMEOUT and _AI_CANDY_TIMEOUT_CMD are set in COMMAND AVAILABILITY section
 
-typeset -g _TIMEOUT_OUTPUT_MAX_BYTES=$((256 * 1024))
-typeset -g _TIMEOUT_STALE_FILES_SCANNED=0
+typeset -g _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=$((256 * 1024))
+typeset -g _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=0
+typeset -g _AI_CANDY_TIMEOUT_TEMP_DIR=""
 
 function _ai_candy_timeout_output_limit_bytes() {
-  integer max_output_bytes=${_TIMEOUT_OUTPUT_MAX_BYTES:-262144}
+  integer max_output_bytes=${_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES:-262144}
   if (( max_output_bytes < 512 || max_output_bytes > 1048576 )); then
     max_output_bytes=262144
   fi
@@ -461,7 +532,7 @@ function _ai_candy_timeout_output_limit_bytes() {
 
 function _ai_candy_remove_timeout_files() {
   (( $# > 0 )) || return 0
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
     builtin zf_rm -f "$@" 2>/dev/null
   else
     command /bin/rm -f "$@" 2>/dev/null
@@ -486,6 +557,48 @@ function _ai_candy_cleanup_stale_timeout_files() {
   done
 }
 
+function _ai_candy_timeout_temp_directory() {
+  emulate -L zsh
+  local temp_base="${${TMPDIR:-/tmp}:A}"
+  local temp_dir="$_AI_CANDY_TIMEOUT_TEMP_DIR"
+  REPLY=""
+
+  if [[ -n "$temp_dir" && -d "$temp_dir" && ! -L "$temp_dir" && \
+        -O "$temp_dir" && -w "$temp_dir" ]]; then
+    REPLY="$temp_dir"
+    return 0
+  fi
+  _AI_CANDY_TIMEOUT_TEMP_DIR=""
+
+  if [[ -d "$temp_base" && -w "$temp_base" && ! -L "$temp_base" ]] && \
+     [[ -O "$temp_base" || -k "$temp_base" ]]; then
+    temp_dir="${temp_base%/}/ai-candy-${EUID}"
+    if [[ ! -e "$temp_dir" && ! -L "$temp_dir" ]]; then
+      if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
+        ( umask 077 && builtin zf_mkdir -m 700 "$temp_dir" ) 2>/dev/null || true
+      else
+        ( umask 077 && command mkdir -m 700 "$temp_dir" ) 2>/dev/null || true
+      fi
+    fi
+    if [[ -d "$temp_dir" && ! -L "$temp_dir" && -O "$temp_dir" ]]; then
+      _ai_candy_chmod 700 "$temp_dir" 2>/dev/null || true
+      if [[ -w "$temp_dir" ]]; then
+        _AI_CANDY_TIMEOUT_TEMP_DIR="$temp_dir"
+        REPLY="$temp_dir"
+        return 0
+      fi
+    fi
+  fi
+
+  if (( ${_AI_CANDY_CACHE_READY:-0} )) && [[ -d "$_AI_CANDY_CACHE_DIR" && \
+       -w "$_AI_CANDY_CACHE_DIR" && ! -L "$_AI_CANDY_CACHE_DIR" ]]; then
+    _AI_CANDY_TIMEOUT_TEMP_DIR="$_AI_CANDY_CACHE_DIR"
+    REPLY="$_AI_CANDY_CACHE_DIR"
+    return 0
+  fi
+  return 1
+}
+
 function _ai_candy_create_timeout_output_file() {
   emulate -L zsh
   local temp_root=""
@@ -495,20 +608,15 @@ function _ai_candy_create_timeout_output_file() {
   REPLY=""
   [[ "$process_pid" == <-> ]] || process_pid="$$"
 
-  if (( ${_CACHE_READY:-0} )) && [[ -d "$_CACHE_DIR" && \
-       -w "$_CACHE_DIR" && ! -L "$_CACHE_DIR" ]]; then
-    temp_root="$_CACHE_DIR"
-  else
-    temp_root="${TMPDIR:-/tmp}"
-  fi
-  [[ -d "$temp_root" && -w "$temp_root" ]] || return 1
-  if (( ! _TIMEOUT_STALE_FILES_SCANNED )); then
+  _ai_candy_timeout_temp_directory || return 1
+  temp_root="$REPLY"
+  if (( ! _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED )); then
     _ai_candy_cleanup_stale_timeout_files "$temp_root"
-    _TIMEOUT_STALE_FILES_SCANNED=1
+    _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=1
   fi
   for (( attempt=1; attempt<=8; attempt++ )); do
     output_file="${temp_root%/}/ai-candy-timeout.${process_pid}.${RANDOM}"
-    if (( _HAS_ZSH_SYSTEM && ${+builtins[sysopen]} )); then
+    if (( _AI_CANDY_HAS_ZSH_SYSTEM && ${+builtins[sysopen]} )); then
       if ! builtin sysopen -w -o create,excl -m 600 -u output_fd \
            "$output_file" 2>/dev/null; then
         continue
@@ -531,7 +639,7 @@ function _ai_candy_print_timeout_output_file() {
   local chunk=""
   integer input_fd read_status=0
 
-  if (( ! _HAS_ZSH_SYSTEM || ! ${+builtins[sysopen]} )); then
+  if (( ! _AI_CANDY_HAS_ZSH_SYSTEM || ! ${+builtins[sysopen]} )); then
     [[ -f "$output_file" && ! -L "$output_file" ]] || return 1
     chunk="$(<"$output_file")"
     builtin print -rn -- "$chunk"
@@ -560,7 +668,7 @@ function _ai_candy_capture_bounded_timeout_output() {
 
   while true; do
     chunk=""
-    if (( _HAS_ZSH_SYSTEM && ${+builtins[sysread]} )); then
+    if (( _AI_CANDY_HAS_ZSH_SYSTEM && ${+builtins[sysread]} )); then
       builtin sysread -i 0 -s 8192 chunk 2>/dev/null
       read_status=$?
     else
@@ -596,7 +704,7 @@ function _ai_candy_run_bounded_output_command() {
   emulate -L zsh
   local output_file="$1"
   integer max_output_bytes="$2"
-  integer capture_stderr=${_TIMEOUT_CAPTURE_STDERR:-0}
+  integer capture_stderr=${_AI_CANDY_TIMEOUT_CAPTURE_STDERR:-0}
   shift 2
   local -a pipeline_status
   integer command_status capture_status
@@ -773,20 +881,13 @@ function _ai_candy_run_external_timeout() {
   return "$command_status"
 }
 
-typeset -ga _TIMEOUT_PROCESS_TREE
-typeset -gA _PROCESS_CHILDREN_BY_PARENT
-typeset -gA _PROCESS_STATE_BY_PID
+typeset -ga _AI_CANDY_TIMEOUT_PROCESS_TREE
+typeset -gA _AI_CANDY_PROCESS_CHILDREN_BY_PARENT
+typeset -gA _AI_CANDY_PROCESS_STATE_BY_PID
 
 function _ai_candy_read_process_table() {
-  local ps_command=""
+  local IFS=$' \t\n'
   REPLY=""
-  [[ -x /bin/ps ]] && ps_command=/bin/ps
-  [[ -n "$ps_command" || ! -x /usr/bin/ps ]] || ps_command=/usr/bin/ps
-  if [[ -n "$ps_command" ]]; then
-    REPLY=$("$ps_command" -ax -o pid= -o ppid= -o stat= 2>/dev/null) && \
-      return 0
-    REPLY=""
-  fi
   if [[ -d /proc ]]; then
     setopt localoptions null_glob
     local proc_stat stat_contents stat_tail pid parent_pid process_state
@@ -802,18 +903,28 @@ function _ai_candy_read_process_table() {
       [[ "$pid" == <-> && "$parent_pid" == <-> ]] || continue
       REPLY+="${pid} ${parent_pid} ${process_state}"$'\n'
     done
-  else
-    return 1
+    return 0
   fi
+
+  local ps_command=""
+  [[ -x /bin/ps ]] && ps_command=/bin/ps
+  [[ -n "$ps_command" || ! -x /usr/bin/ps ]] || ps_command=/usr/bin/ps
+  if [[ -n "$ps_command" ]]; then
+    REPLY=$("$ps_command" -ax -o pid= -o ppid= -o stat= 2>/dev/null) && \
+      return 0
+    REPLY=""
+  fi
+  return 1
 }
 
 function _ai_candy_index_process_table() {
+  local IFS=$' \t\n'
   local process_table="$1"
   local line pid parent_pid process_state
   local -a fields
 
-  _PROCESS_CHILDREN_BY_PARENT=()
-  _PROCESS_STATE_BY_PID=()
+  _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+  _AI_CANDY_PROCESS_STATE_BY_PID=()
   for line in "${(@f)process_table}"; do
     fields=(${=line})
     (( ${#fields} >= 3 )) || continue
@@ -822,23 +933,24 @@ function _ai_candy_index_process_table() {
     process_state="${fields[3]}"
     [[ "$pid" == <-> && "$parent_pid" == <-> && \
        -n "$process_state" ]] || continue
-    _PROCESS_CHILDREN_BY_PARENT[$parent_pid]+=" ${pid}"
-    _PROCESS_STATE_BY_PID[$pid]="$process_state"
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT[$parent_pid]+=" ${pid}"
+    _AI_CANDY_PROCESS_STATE_BY_PID[$pid]="$process_state"
   done
 }
 
 function _ai_candy_collect_process_tree_from_index() {
+  local IFS=$' \t\n'
   local root_pid="$1"
   local parent_pid pid children
   integer index=1
 
-  _TIMEOUT_PROCESS_TREE=("$root_pid")
-  while (( index <= ${#_TIMEOUT_PROCESS_TREE} )); do
-    parent_pid="${_TIMEOUT_PROCESS_TREE[index]}"
-    children="${_PROCESS_CHILDREN_BY_PARENT[$parent_pid]-}"
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=("$root_pid")
+  while (( index <= ${#_AI_CANDY_TIMEOUT_PROCESS_TREE} )); do
+    parent_pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
+    children="${_AI_CANDY_PROCESS_CHILDREN_BY_PARENT[$parent_pid]-}"
     for pid in ${=children}; do
-      (( ${_TIMEOUT_PROCESS_TREE[(Ie)$pid]} )) || \
-        _TIMEOUT_PROCESS_TREE+=("$pid")
+      (( ${_AI_CANDY_TIMEOUT_PROCESS_TREE[(Ie)$pid]} )) || \
+        _AI_CANDY_TIMEOUT_PROCESS_TREE+=("$pid")
     done
     (( index++ ))
   done
@@ -848,7 +960,7 @@ function _ai_candy_collect_process_tree() {
   local root_pid="$1"
   local process_table="${2-}"
 
-  _TIMEOUT_PROCESS_TREE=("$root_pid")
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=("$root_pid")
   if (( $# < 2 )); then
     _ai_candy_read_process_table || return 0
     process_table="$REPLY"
@@ -889,14 +1001,14 @@ function _ai_candy_kill_process_tree() {
   builtin kill -STOP "$root_pid" 2>/dev/null
   for attempt in {1..4}; do
     _ai_candy_collect_process_tree "$root_pid"
-    for pid in "${_TIMEOUT_PROCESS_TREE[@]}"; do
+    for pid in "${_AI_CANDY_TIMEOUT_PROCESS_TREE[@]}"; do
       builtin kill -STOP "$pid" 2>/dev/null
     done
-    (( ${#_TIMEOUT_PROCESS_TREE} == previous_count )) && break
-    previous_count=${#_TIMEOUT_PROCESS_TREE}
+    (( ${#_AI_CANDY_TIMEOUT_PROCESS_TREE} == previous_count )) && break
+    previous_count=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}
   done
-  for (( index=${#_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
-    pid="${_TIMEOUT_PROCESS_TREE[index]}"
+  for (( index=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
+    pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
     builtin kill -KILL "$pid" 2>/dev/null
   done
   builtin kill -KILL "$root_pid" 2>/dev/null
@@ -907,6 +1019,7 @@ typeset -gA _AI_CANDY_BACKGROUND_IDENTITIES
 typeset -g _AI_CANDY_BACKGROUND_JOB_LIMIT=16
 
 function _ai_candy_background_pid_identity() {
+  local IFS=$' \t\n'
   local background_pid="$1"
   local identity=""
   REPLY=""
@@ -935,6 +1048,7 @@ function _ai_candy_background_pid_identity() {
 }
 
 function _ai_candy_background_pid_parent_is_shell() {
+  local IFS=$' \t\n'
   local background_pid="$1"
   local shell_pid="$$"
   local parent_pid=""
@@ -982,7 +1096,7 @@ function _ai_candy_start_registered_background_worker() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
   (( $# )) || return 1
-  (( ${_CACHE_READY:-0} )) || return 1
+  (( ${_AI_CANDY_CACHE_READY:-0} )) || return 1
   if (( ${#_AI_CANDY_BACKGROUND_PIDS} >= _AI_CANDY_BACKGROUND_JOB_LIMIT )); then
     _ai_candy_prune_registered_background_pids
     (( ${#_AI_CANDY_BACKGROUND_PIDS} < _AI_CANDY_BACKGROUND_JOB_LIMIT )) || \
@@ -996,15 +1110,15 @@ function _ai_candy_start_registered_background_worker() {
       _ai_candy_cache_drop_inherited_locks
     fi
     "$@"
-  ) </dev/null &>/dev/null &!
+  ) </dev/null &>/dev/null &
   local worker_pid=$!
 
   if _ai_candy_register_background_pid "$worker_pid"; then
+    builtin disown %+ 2>/dev/null || true
     return 0
   fi
-  if builtin kill -0 "$worker_pid" 2>/dev/null; then
-    _ai_candy_kill_process_tree "$worker_pid"
-  fi
+  _ai_candy_kill_process_tree "$worker_pid"
+  builtin wait "$worker_pid" 2>/dev/null || true
   return 1
 }
 
@@ -1040,7 +1154,7 @@ function _ai_candy_stop_registered_background_jobs() {
   emulate -L zsh
   local background_pid process_pid process_state process_table=""
   local process_signature="" stopped_signature=""
-  local -a owned_pids descendants cleanup_pids
+  local -a owned_pids verified_pids descendants cleanup_pids
   local -A owned_identities
   integer attempt index all_stopped forest_stable=0 descendant_alive
 
@@ -1065,9 +1179,9 @@ function _ai_candy_stop_registered_background_jobs() {
     all_stopped=1
     for background_pid in "${owned_pids[@]}"; do
       _ai_candy_collect_process_tree_from_index "$background_pid"
-      process_signature+="${background_pid}:${(j:,:)_TIMEOUT_PROCESS_TREE};"
-      for process_pid in "${_TIMEOUT_PROCESS_TREE[@]}"; do
-        process_state="${_PROCESS_STATE_BY_PID[$process_pid]-}"
+      process_signature+="${background_pid}:${(j:,:)_AI_CANDY_TIMEOUT_PROCESS_TREE};"
+      for process_pid in "${_AI_CANDY_TIMEOUT_PROCESS_TREE[@]}"; do
+        process_state="${_AI_CANDY_PROCESS_STATE_BY_PID[$process_pid]-}"
         if [[ -n "$process_state" && \
               "${process_state[1]}" != "T" && \
               "${process_state[1]}" != "Z" ]]; then
@@ -1090,37 +1204,48 @@ function _ai_candy_stop_registered_background_jobs() {
   done
   if (( ! forest_stable )); then
     for background_pid in "${owned_pids[@]}"; do
-      _ai_candy_kill_process_tree "$background_pid"
-      builtin wait "$background_pid" 2>/dev/null || true
+      if _ai_candy_background_pid_identity "$background_pid" && \
+         [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
+         _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+        _ai_candy_kill_process_tree "$background_pid"
+        builtin wait "$background_pid" 2>/dev/null || true
+      fi
     done
-    _TIMEOUT_PROCESS_TREE=()
-    _PROCESS_CHILDREN_BY_PARENT=()
-    _PROCESS_STATE_BY_PID=()
+    _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+    _AI_CANDY_PROCESS_STATE_BY_PID=()
     return 0
   fi
 
+  verified_pids=()
   descendants=()
   for background_pid in "${owned_pids[@]}"; do
-    _ai_candy_collect_process_tree_from_index "$background_pid"
-    for (( index=${#_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
-      process_pid="${_TIMEOUT_PROCESS_TREE[index]}"
-      descendants+=("$process_pid")
-      builtin kill -TERM "$process_pid" 2>/dev/null
-    done
-  done
-  for background_pid in "${owned_pids[@]}"; do
     if _ai_candy_background_pid_identity "$background_pid" && \
-       [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]]; then
+       [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
+       _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+      verified_pids+=("$background_pid")
+      _ai_candy_collect_process_tree_from_index "$background_pid"
+      for (( index=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
+        process_pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
+        descendants+=("$process_pid")
+        builtin kill -TERM "$process_pid" 2>/dev/null
+      done
       builtin kill -TERM "$background_pid" 2>/dev/null
     fi
   done
   for process_pid in "${descendants[@]}"; do
     builtin kill -CONT "$process_pid" 2>/dev/null
   done
-  for background_pid in "${owned_pids[@]}"; do
+  for background_pid in "${verified_pids[@]}"; do
     builtin kill -CONT "$background_pid" 2>/dev/null
   done
-  cleanup_pids=("${owned_pids[@]}" "${descendants[@]}")
+  cleanup_pids=("${verified_pids[@]}" "${descendants[@]}")
+  if (( ! ${#cleanup_pids} )); then
+    _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+    _AI_CANDY_PROCESS_STATE_BY_PID=()
+    return 0
+  fi
   for attempt in {1..2}; do
     descendant_alive=0
     for process_pid in "${cleanup_pids[@]}"; do
@@ -1137,24 +1262,29 @@ function _ai_candy_stop_registered_background_jobs() {
       builtin kill -KILL "$process_pid" 2>/dev/null
     done
   fi
-  for background_pid in "${owned_pids[@]}"; do
+  for background_pid in "${verified_pids[@]}"; do
+    integer root_is_owned=0
     if _ai_candy_background_pid_identity "$background_pid" && \
        [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
        _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+      root_is_owned=1
       if (( descendant_alive )); then
         _ai_candy_kill_process_tree "$background_pid"
       fi
     fi
-    builtin wait "$background_pid" 2>/dev/null || true
+    if (( root_is_owned )) || ! _ai_candy_process_pid_is_active "$background_pid"; then
+      builtin wait "$background_pid" 2>/dev/null || true
+    fi
   done
-  _TIMEOUT_PROCESS_TREE=()
-  _PROCESS_CHILDREN_BY_PARENT=()
-  _PROCESS_STATE_BY_PID=()
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+  _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+  _AI_CANDY_PROCESS_STATE_BY_PID=()
 }
 
 function _ai_candy_preexec_cleanup_for_exec() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn extendedglob
+  local REPLY=""
 
   local typed_command="${1:-}"
   local expanded_command="${2:-$typed_command}"
@@ -1313,6 +1443,7 @@ function _ai_candy_install_signal_traps() {
 }
 
 function _ai_candy_run_with_timeout() {
+  emulate -L zsh
   local timeout_sec="$1"
   shift
   local -a command_args=("$@")
@@ -1324,16 +1455,16 @@ function _ai_candy_run_with_timeout() {
       command_args[1]="$REPLY"
       target_is_external=1
     elif [[ "$command_name" != */* ]] && \
-         (( _HAS_ZSH_NATIVE_TIMEOUT && ${+builtins[$command_name]} )); then
+         (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT && ${+builtins[$command_name]} )); then
       command_args=(builtin "$command_name" "${command_args[@]:1}")
     else
       return 127
     fi
   fi
 
-  if [[ "$_TIMEOUT_CMD" == /* ]]; then
-    _ai_candy_run_external_timeout "$_TIMEOUT_CMD" "$timeout_sec" "${command_args[@]}"
-  elif (( _HAS_ZSH_NATIVE_TIMEOUT )); then
+  if [[ "$_AI_CANDY_TIMEOUT_CMD" == /* ]]; then
+    _ai_candy_run_external_timeout "$_AI_CANDY_TIMEOUT_CMD" "$timeout_sec" "${command_args[@]}"
+  elif (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT )); then
     if (( target_is_external )); then
       _ai_candy_run_native_timeout "$timeout_sec" command "${command_args[@]}"
     else
@@ -1345,20 +1476,20 @@ function _ai_candy_run_with_timeout() {
 }
 
 function _ai_candy_run_with_timeout_combined_output() {
-  local _TIMEOUT_CAPTURE_STDERR=1
+  local _AI_CANDY_TIMEOUT_CAPTURE_STDERR=1
   _ai_candy_run_with_timeout "$@"
 }
 
 function _ai_candy_run_local_probe() {
-  _ai_candy_run_with_timeout "${_LOCAL_PROMPT_TIMEOUT:-0.25}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_LOCAL_PROMPT_TIMEOUT:-0.25}" "$@"
 }
 
 function _ai_candy_run_background_probe() {
-  _ai_candy_run_with_timeout "${_BACKGROUND_LOCAL_PROBE_TIMEOUT:-1}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT:-1}" "$@"
 }
 
 function _ai_candy_run_process_count_probe() {
-  _ai_candy_run_with_timeout "${_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
 }
 
 # ============================================================================
@@ -1366,28 +1497,28 @@ function _ai_candy_run_process_count_probe() {
 # ============================================================================
 # Cache files are stored in $HOME/.cache/zsh-prompt/ with strict permissions
 # to prevent information leakage on shared systems.
-typeset -g _CACHE_DIR=""
+typeset -g _AI_CANDY_CACHE_DIR=""
 if [[ "${XDG_CACHE_HOME:-}" == /* ]]; then
-  _CACHE_DIR="${XDG_CACHE_HOME%/}/zsh-prompt"
+  _AI_CANDY_CACHE_DIR="${XDG_CACHE_HOME%/}/zsh-prompt"
 elif [[ "${HOME:-}" == /* ]]; then
-  _CACHE_DIR="${HOME%/}/.cache/zsh-prompt"
+  _AI_CANDY_CACHE_DIR="${HOME%/}/.cache/zsh-prompt"
 else
-  _CACHE_DIR="/dev/null/ai-candy-cache-disabled"
+  _AI_CANDY_CACHE_DIR="/dev/null/ai-candy-cache-disabled"
 fi
-typeset -g _CACHE_READY=0
+typeset -g _AI_CANDY_CACHE_READY=0
 
 function _ai_candy_cache_init_dir() {
-  [[ -L "$_CACHE_DIR" ]] && return 1
+  [[ -L "$_AI_CANDY_CACHE_DIR" ]] && return 1
 
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
-    ( umask 077 && builtin zf_mkdir -p -m 700 "$_CACHE_DIR" ) 2>/dev/null || return 1
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
+    ( umask 077 && builtin zf_mkdir -p -m 700 "$_AI_CANDY_CACHE_DIR" ) 2>/dev/null || return 1
   else
-    ( umask 077 && command mkdir -p "$_CACHE_DIR" ) 2>/dev/null || return 1
+    ( umask 077 && command mkdir -p "$_AI_CANDY_CACHE_DIR" ) 2>/dev/null || return 1
   fi
-  _ai_candy_chmod 700 "$_CACHE_DIR" 2>/dev/null || return 1
+  _ai_candy_chmod 700 "$_AI_CANDY_CACHE_DIR" 2>/dev/null || return 1
 
-  [[ -d "$_CACHE_DIR" && -w "$_CACHE_DIR" ]] || return 1
-  _CACHE_READY=1
+  [[ -d "$_AI_CANDY_CACHE_DIR" && -w "$_AI_CANDY_CACHE_DIR" ]] || return 1
+  _AI_CANDY_CACHE_READY=1
 }
 
 _ai_candy_cache_init_dir || true
@@ -1396,29 +1527,29 @@ _ai_candy_cache_init_dir || true
 # CACHE FILE PATHS - Centralized definitions for all cache files
 # ============================================================================
 # System and prompt state caches
-typeset -g _SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
-typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
-typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
-typeset -g _NETWORK_MODE_FILE="${_CACHE_DIR}/network_mode"
-typeset -g _AI_MODE_FILE="${_CACHE_DIR}/ai_mode"
-typeset -g _OS_MODE_FILE="${_CACHE_DIR}/os_mode"
+typeset -g _AI_CANDY_SYSINFO_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/sysinfo_cache"
+typeset -g _AI_CANDY_EMOJI_MODE_FILE="${_AI_CANDY_CACHE_DIR}/emoji_mode"
+typeset -g _AI_CANDY_PATH_SEP_MODE_FILE="${_AI_CANDY_CACHE_DIR}/path_sep_mode"
+typeset -g _AI_CANDY_NETWORK_MODE_FILE="${_AI_CANDY_CACHE_DIR}/network_mode"
+typeset -g _AI_CANDY_AI_MODE_FILE="${_AI_CANDY_CACHE_DIR}/ai_mode"
+typeset -g _AI_CANDY_OS_MODE_FILE="${_AI_CANDY_CACHE_DIR}/os_mode"
 
 # Optional-tool version caches
-typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
-typeset -g _CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
-typeset -g _GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
-typeset -g _KIMI_CACHE_FILE="${_CACHE_DIR}/kimi_version_cache"
+typeset -g _AI_CANDY_CLAUDE_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/claude_version_cache"
+typeset -g _AI_CANDY_CODEX_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/codex_version_cache"
+typeset -g _AI_CANDY_GEMINI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gemini_version_cache"
+typeset -g _AI_CANDY_KIMI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/kimi_version_cache"
 
 # GitHub integration caches
-typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
-typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
-typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
+typeset -g _AI_CANDY_GH_AUTH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_auth_status"
+typeset -g _AI_CANDY_GH_USERNAME_GH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_username_gh"
+typeset -g _AI_CANDY_GH_USERNAME_SSH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_username_ssh"
 
 # Public IP cache (refreshes every 5 minutes)
-typeset -g _PUBLIC_IP_CACHE_FILE="${_CACHE_DIR}/public_ip_cache"
+typeset -g _AI_CANDY_PUBLIC_IP_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/public_ip_cache"
 
 # Lock file patterns (used with .d suffix for atomic mkdir locks)
-typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
-typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
-typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
-typeset -g _PUBLIC_IP_UPDATING="${_CACHE_DIR}/public_ip_updating.lock"
+typeset -g _AI_CANDY_GH_USERNAME_UPDATING_GH="${_AI_CANDY_CACHE_DIR}/gh_username_updating_gh.lock"
+typeset -g _AI_CANDY_GH_USERNAME_UPDATING_SSH="${_AI_CANDY_CACHE_DIR}/gh_username_updating_ssh.lock"
+typeset -g _AI_CANDY_GH_AUTH_UPDATING="${_AI_CANDY_CACHE_DIR}/gh_auth_updating.lock"
+typeset -g _AI_CANDY_PUBLIC_IP_UPDATING="${_AI_CANDY_CACHE_DIR}/public_ip_updating.lock"

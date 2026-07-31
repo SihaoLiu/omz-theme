@@ -1,6 +1,6 @@
 # Unicode 15.0 zero-width and East Asian wide/full-width intervals. The raw
 # data is split lazily so ASCII-only prompts do not pay the table setup cost.
-typeset -ga _PROMPT_ZERO_WIDTH_DATA=(
+typeset -ga _AI_CANDY_PROMPT_ZERO_WIDTH_DATA=(
   '300-36f,483-489,591-5bd,5bf-5bf,5c1-5c2,5c4-5c5,5c7-5c7,610-61a,64b-65f,670-670,6d6-6dc,'\
   '6df-6e4,6e7-6e8,6ea-6ed,711-711,730-74a,7a6-7b0,7eb-7f3,7fd-7fd,816-819,81b-823,825-827,'\
   '829-82d,859-85b,898-89f,8ca-8e1,8e3-902,93a-93a,93c-93c,941-948,94d-94d,951-957,962-963,'\
@@ -44,7 +44,7 @@ typeset -ga _PROMPT_ZERO_WIDTH_DATA=(
   '1e944-1e94a,e0100-e01ef'
 )
 
-typeset -ga _PROMPT_WIDE_WIDTH_DATA=(
+typeset -ga _AI_CANDY_PROMPT_WIDE_WIDTH_DATA=(
   '1100-115f,231a-231b,2329-232a,23e9-23ec,23f0-23f0,23f3-23f3,25fd-25fe,2614-2615,2648-2653,'\
   '267f-267f,2693-2693,26a1-26a1,26aa-26ab,26bd-26be,26c4-26c5,26ce-26ce,26d4-26d4,26ea-26ea,'\
   '26f2-26f3,26f5-26f5,26fa-26fa,26fd-26fd,2705-2705,270a-270b,2728-2728,274c-274c,274e-274e,'\
@@ -63,7 +63,7 @@ typeset -ga _PROMPT_WIDE_WIDTH_DATA=(
   '1faf0-1faf8,20000-2fffd,30000-3fffd'
 )
 
-typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_DATA=(
+typeset -ga _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_DATA=(
   '261d-261d,26f9-26f9,270a-270c,270d-270d,1f385-1f385,1f3c2-1f3c4,1f3c7-1f3c7,1f3ca-1f3ca,'
   '1f3cb-1f3cc,1f442-1f443,1f446-1f450,1f466-1f46b,1f46c-1f46d,1f46e-1f478,1f47c-1f47c,'
   '1f481-1f483,1f485-1f487,1f48f-1f48f,1f491-1f491,1f4aa-1f4aa,1f574-1f575,1f57a-1f57a,'
@@ -73,25 +73,25 @@ typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_DATA=(
   '1f9b8-1f9b9,1f9bb-1f9bb,1f9cd-1f9cf,1f9d1-1f9dd,1fac3-1fac5,1faf0-1faf6,1faf7-1faf8'
 )
 
-typeset -g _PROMPT_WIDTH_TABLES_READY=0
-typeset -ga _PROMPT_ZERO_WIDTH_RANGES=()
-typeset -ga _PROMPT_WIDE_WIDTH_RANGES=()
-typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_RANGES=()
-typeset -ga _PROMPT_MEASURED_CHARACTERS=()
-typeset -ga _PROMPT_MEASURED_WIDTHS=()
-typeset -ga _PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
-typeset -ga _PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
-typeset -g _PROMPT_TEXT_WIDTH_CACHE_LIMIT=64
+typeset -g _AI_CANDY_PROMPT_WIDTH_TABLES_READY=0
+typeset -ga _AI_CANDY_PROMPT_ZERO_WIDTH_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_WIDE_WIDTH_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_MEASURED_CHARACTERS=()
+typeset -ga _AI_CANDY_PROMPT_MEASURED_WIDTHS=()
+typeset -ga _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
+typeset -ga _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
+typeset -g _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_LIMIT=64
 
 function _ai_candy_prompt_width_tables_init() {
-  (( _PROMPT_WIDTH_TABLES_READY )) && return 0
-  local zero_data="${(j::)_PROMPT_ZERO_WIDTH_DATA}"
-  local wide_data="${(j::)_PROMPT_WIDE_WIDTH_DATA}"
-  local modifier_base_data="${(j::)_PROMPT_EMOJI_MODIFIER_BASE_DATA}"
-  _PROMPT_ZERO_WIDTH_RANGES=("${(@s:,:)zero_data}")
-  _PROMPT_WIDE_WIDTH_RANGES=("${(@s:,:)wide_data}")
-  _PROMPT_EMOJI_MODIFIER_BASE_RANGES=("${(@s:,:)modifier_base_data}")
-  _PROMPT_WIDTH_TABLES_READY=1
+  (( _AI_CANDY_PROMPT_WIDTH_TABLES_READY )) && return 0
+  local zero_data="${(j::)_AI_CANDY_PROMPT_ZERO_WIDTH_DATA}"
+  local wide_data="${(j::)_AI_CANDY_PROMPT_WIDE_WIDTH_DATA}"
+  local modifier_base_data="${(j::)_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_DATA}"
+  _AI_CANDY_PROMPT_ZERO_WIDTH_RANGES=("${(@s:,:)zero_data}")
+  _AI_CANDY_PROMPT_WIDE_WIDTH_RANGES=("${(@s:,:)wide_data}")
+  _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES=("${(@s:,:)modifier_base_data}")
+  _AI_CANDY_PROMPT_WIDTH_TABLES_READY=1
 }
 
 function _ai_candy_prompt_codepoint_in_width_table() {
@@ -101,18 +101,18 @@ function _ai_candy_prompt_codepoint_in_width_table() {
   integer low=1 high=0 midpoint range_start range_end
 
   case "$table_name" in
-    zero) high=${#_PROMPT_ZERO_WIDTH_RANGES} ;;
-    wide) high=${#_PROMPT_WIDE_WIDTH_RANGES} ;;
-    modifier-base) high=${#_PROMPT_EMOJI_MODIFIER_BASE_RANGES} ;;
+    zero) high=${#_AI_CANDY_PROMPT_ZERO_WIDTH_RANGES} ;;
+    wide) high=${#_AI_CANDY_PROMPT_WIDE_WIDTH_RANGES} ;;
+    modifier-base) high=${#_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES} ;;
     *) return 1 ;;
   esac
   while (( low <= high )); do
     midpoint=$(( (low + high) / 2 ))
     case "$table_name" in
-      zero) interval="${_PROMPT_ZERO_WIDTH_RANGES[midpoint]}" ;;
-      wide) interval="${_PROMPT_WIDE_WIDTH_RANGES[midpoint]}" ;;
+      zero) interval="${_AI_CANDY_PROMPT_ZERO_WIDTH_RANGES[midpoint]}" ;;
+      wide) interval="${_AI_CANDY_PROMPT_WIDE_WIDTH_RANGES[midpoint]}" ;;
       modifier-base)
-        interval="${_PROMPT_EMOJI_MODIFIER_BASE_RANGES[midpoint]}"
+        interval="${_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES[midpoint]}"
         ;;
     esac
     range_start=$(( 16#${interval%%-*} ))
@@ -204,8 +204,8 @@ function _ai_candy_prompt_measure_text() {
   integer cluster_width=0 cluster_last_index=0 cluster_width_increment=0
 
   if (( capture_characters )); then
-    _PROMPT_MEASURED_CHARACTERS=()
-    _PROMPT_MEASURED_WIDTHS=()
+    _AI_CANDY_PROMPT_MEASURED_CHARACTERS=()
+    _AI_CANDY_PROMPT_MEASURED_WIDTHS=()
   fi
   while (( index <= length )); do
     _ai_candy_prompt_decode_utf8_at "$text" "$index"
@@ -262,14 +262,14 @@ function _ai_candy_prompt_measure_text() {
     fi
     width=$(( width + codepoint_width ))
     if (( capture_characters )); then
-      _PROMPT_MEASURED_CHARACTERS+=("$character")
+      _AI_CANDY_PROMPT_MEASURED_CHARACTERS+=("$character")
       if (( continuation && cluster_last_index > 0 )); then
-        _PROMPT_MEASURED_WIDTHS[cluster_last_index]=0
+        _AI_CANDY_PROMPT_MEASURED_WIDTHS[cluster_last_index]=0
         cluster_width=$(( cluster_width + cluster_width_increment ))
       else
         cluster_width="$codepoint_width"
       fi
-      _PROMPT_MEASURED_WIDTHS+=("$cluster_width")
+      _AI_CANDY_PROMPT_MEASURED_WIDTHS+=("$cluster_width")
       cluster_last_index="$character_index"
     fi
     index=$(( index + byte_count ))
@@ -282,22 +282,22 @@ function _ai_candy_prompt_text_width() {
   local text="$1"
   integer index
 
-  for (( index=1; index<=${#_PROMPT_TEXT_WIDTH_CACHE_TEXTS}; index++ )); do
-    if [[ "${_PROMPT_TEXT_WIDTH_CACHE_TEXTS[index]}" == "$text" ]]; then
-      REPLY="${_PROMPT_TEXT_WIDTH_CACHE_WIDTHS[index]}"
+  for (( index=1; index<=${#_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS}; index++ )); do
+    if [[ "${_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS[index]}" == "$text" ]]; then
+      REPLY="${_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS[index]}"
       return 0
     fi
   done
 
   _ai_candy_prompt_measure_text "$text" 0
   local measured_width="$REPLY"
-  if (( ${#_PROMPT_TEXT_WIDTH_CACHE_TEXTS} >= \
-        _PROMPT_TEXT_WIDTH_CACHE_LIMIT )); then
-    _PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
-    _PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
+  if (( ${#_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS} >= \
+        _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_LIMIT )); then
+    _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
+    _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
   fi
-  _PROMPT_TEXT_WIDTH_CACHE_TEXTS+=("$text")
-  _PROMPT_TEXT_WIDTH_CACHE_WIDTHS+=("$measured_width")
+  _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS+=("$text")
+  _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS+=("$measured_width")
   REPLY="$measured_width"
 }
 
@@ -312,9 +312,9 @@ function _ai_candy_prompt_text_tail_by_width() {
     return 0
   }
   _ai_candy_prompt_measure_text "$1" 1
-  for (( index=${#_PROMPT_MEASURED_CHARACTERS}; index>=1; index-- )); do
-    character="${_PROMPT_MEASURED_CHARACTERS[index]}"
-    character_width="${_PROMPT_MEASURED_WIDTHS[index]}"
+  for (( index=${#_AI_CANDY_PROMPT_MEASURED_CHARACTERS}; index>=1; index-- )); do
+    character="${_AI_CANDY_PROMPT_MEASURED_CHARACTERS[index]}"
+    character_width="${_AI_CANDY_PROMPT_MEASURED_WIDTHS[index]}"
     (( width + character_width <= target_width )) || break
     result="${character}${result}"
     width=$(( width + character_width ))

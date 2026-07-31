@@ -8,6 +8,34 @@ from tests.theme_test_support import run_zsh
 
 
 class IntegrationRuntimeTest(unittest.TestCase):
+    def test_network_refreshes_are_deduplicated_in_the_parent_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_TIMEOUT=1
+_AI_CANDY_HAS_CURL=1
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_HAS_SSH=1
+typeset -g STARTS=0
+function _ai_candy_start_registered_background_worker() {
+  (( STARTS++ ))
+  return 0
+}
+for attempt in {1..2}; do
+  _ai_candy_gh_username_update_gh
+  _ai_candy_gh_username_update_ssh
+  _ai_candy_public_ip_update_background
+  _ai_candy_gh_pr_update_cache remote branch
+done
+print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STARTS=4 REQUESTED=4\n", result.stdout)
+
     def test_pr_worker_queries_the_captured_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -28,11 +56,11 @@ class IntegrationRuntimeTest(unittest.TestCase):
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=none
-_CACHE_BACKEND_RETRY_AFTER=$(( EPOCHREALTIME + 60 ))
-_HAS_GH=1
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=none
+_AI_CANDY_CACHE_BACKEND_RETRY_AFTER=$(( EPOCHREALTIME + 60 ))
+_AI_CANDY_HAS_GH=1
 _ai_candy_gh_pr_update_cache remote 'feature/captured'
 for attempt in {1..500}; do
   if _ai_candy_cache_persist_read gh_pr 'remote|feature/captured'; then
@@ -85,24 +113,24 @@ return 70
             result = run_zsh(
                 r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=1
-_PROMPT_EMOJI_MODE=0
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=0
-_HAS_CODEX=1
-_HAS_GEMINI=0
-_HAS_KIMI=0
-_HAS_CURL=1
-function _ai_candy_refresh_ai_process_counts() { _AI_PROCESS_COUNTS[codex]=0; }
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=1
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
+_AI_CANDY_HAS_CURL=1
+function _ai_candy_refresh_ai_process_counts() { _AI_CANDY_AI_PROCESS_COUNTS[codex]=0; }
 _ai_candy_compute_ai_tools_direct
 for attempt in {1..500}; do
-  [[ -s "$_CODEX_CACHE_FILE" ]] && break
+  [[ -s "$_AI_CANDY_CODEX_CACHE_FILE" ]] && break
   zselect -t 1
 done
-[[ -s "$_CODEX_CACHE_FILE" ]] || return 70
+[[ -s "$_AI_CANDY_CODEX_CACHE_FILE" ]] || return 70
 _ai_candy_compute_ai_tools_direct
-print -r -- "STATUS=${_PP_AI_STATUS}"
+print -r -- "STATUS=${_AI_CANDY_PP_AI_STATUS}"
 print -r -- "LOCAL=$([[ -f $LOCAL_LOG ]] && print yes || print no)"
 print -r -- "NETWORK=$([[ -f $NETWORK_LOG ]] && print yes || print no)"
 """,
@@ -134,7 +162,7 @@ print -r -- "NETWORK=$([[ -f $NETWORK_LOG ]] && print yes || print no)"
             result = run_zsh(
                 r"""
 source "$1"
-cache_file="${_CACHE_DIR}/slow_tool_cache"
+cache_file="${_AI_CANDY_CACHE_DIR}/slow_tool_cache"
 _ai_candy_ai_tool_update_cache "$cache_file" slow-tool 'https://invalid.example/version' 0
 deadline=$(( EPOCHREALTIME + 3.0 ))
 while [[ ! -s "$cache_file" ]] && (( EPOCHREALTIME < deadline )); do
@@ -169,11 +197,11 @@ _ai_candy_stop_registered_background_jobs
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_GH=0
-_HAS_CLAUDE=0
-_HAS_CODEX=0
-_HAS_GEMINI=0
-_HAS_KIMI=1
+_AI_CANDY_HAS_GH=0
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=1
 _ai_candy_prompt_tool_status
 """,
                 cache_home=root / "cache",
@@ -189,13 +217,13 @@ _ai_candy_prompt_tool_status
             result = run_zsh(
                 r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=1
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=1
-_HAS_CODEX=1
-_HAS_GEMINI=1
-_HAS_KIMI=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=1
+_AI_CANDY_HAS_CODEX=1
+_AI_CANDY_HAS_GEMINI=1
+_AI_CANDY_HAS_KIMI=1
 typeset -g STARTS=0
 function _ai_candy_refresh_ai_process_counts() { return 0; }
 function _ai_candy_start_registered_background_worker() {
@@ -204,13 +232,35 @@ function _ai_candy_start_registered_background_worker() {
 }
 _ai_candy_compute_ai_tools_direct
 _ai_candy_compute_ai_tools_direct
-print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_TOOL_REFRESH_REQUESTED}"
+print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("STARTS=1 REQUESTED=4\n", result.stdout)
+
+    def test_cold_gh_auth_refreshes_share_one_worker_per_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_TIMEOUT=1
+typeset -gi STARTS=0
+function _ai_candy_start_registered_background_worker() {
+  [[ "$1" == _ai_candy_gh_auth_update_worker ]] || return 71
+  (( ++STARTS ))
+  return 0
+}
+_ai_candy_gh_auth_update_background
+_ai_candy_gh_auth_update_background
+builtin print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STARTS=1 REQUESTED=1\n", result.stdout)
 
     def test_failed_tool_refresh_retries_and_manual_refresh_releases_throttle(
         self,
@@ -219,14 +269,14 @@ print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_TOOL_REFRESH_REQUESTED}"
             result = run_zsh(
                 r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=1
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=0
-_HAS_CODEX=1
-_HAS_GEMINI=0
-_HAS_KIMI=0
-_AI_TOOL_REFRESH_RETRY_DELAY=30
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=1
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
+_AI_CANDY_TOOL_REFRESH_RETRY_DELAY=30
 typeset -g STARTS=0
 function _ai_candy_refresh_ai_process_counts() { return 0; }
 function _ai_candy_start_registered_background_worker() {
@@ -237,19 +287,19 @@ function _ai_candy_start_registered_background_worker() {
 _ai_candy_compute_ai_tools_direct
 _ai_candy_compute_ai_tools_direct
 first_starts="$STARTS"
-_AI_TOOL_REFRESH_REQUESTED[$_CODEX_CACHE_FILE]=$((
-  EPOCHSECONDS - _AI_TOOL_REFRESH_RETRY_DELAY - 1
+_AI_CANDY_REFRESH_REQUESTED[tool:$_AI_CANDY_CODEX_CACHE_FILE]=$((
+  EPOCHSECONDS - _AI_CANDY_TOOL_REFRESH_RETRY_DELAY - 1
 ))
 _ai_candy_compute_ai_tools_direct
 retry_starts="$STARTS"
 _ai_candy_prompt_refresh_all_caches >/dev/null
-_AI_TOOLS_DETECTED=1
-_HAS_CLAUDE=0
-_HAS_CODEX=1
-_HAS_GEMINI=0
-_HAS_KIMI=0
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=1
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
 _ai_candy_compute_ai_tools_direct
-print -r -- "STARTS=${first_starts}/${retry_starts}/${STARTS} REQUESTED=${#_AI_TOOL_REFRESH_REQUESTED}"
+print -r -- "STARTS=${first_starts}/${retry_starts}/${STARTS} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -275,9 +325,9 @@ print -r -- "STARTS=${first_starts}/${retry_starts}/${STARTS} REQUESTED=${#_AI_T
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
-_HAS_GH=1
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
+_AI_CANDY_HAS_GH=1
 function _ai_candy_gh_is_authenticated() {
   print -r -- called >| "$AUTH_CALLED_FILE"
   (command sleep 5) </dev/null &>/dev/null &!
@@ -322,12 +372,12 @@ _ai_candy_cache_read_persistence_epoch || return 70
 epoch="$REPLY"
 function _ai_candy_run_with_timeout() { return 124; }
 _ai_candy_gh_auth_update_worker \
-  "$_GH_AUTH_UPDATING" 0.01 "$epoch" || return 71
+  "$_AI_CANDY_GH_AUTH_UPDATING" 0.01 "$epoch" || return 71
 typeset -gi REFRESH_CALLS=0
 function _ai_candy_gh_auth_update_background() {
   (( ++REFRESH_CALLS ))
 }
-_GH_AUTH_REFRESH_RETRY_DELAY=0
+_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY=0
 _ai_candy_gh_is_authenticated || true
 print -r -- "REFRESH_CALLS=${REFRESH_CALLS}"
 """,
@@ -343,13 +393,13 @@ print -r -- "REFRESH_CALLS=${REFRESH_CALLS}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_GH=1
-_HAS_TIMEOUT=1
-_HAS_CLAUDE=0
-_HAS_CODEX=0
-_HAS_GEMINI=0
-_HAS_KIMI=0
-_ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}"
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_HAS_TIMEOUT=1
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
+_ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}"
 _ai_candy_prompt_tool_status
 """,
                 cache_home=root / "cache",
@@ -388,11 +438,11 @@ _ai_candy_prompt_tool_status
                 result = run_zsh(
                     r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
-_HAS_GH=1
-_GH_AUTH_MEM_CACHE=1
-_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_GH_AUTH_MEM_CACHE=1
+_AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
 _ai_candy_gh_pr_update_cache remote branch
 for attempt in {1..500}; do
   if _ai_candy_cache_persist_read gh_pr 'remote|branch'; then
@@ -433,12 +483,12 @@ return 70
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
-_HAS_GH=1
-_GH_AUTH_MEM_CACHE=1
-_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
-_NETWORK_TIMEOUT=0.1
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_GH_AUTH_MEM_CACHE=1
+_AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
+_AI_CANDY_NETWORK_TIMEOUT=0.1
 _ai_candy_gh_pr_update_cache remote branch
 for attempt in {1..500}; do
   if _ai_candy_cache_persist_read gh_pr 'remote|branch'; then

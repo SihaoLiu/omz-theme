@@ -18,9 +18,9 @@ class CacheRuntimeTest(unittest.TestCase):
                 r"""
 setopt ksharrays
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_write git_root key value "$EPOCHSECONDS"
 write_status=$?
 _ai_candy_cache_persist_read git_root key
@@ -47,17 +47,17 @@ builtin print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=none
-_CACHE_BACKEND_RETRY_AFTER=$(( EPOCHREALTIME + 60 ))
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=none
+_AI_CANDY_CACHE_BACKEND_RETRY_AFTER=$(( EPOCHREALTIME + 60 ))
 (
-  _HAS_SQLITE3=0
-  _CACHE_BACKEND_STATE=0
-  _CACHE_BACKEND=none
+  _AI_CANDY_HAS_SQLITE3=0
+  _AI_CANDY_CACHE_BACKEND_STATE=0
+  _AI_CANDY_CACHE_BACKEND=none
   _ai_candy_cache_persist_write git_root key shared "$EPOCHSECONDS"
 ) || return 70
 _ai_candy_cache_persist_read git_root key || return 71
-print -r -- "BACKEND=${_CACHE_BACKEND} VALUE=${REPLY}"
+print -r -- "BACKEND=${_AI_CANDY_CACHE_BACKEND} VALUE=${REPLY}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -74,26 +74,26 @@ print -r -- "BACKEND=${_CACHE_BACKEND} VALUE=${REPLY}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_write git_root key file-old "$EPOCHSECONDS" || return 70
-[[ "$_CACHE_BACKEND" == file ]] || return 71
+[[ "$_AI_CANDY_CACHE_BACKEND" == file ]] || return 71
 
-_ai_candy_cache_remove_path "${_CACHE_DIR}/git_root_cache"
-_ai_candy_cache_remove_path "$_CACHE_BACKEND_OWNER_FILE"
-command sqlite3 "$_CACHE_DB_FILE" \
+_ai_candy_cache_remove_path "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+_ai_candy_cache_remove_path "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE"
+command sqlite3 "$_AI_CANDY_CACHE_DB_FILE" \
   "CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, timestamp INTEGER NOT NULL); INSERT INTO cache VALUES ('git_root:key', 'sqlite-new', ${EPOCHSECONDS});" || return 72
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" sqlite || return 73
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" sqlite || return 73
 
 _ai_candy_cache_persist_write git_root key file-new "$EPOCHSECONDS"
 live_status=$?
-live_backend="$_CACHE_BACKEND"
-file_state=$([[ -e "${_CACHE_DIR}/git_root_cache" ]] && print present || print absent)
+live_backend="$_AI_CANDY_CACHE_BACKEND"
+file_state=$([[ -e "${_AI_CANDY_CACHE_DIR}/git_root_cache" ]] && print present || print absent)
 
-_HAS_SQLITE3=1
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_HAS_SQLITE3=1
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_read git_root key || return 74
 builtin print -r -- \
   "STATUS=${live_status} LIVE=${live_backend} FILE=${file_state} VALUE=${REPLY}"
@@ -119,16 +119,16 @@ builtin print -r -- \
 source "$1"
 now=$EPOCHSECONDS
 _ai_candy_cache_persist_write git_root key old "$now" || return 70
-initial_backend="$_CACHE_BACKEND"
-_HAS_SQLITE3=0
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+initial_backend="$_AI_CANDY_CACHE_BACKEND"
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_write git_root key new "$now"
 fallback_status=$?
-fallback_backend="$_CACHE_BACKEND"
-_HAS_SQLITE3=1
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+fallback_backend="$_AI_CANDY_CACHE_BACKEND"
+_AI_CANDY_HAS_SQLITE3=1
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_read git_root key || return 71
 builtin print -r -- \
   "INITIAL=${initial_backend} STATUS=${fallback_status} FALLBACK=${fallback_backend} VALUE=${REPLY}"
@@ -156,15 +156,15 @@ builtin print -r -- \
                 r"""
 source "$1"
 _ai_candy_cache_persist_write git_root key old "$EPOCHSECONDS" || return 70
-_HAS_SQLITE3=0
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_delete_unlocked git_root key
 fallback_status=$?
-fallback_backend="$_CACHE_BACKEND"
-_HAS_SQLITE3=1
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+fallback_backend="$_AI_CANDY_CACHE_BACKEND"
+_AI_CANDY_HAS_SQLITE3=1
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_read git_root key || return 71
 builtin print -r -- \
   "STATUS=${fallback_status} FALLBACK=${fallback_backend} VALUE=${REPLY}"
@@ -186,11 +186,11 @@ builtin print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 _ai_candy_cache_persist_write git_hierarchy key old "$EPOCHSECONDS" || return 70
-operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
 command mkdir -m 700 "$operation_lock" || return 71
 print -r -- holder >| "${operation_lock}/owner.existing"
 _ai_candy_cache_delete_key git_hierarchy key
@@ -213,14 +213,14 @@ fi
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_FILE_MAX_BYTES=1024
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" file || return 70
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_FILE_MAX_BYTES=1024
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
 _ai_candy_hex_encode 'git_root:key'
 hex_key="$REPLY"
 _ai_candy_hex_encode cached
 hex_value="$REPLY"
-cache_file="${_CACHE_DIR}/git_root_cache"
+cache_file="${_AI_CANDY_CACHE_DIR}/git_root_cache"
 builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| "$cache_file"
 builtin print -r -- "${(l:4096::X:)}" >> "$cache_file"
 start=$EPOCHREALTIME
@@ -242,20 +242,123 @@ builtin print -r -- "STATE=${state} ELAPSED=${elapsed}"
         self.assertEqual("missing", fields["STATE"])
         self.assertLess(float(fields["ELAPSED"]), 0.2)
 
+    def test_persistent_cache_rejects_values_above_the_configured_limit(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_VALUE_MAX_BYTES=1024
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
+_ai_candy_hex_encode 'git_root:key'
+hex_key="$REPLY"
+payload="${(l:1025::x:)}"
+_ai_candy_hex_encode "$payload"
+hex_value="$REPLY"
+builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| \
+  "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+if _ai_candy_cache_persist_read git_root key; then
+  read_state=hit
+else
+  read_state=missing
+fi
+if _ai_candy_cache_persist_write git_root other "$payload" "$EPOCHSECONDS"; then
+  write_state=accepted
+else
+  write_state=rejected
+fi
+builtin print -r -- "READ=${read_state} WRITE=${write_state}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("READ=missing WRITE=rejected\n", result.stdout)
+
+    def test_file_backend_supports_the_largest_allowed_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_SQLITE3=0
+_ai_candy_cache_atomic_write_unlocked \
+  "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
+payload="${(l:16384::x:)}"
+start="$EPOCHREALTIME"
+if _ai_candy_cache_persist_write \
+     git_root largest "$payload" "$EPOCHSECONDS"; then
+  write_state=accepted
+else
+  write_state=rejected
+fi
+if _ai_candy_cache_persist_read git_root largest; then
+  stored_value="${REPLY%|*}"
+  stored_size="${#stored_value}"
+else
+  stored_size=missing
+fi
+oversized="${payload}x"
+if _ai_candy_cache_persist_write \
+     git_root oversized "$oversized" "$EPOCHSECONDS"; then
+  oversized_state=accepted
+else
+  oversized_state=rejected
+fi
+elapsed=$(( EPOCHREALTIME - start ))
+builtin print -r -- \
+  "WRITE=${write_state} READ=${stored_size} OVERSIZED=${oversized_state} ELAPSED=${elapsed}"
+""",
+                cache_home=Path(tmp) / "cache",
+                timeout=5,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        fields = dict(
+            field.split("=", maxsplit=1) for field in result.stdout.strip().split()
+        )
+        self.assertEqual("accepted", fields["WRITE"])
+        self.assertEqual("16384", fields["READ"])
+        self.assertEqual("rejected", fields["OVERSIZED"])
+        self.assertLess(float(fields["ELAPSED"]), 1.0)
+
+    def test_hex_codec_is_fast_for_the_largest_supported_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+payload="${(l:16384::x:)}"
+start="$EPOCHREALTIME"
+_ai_candy_hex_encode "$payload" || return 70
+encoded="$REPLY"
+_ai_candy_hex_decode "$encoded" || return 71
+elapsed=$(( EPOCHREALTIME - start ))
+[[ "$REPLY" == "$payload" ]] || return 72
+builtin print -r -- "ELAPSED=${elapsed}"
+""",
+                cache_home=Path(tmp) / "cache",
+                timeout=5,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        elapsed = float(result.stdout.strip().partition("=")[2])
+        self.assertLess(elapsed, 0.75)
+
     def test_cold_line_cache_read_uses_the_prompt_io_deadline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" file || return 70
+_AI_CANDY_HAS_SQLITE3=0
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
 _ai_candy_hex_encode 'git_root:key'
 hex_key="$REPLY"
 _ai_candy_hex_encode cached
 hex_value="$REPLY"
 builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| \
-  "${_CACHE_DIR}/git_root_cache"
+  "${_AI_CANDY_CACHE_DIR}/git_root_cache"
 function _ai_candy_run_with_timeout() {
   builtin print -r -- "$1" >| "$DEADLINE_FILE"
   return 124
@@ -281,21 +384,21 @@ builtin print -r -- "STATE=${state} DEADLINE=$(<"$DEADLINE_FILE")"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_FILE_MAX_BYTES=1024
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" file || return 70
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_FILE_MAX_BYTES=1024
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
 _ai_candy_hex_encode 'git_root:key'
 hex_key="$REPLY"
 _ai_candy_hex_encode cached
 hex_value="$REPLY"
 builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| \
-  "${_CACHE_DIR}/git_root_cache"
-: >| "$_CACHE_OPERATION_FILE"
+  "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+: >| "$_AI_CANDY_CACHE_OPERATION_FILE"
 for index in {1..40}; do
   _ai_candy_hex_encode "git_root:other-${index}"
   builtin print -r -- \
     "${REPLY}|v3:30:${index}|set|${EPOCHSECONDS}" \
-    >> "$_CACHE_OPERATION_FILE"
+    >> "$_AI_CANDY_CACHE_OPERATION_FILE"
 done
 if _ai_candy_cache_get git_root key; then
   builtin print -r -- "STATE=hit:${REPLY}"
@@ -316,15 +419,15 @@ fi
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" file || return 70
+_AI_CANDY_HAS_SQLITE3=0
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
 _ai_candy_hex_encode 'git_root:key'
 hex_key="$REPLY"
 _ai_candy_hex_encode cached
 hex_value="$REPLY"
 builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| \
-  "${_CACHE_DIR}/git_root_cache"
-builtin print -r -- 'not-a-valid-operation-record' >| "$_CACHE_OPERATION_FILE"
+  "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+builtin print -r -- 'not-a-valid-operation-record' >| "$_AI_CANDY_CACHE_OPERATION_FILE"
 if _ai_candy_cache_get git_root key; then
   builtin print -r -- "STATE=hit:${REPLY}"
 else
@@ -343,13 +446,13 @@ fi
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_CACHE_FILE_MAX_BYTES=1024
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" file || return 70
-cache_file="${_CACHE_DIR}/git_root_cache"
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_FILE_MAX_BYTES=1024
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" file || return 70
+cache_file="${_AI_CANDY_CACHE_DIR}/git_root_cache"
 builtin print -r -- "${(l:4096::X:)}" >| "$cache_file"
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 _ai_candy_cache_persist_write git_root key recovered "$EPOCHSECONDS" || return 71
 _ai_candy_cache_persist_read git_root key || return 72
 builtin zstat -A metadata +size -- "$cache_file" || return 73
@@ -385,13 +488,13 @@ builtin print -r -- "VALUE=${REPLY} BYTES=${metadata[1]}"
                     "-fc",
                     r"""
 source "$1"
-(( _HAS_ZSH_SYSTEM )) || return 77
-_ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" 300 0 || return 78
+(( _AI_CANDY_HAS_ZSH_SYSTEM )) || return 77
+_ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" 300 0 || return 78
 print -r -- ready >| "$READY_FILE"
 while [[ ! -f "$RELEASE_FILE" ]]; do
   zselect -t 1
 done
-_ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+_ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
 """,
                     "zsh",
                     str(THEME),
@@ -416,12 +519,12 @@ _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
                 result = run_zsh(
                     r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=1
 _AI_CANDY_USE_OMZ_ASYNC=0
-_SYSINFO_SESSION_READY=0
-command rm -f "$_SYSINFO_CACHE_FILE"
+_AI_CANDY_SYSINFO_SESSION_READY=0
+command rm -f "$_AI_CANDY_SYSINFO_CACHE_FILE"
 start=$EPOCHREALTIME
 _ai_candy_precmd_compute_prompt
 elapsed_ms=$(( (EPOCHREALTIME - start) * 1000 ))
@@ -450,8 +553,8 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             result = run_zsh(
                 r"""
 source "$1"
-(( _HAS_ZSH_SYSTEM )) || return 77
-lock_dir="${_CACHE_DIR}/reentrant.lock.d"
+(( _AI_CANDY_HAS_ZSH_SYSTEM )) || return 77
+lock_dir="${_AI_CANDY_CACHE_DIR}/reentrant.lock.d"
 _ai_candy_cache_lock_acquire "$lock_dir" 300 0 || return 70
 _ai_candy_cache_lock_acquire "$lock_dir" 300 0
 second_status=$?
@@ -480,11 +583,11 @@ builtin print -r -- "SECOND_STATUS=${second_status}"
             result = run_zsh(
                 r"""
 source "$1"
-initial="$_CACHE_DIR"
+initial="$_AI_CANDY_CACHE_DIR"
 cd "$DESTINATION"
-_ai_candy_cache_write "$_EMOJI_MODE_FILE" 1
+_ai_candy_cache_write "$_AI_CANDY_EMOJI_MODE_FILE" 1
 print -r -- "INITIAL=${initial}"
-print -r -- "AFTER=${_CACHE_DIR}"
+print -r -- "AFTER=${_AI_CANDY_CACHE_DIR}"
 """,
                 cache_home=root / "unused",
                 cwd=start,
@@ -525,14 +628,14 @@ print -r -- "AFTER=${_CACHE_DIR}"
                     "-fc",
                     r"""
 source "$1"
-(( _HAS_ZSH_SYSTEM )) || return 77
-_ai_candy_cache_lock_acquire "${_CACHE_OPERATION_FILE}.lock.d" 300 0 || return 78
+(( _AI_CANDY_HAS_ZSH_SYSTEM )) || return 77
+_ai_candy_cache_lock_acquire "${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d" 300 0 || return 78
 print -r -- ready >| "$READY_FILE"
 for attempt in {1..500}; do
   [[ -f "$RELEASE_FILE" ]] && break
   zselect -t 1
 done
-_ai_candy_cache_lock_release "${_CACHE_OPERATION_FILE}.lock.d"
+_ai_candy_cache_lock_release "${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
 """,
                     "zsh",
                     str(THEME),
@@ -553,13 +656,13 @@ _ai_candy_cache_lock_release "${_CACHE_OPERATION_FILE}.lock.d"
                 result = run_zsh(
                     r"""
 source "$1"
-(( _HAS_ZSH_SYSTEM )) || return 77
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+(( _AI_CANDY_HAS_ZSH_SYSTEM )) || return 77
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 start=$EPOCHREALTIME
 _ai_candy_get_cached_git_root
 git_root="$REPLY"
-_PP_CACHED_GIT_ROOT="$git_root"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$git_root"
 _ai_candy_get_git_hierarchy
 elapsed_ms=$(( (EPOCHREALTIME - start) * 1000 ))
 print -r -- "ROOT=${git_root} HIERARCHY=${REPLY}"
@@ -597,13 +700,13 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 start=$EPOCHREALTIME
 _ai_candy_get_cached_git_root
 git_root="$REPLY"
-_PP_CACHED_GIT_ROOT="$git_root"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$git_root"
 _ai_candy_get_git_hierarchy
 elapsed_ms=$(( (EPOCHREALTIME - start) * 1000 ))
 print -r -- "ROOT=${git_root} HIERARCHY=${REPLY}"
@@ -636,9 +739,9 @@ builtin printf 'ELAPSED_MS=%.3f\n' "$elapsed_ms"
                 r"""
 setopt errexit
 source "$1"
-before=$_PROMPT_EMOJI_MODE
+before=$_AI_CANDY_PROMPT_EMOJI_MODE
 _ai_candy_prompt_toggle_emoji >/dev/null
-print -r -- "BEFORE=${before} AFTER=${_PROMPT_EMOJI_MODE} CACHE=${_CACHE_READY}"
+print -r -- "BEFORE=${before} AFTER=${_AI_CANDY_PROMPT_EMOJI_MODE} CACHE=${_AI_CANDY_CACHE_READY}"
 """,
                 cache_home=cache_home,
             )
@@ -662,9 +765,9 @@ print -r -- "BEFORE=${before} AFTER=${_PROMPT_EMOJI_MODE} CACHE=${_CACHE_READY}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 function _ai_candy_sleep_ticks() { return 0; }
 _ai_candy_cache_persist_write git_root key value "$EPOCHSECONDS"
 lock_status=$?
@@ -690,9 +793,9 @@ print -r -- "STATUS=${lock_status} OWNER=$([[ -f "$OWNER_FILE" ]] && print prese
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_SYSTEM=0
-_NETWORK_TIMEOUT=3
-_ai_candy_acquire_background_lock "${_CACHE_DIR}/worker.lock"
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_NETWORK_TIMEOUT=3
+_ai_candy_acquire_background_lock "${_AI_CANDY_CACHE_DIR}/worker.lock"
 lock_status=$?
 print -r -- "STATUS=${lock_status} OWNER=$([[ -f "$OWNER_FILE" ]] && print present || print missing)"
 """,
@@ -709,8 +812,8 @@ print -r -- "STATUS=${lock_status} OWNER=$([[ -f "$OWNER_FILE" ]] && print prese
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 functions[_persist_without_pause]="${functions[_ai_candy_cache_persist_write_unlocked]}"
 function _ai_candy_cache_persist_write_unlocked() {
   print -r -- entered >| "$ENTERED_FILE"
@@ -731,8 +834,8 @@ start=$EPOCHREALTIME
 _ai_candy_prompt_refresh_all_caches >/dev/null
 elapsed=$(( EPOCHREALTIME - start ))
 zselect -t 50
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 if _ai_candy_cache_persist_read git_root key; then
   print -r -- "VALUE=${REPLY}"
 else
@@ -762,7 +865,7 @@ print -r -- "ELAPSED=${elapsed}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
+_AI_CANDY_HAS_SQLITE3=0
 functions[_commit_without_pause]="${functions[_ai_candy_cache_commit_operation]}"
 function _ai_candy_cache_commit_operation() {
   print -r -- entered >| "$ENTERED_FILE"
@@ -814,7 +917,7 @@ fi
                     "-fc",
                     r"""
 source "$1"
-_HAS_SQLITE3=0
+_AI_CANDY_HAS_SQLITE3=0
 functions[_commit_without_pause]="${functions[_ai_candy_cache_commit_operation]}"
 function _ai_candy_cache_commit_operation() {
   print -r -- entered >| "$ENTERED_FILE"
@@ -896,7 +999,7 @@ fi
                     result = run_zsh(
                         r"""
 source "$1"
-_HAS_SQLITE3=0
+_AI_CANDY_HAS_SQLITE3=0
 _ai_candy_prompt_refresh_all_caches >/dev/null || return 70
 _ai_candy_cache_read_persistence_epoch || return 71
 epoch="$REPLY"
@@ -958,7 +1061,7 @@ print -r -- "STATUS=$?"
                     "-fc",
                     r"""
 source "$1"
-_HAS_SQLITE3=0
+_AI_CANDY_HAS_SQLITE3=0
 _ai_candy_cache_read_persistence_epoch || return 70
 captured_epoch="$REPLY"
 print -r -- ready >| "$READY_FILE"
@@ -967,8 +1070,8 @@ for attempt in {1..500}; do
   zselect -t 1
 done
 [[ -f "$RELEASE_FILE" ]] || return 71
-_ai_candy_cache_write "$_PUBLIC_IP_CACHE_FILE" "203.0.113.42|${EPOCHSECONDS}" \
-  "$_CACHE_COMMIT_WAIT_TICKS" "$captured_epoch"
+_ai_candy_cache_write "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" "203.0.113.42|${EPOCHSECONDS}" \
+  "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$captured_epoch"
 file_status=$?
 _ai_candy_cache_persist_write gh_pr key '42|pass' "$EPOCHSECONDS" "$captured_epoch"
 persistent_status=$?
@@ -1008,7 +1111,7 @@ _ai_candy_prompt_refresh_all_caches >/dev/null
             readback = run_zsh(
                 r"""
 source "$1"
-ip_state=$([[ -e "$_PUBLIC_IP_CACHE_FILE" ]] && print present || print missing)
+ip_state=$([[ -e "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" ]] && print present || print missing)
 if _ai_candy_cache_persist_read gh_pr key; then
   pr_state="$REPLY"
 else
@@ -1036,18 +1139,18 @@ print -r -- "IP=${ip_state} PR=${pr_state}"
                 r"""
 source "$1"
 _ai_candy_cache_backend_init
-[[ "$_CACHE_BACKEND" == sqlite ]] || return 71
+[[ "$_AI_CANDY_CACHE_BACKEND" == sqlite ]] || return 71
 _ai_candy_cache_persist_write git_root stale old "$EPOCHSECONDS"
 original_path="$PATH"
 path=("$EMPTY_BIN")
 rehash
 _ai_candy_prompt_refresh_all_caches >/dev/null
-db_after_refresh=$([[ -e $_CACHE_DB_FILE ]] && print present || print absent)
+db_after_refresh=$([[ -e $_AI_CANDY_CACHE_DB_FILE ]] && print present || print absent)
 PATH="$original_path"
 rehash
 _ai_candy_detect_core_commands
-_CACHE_BACKEND_STATE=0
-_CACHE_BACKEND=none
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
 if _ai_candy_cache_persist_read git_root stale; then
   print -r -- "VALUE=${REPLY}"
 else
@@ -1085,7 +1188,7 @@ print -r -- "DB_AFTER_REFRESH=${db_after_refresh}"
                     r"""
 source "$1"
 _ai_candy_cache_backend_init
-[[ "$_CACHE_BACKEND" == sqlite ]] || return 72
+[[ "$_AI_CANDY_CACHE_BACKEND" == sqlite ]] || return 72
 print -r -- ready >| "$READY_FILE"
 for attempt in {1..500}; do
   [[ -f "$REFRESHED_FILE" ]] && break
@@ -1095,10 +1198,10 @@ done
 if _ai_candy_cache_persist_read git_root missing; then
   return 76
 fi
-[[ "$_CACHE_BACKEND" == sqlite ]] || return 77
+[[ "$_AI_CANDY_CACHE_BACKEND" == sqlite ]] || return 77
 _ai_candy_cache_persist_write git_root live new "$EPOCHSECONDS" || return 74
 _ai_candy_cache_persist_read git_root live || return 75
-print -r -- "VALUE=${REPLY} BACKEND=${_CACHE_BACKEND}"
+print -r -- "VALUE=${REPLY} BACKEND=${_AI_CANDY_CACHE_BACKEND}"
 """,
                     "zsh",
                     str(THEME),
@@ -1145,12 +1248,12 @@ print -r -- refreshed >| "$REFRESHED_FILE"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_TIMEOUT=0
-_TIMEOUT_CMD=""
-_CACHE_READY=0
-_CACHE_DIR="${XDG_CACHE_HOME}/portable/zsh-prompt"
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
+_AI_CANDY_CACHE_READY=0
+_AI_CANDY_CACHE_DIR="${XDG_CACHE_HOME}/portable/zsh-prompt"
 _ai_candy_cache_init_dir
-print -r -- "READY=${_CACHE_READY}"
+print -r -- "READY=${_AI_CANDY_CACHE_READY}"
 """,
                 cache_home=cache_home,
             )
@@ -1178,11 +1281,11 @@ function zmodload() {
 setopt nounset
 source "$1"
 _ai_candy_cache_write "$CACHE_FILE" value
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 _ai_candy_precmd_compute_prompt
-print -r -- "VALUE=$(<"$CACHE_FILE") ROOT=${_PP_CACHED_GIT_ROOT}"
+print -r -- "VALUE=$(<"$CACHE_FILE") ROOT=${_AI_CANDY_PP_CACHED_GIT_ROOT}"
 """,
                 cache_home=root / "cache",
                 env={"CACHE_FILE": str(cache_file)},
@@ -1205,7 +1308,7 @@ print -r -- "VALUE=$(<"$CACHE_FILE") ROOT=${_PP_CACHED_GIT_ROOT}"
 setopt errexit
 source "$1"
 [[ -o errexit ]]
-print -r -- "READY=${_CACHE_READY}"
+print -r -- "READY=${_AI_CANDY_CACHE_READY}"
 """,
                 cache_home=cache_home,
             )
@@ -1219,25 +1322,25 @@ print -r -- "READY=${_CACHE_READY}"
             result = run_zsh(
                 r"""
 source "$1"
-_ai_candy_cache_write "$_PUBLIC_IP_CACHE_FILE" "127.0.0.1|${EPOCHSECONDS}"
-_ai_candy_cache_atomic_write_unlocked "$_CACHE_OPERATION_SEQUENCE_FILE" "0|7"
-_GH_AUTH_MEM_CACHE=1
-_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
-_AI_PROCESS_SNAPSHOT_TIME=$EPOCHSECONDS
-typeset -gA _GIT_REMOTE_KEY_BY_ROOT
-_GIT_REMOTE_KEY_BY_ROOT[$PWD]=stale
-typeset -gA _GIT_OMZ_OPTIONS_BY_ROOT
-_GIT_OMZ_OPTIONS_BY_ROOT[$PWD]=stale
-_MEM_CACHE_TOMBSTONES[stale:key]=$EPOCHSECONDS
+_ai_candy_cache_write "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" "127.0.0.1|${EPOCHSECONDS}"
+_ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" "0|7"
+_AI_CANDY_GH_AUTH_MEM_CACHE=1
+_AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
+_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=$EPOCHSECONDS
+typeset -gA _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT
+_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$PWD]=stale
+typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
+_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$PWD]=stale
+_AI_CANDY_MEM_CACHE_TOMBSTONES[stale:key]=$EPOCHSECONDS
 _ai_candy_prompt_refresh_all_caches >/dev/null
-print -r -- "IP=$([[ -f $_PUBLIC_IP_CACHE_FILE ]] && print present || print absent)"
-print -r -- "AUTH=${_GH_AUTH_MEM_CACHE:-empty}"
-print -r -- "PROCESS=${_AI_PROCESS_SNAPSHOT_TIME}"
-print -r -- "REMOTE=${#_GIT_REMOTE_KEY_BY_ROOT}"
-print -r -- "OPTIONS=${#_GIT_OMZ_OPTIONS_BY_ROOT}"
-print -r -- "TOMBSTONES=${#_MEM_CACHE_TOMBSTONES}"
+print -r -- "IP=$([[ -f $_AI_CANDY_PUBLIC_IP_CACHE_FILE ]] && print present || print absent)"
+print -r -- "AUTH=${_AI_CANDY_GH_AUTH_MEM_CACHE:-empty}"
+print -r -- "PROCESS=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME}"
+print -r -- "REMOTE=${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}"
+print -r -- "OPTIONS=${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}"
+print -r -- "TOMBSTONES=${#_AI_CANDY_MEM_CACHE_TOMBSTONES}"
 print -r -- \
-  "SEQUENCE=$([[ -f $_CACHE_OPERATION_SEQUENCE_FILE ]] && print present || print absent)"
+  "SEQUENCE=$([[ -f $_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE ]] && print present || print absent)"
 """,
                 cache_home=root / "cache",
             )
@@ -1256,15 +1359,15 @@ print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
-_MEM_CACHE_MAX_ENTRIES=2
-_MEM_CACHE_CLEANUP_THRESHOLD=2
-_MEM_CACHE_GIT_ROOT=(
+_AI_CANDY_MEM_CACHE_MAX_ENTRIES=2
+_AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD=2
+_AI_CANDY_MEM_CACHE_GIT_ROOT=(
   first "one|1"
   second "two|2"
   third "three|3"
 )
 _ai_candy_mem_cache_cleanup git_root
-print -r -- "COUNT=${#_MEM_CACHE_GIT_ROOT}"
+print -r -- "COUNT=${#_AI_CANDY_MEM_CACHE_GIT_ROOT}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -1277,13 +1380,13 @@ print -r -- "COUNT=${#_MEM_CACHE_GIT_ROOT}"
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_SCHEDULE_PERSISTENCE=0
-_MEM_CACHE_MAX_ENTRIES=2
-_MEM_CACHE_CLEANUP_THRESHOLD=2
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_MEM_CACHE_MAX_ENTRIES=2
+_AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD=2
 _ai_candy_cache_delete_key git_root first
 _ai_candy_cache_delete_key git_root second
 _ai_candy_cache_delete_key git_root third
-print -r -- "COUNT=${#_MEM_CACHE_TOMBSTONES}"
+print -r -- "COUNT=${#_AI_CANDY_MEM_CACHE_TOMBSTONES}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
@@ -1305,8 +1408,8 @@ print -r -- "COUNT=${#_MEM_CACHE_TOMBSTONES}"
             result = run_zsh(
                 r"""
 source "$1"
-_MEM_CACHE_MAX_ENTRIES=2
-_MEM_CACHE_CLEANUP_THRESHOLD=2
+_AI_CANDY_MEM_CACHE_MAX_ENTRIES=2
+_AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD=2
 function _ai_candy_run_local_probe() {
   [[ "$*" == git\ status\ * ]] && return 124
   [[ "$*" == *remote.origin.url* ]] && builtin print -r -- origin
@@ -1315,13 +1418,13 @@ function _ai_candy_run_local_probe() {
 function _ai_candy_hash_string() { REPLY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; }
 for repo in "$REPO_ROOT"/one "$REPO_ROOT"/two "$REPO_ROOT"/three; do
   _ai_candy_load_git_display_options "$repo"
-  _PP_CACHED_GIT_ROOT="$repo"
-  (( ++_PROMPT_RENDER_ID ))
+  _AI_CANDY_PP_CACHED_GIT_ROOT="$repo"
+  (( ++_AI_CANDY_PROMPT_RENDER_ID ))
   _ai_candy_get_cached_git_remote_branch
   _ai_candy_collect_git_snapshot || true
 done
 print -r -- \
-  "OPTIONS=${#_GIT_OMZ_OPTIONS_BY_ROOT} REMOTES=${#_GIT_REMOTE_KEY_BY_ROOT} RETRIES=${#_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT}"
+  "OPTIONS=${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT} REMOTES=${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT} RETRIES=${#_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT}"
 """,
                 cache_home=root / "cache",
                 env={"REPO_ROOT": str(root)},
@@ -1339,9 +1442,9 @@ print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
 _ai_candy_cache_set gh_pr "$PAYLOAD" "$PAYLOAD" "$EPOCHSECONDS"
-memory_value="${_MEM_CACHE_GH_PR[$PAYLOAD]-}"
+memory_value="${_AI_CANDY_MEM_CACHE_GH_PR[$PAYLOAD]-}"
 _ai_candy_cache_persist_write probe "$PAYLOAD" "$PAYLOAD" "$EPOCHSECONDS" || exit 2
 _ai_candy_cache_persist_read probe "$PAYLOAD" || exit 3
 persistent_value="$REPLY"

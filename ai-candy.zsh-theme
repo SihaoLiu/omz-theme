@@ -61,35 +61,35 @@ fi
 
 # Prefer Zsh builtins for local file operations. They avoid GNU/BSD command
 # differences and cannot be shadowed by a slow executable earlier in PATH.
-typeset -g _HAS_ZSH_FILE_BUILTINS=0
-typeset -g _HAS_ZSH_CHMOD_BUILTIN=0
+typeset -g _AI_CANDY_HAS_ZSH_FILE_BUILTINS=0
+typeset -g _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN=0
 if builtin zmodload zsh/files 2>/dev/null && \
    (( $+builtins[zf_mkdir] && $+builtins[zf_rm] && \
       $+builtins[zf_mv] && $+builtins[zf_rmdir] )); then
-  _HAS_ZSH_FILE_BUILTINS=1
+  _AI_CANDY_HAS_ZSH_FILE_BUILTINS=1
 fi
-(( $+builtins[zf_chmod] )) && _HAS_ZSH_CHMOD_BUILTIN=1
+(( $+builtins[zf_chmod] )) && _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN=1
 
 function _ai_candy_chmod() {
-  if (( _HAS_ZSH_CHMOD_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_CHMOD_BUILTIN )); then
     builtin zf_chmod "$@"
   else
     command chmod "$@"
   fi
 }
 
-typeset -g _HAS_ZSH_STAT_BUILTIN=0
+typeset -g _AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
 if builtin zmodload -F zsh/stat b:zstat 2>/dev/null; then
-  _HAS_ZSH_STAT_BUILTIN=1
+  _AI_CANDY_HAS_ZSH_STAT_BUILTIN=1
 fi
 
 # zsh/datetime supplies the prompt's high-resolution session clock. zsh/system
 # and zsh/zselect enable the native timeout and descriptor-lock fast paths.
-typeset -g _HAS_ZSH_SYSTEM=0
-typeset -g _HAS_ZSH_ZSELECT=0
-typeset -g _HAS_ZSH_NATIVE_TIMEOUT=0
+typeset -g _AI_CANDY_HAS_ZSH_SYSTEM=0
+typeset -g _AI_CANDY_HAS_ZSH_ZSELECT=0
+typeset -g _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
 if builtin zmodload zsh/system 2>/dev/null; then
-  _HAS_ZSH_SYSTEM=1
+  _AI_CANDY_HAS_ZSH_SYSTEM=1
 fi
 if ! builtin zmodload zsh/datetime 2>/dev/null; then
   builtin print -P "%F{red}[ai-candy.zsh-theme]%f Requires the standard zsh/datetime module"
@@ -98,11 +98,26 @@ if ! builtin zmodload zsh/datetime 2>/dev/null; then
   return 1
 fi
 if builtin zmodload zsh/zselect 2>/dev/null; then
-  _HAS_ZSH_ZSELECT=1
+  _AI_CANDY_HAS_ZSH_ZSELECT=1
 fi
-if (( _HAS_ZSH_SYSTEM && _HAS_ZSH_ZSELECT )); then
-  _HAS_ZSH_NATIVE_TIMEOUT=1
+if (( _AI_CANDY_HAS_ZSH_SYSTEM && _AI_CANDY_HAS_ZSH_ZSELECT )); then
+  _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=1
 fi
+
+typeset -g _AI_CANDY_PHYSICAL_PWD=""
+function _ai_candy_capture_physical_pwd() {
+  emulate -L zsh
+  local captured_pwd=""
+
+  if ! captured_pwd="$(builtin pwd -P 2>/dev/null)" || \
+     [[ "$captured_pwd" != /* ]]; then
+    _AI_CANDY_PHYSICAL_PWD=""
+    return 1
+  fi
+  _AI_CANDY_PHYSICAL_PWD="$captured_pwd"
+  return 0
+}
+_ai_candy_capture_physical_pwd || true
 
 # ============================================================================
 # COMMAND AVAILABILITY - Checked once at load time for performance
@@ -113,22 +128,22 @@ fi
 # Optional tools use lazy detection because shell-managed installations may not
 # be in PATH when the theme first loads.
 
-typeset -g _HAS_SQLITE3=0
-typeset -g _HAS_TIMEOUT=0
-typeset -g _TIMEOUT_CMD=""
-typeset -g _HAS_GH=0
-typeset -g _HAS_SSH=0
-typeset -g _HAS_CURL=0
+typeset -g _AI_CANDY_HAS_SQLITE3=0
+typeset -g _AI_CANDY_HAS_TIMEOUT=0
+typeset -g _AI_CANDY_TIMEOUT_CMD=""
+typeset -g _AI_CANDY_HAS_GH=0
+typeset -g _AI_CANDY_HAS_SSH=0
+typeset -g _AI_CANDY_HAS_CURL=0
 
 # Optional tools are detected on first prompt render.
-typeset -g _HAS_CLAUDE=0
-typeset -g _HAS_CODEX=0
-typeset -g _HAS_GEMINI=0
-typeset -g _HAS_KIMI=0
-typeset -g _AI_TOOLS_DETECTED=0  # Triggers one-time optional-tool detection
+typeset -g _AI_CANDY_HAS_CLAUDE=0
+typeset -g _AI_CANDY_HAS_CODEX=0
+typeset -g _AI_CANDY_HAS_GEMINI=0
+typeset -g _AI_CANDY_HAS_KIMI=0
+typeset -g _AI_CANDY_AI_TOOLS_DETECTED=0  # Triggers one-time optional-tool detection
 
-typeset -g _HASH_CMD=""
-typeset -g _HAS_HASH_CMD=0
+typeset -g _AI_CANDY_HASH_CMD=""
+typeset -g _AI_CANDY_HAS_HASH_CMD=0
 
 function _ai_candy_resolve_external_command() {
   emulate -L zsh
@@ -171,54 +186,54 @@ function _ai_candy_resolve_external_command() {
 }
 
 function _ai_candy_detect_core_commands() {
-  _HAS_SQLITE3=0
-  _HAS_TIMEOUT=0
-  _TIMEOUT_CMD=""
-  _HAS_GH=0
-  _HAS_SSH=0
-  _HAS_CURL=0
-  _HASH_CMD=""
-  _HAS_HASH_CMD=0
+  _AI_CANDY_HAS_SQLITE3=0
+  _AI_CANDY_HAS_TIMEOUT=0
+  _AI_CANDY_TIMEOUT_CMD=""
+  _AI_CANDY_HAS_GH=0
+  _AI_CANDY_HAS_SSH=0
+  _AI_CANDY_HAS_CURL=0
+  _AI_CANDY_HASH_CMD=""
+  _AI_CANDY_HAS_HASH_CMD=0
 
-  _ai_candy_resolve_external_command sqlite3 && _HAS_SQLITE3=1
-  if (( _HAS_ZSH_NATIVE_TIMEOUT )); then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="zsh-native"
+  _ai_candy_resolve_external_command sqlite3 && _AI_CANDY_HAS_SQLITE3=1
+  if (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT )); then
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="zsh-native"
   elif _ai_candy_resolve_external_command timeout; then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="$REPLY"
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="$REPLY"
   elif _ai_candy_resolve_external_command gtimeout; then
-    _HAS_TIMEOUT=1
-    _TIMEOUT_CMD="$REPLY"
+    _AI_CANDY_HAS_TIMEOUT=1
+    _AI_CANDY_TIMEOUT_CMD="$REPLY"
   fi
-  _ai_candy_resolve_external_command gh && _HAS_GH=1
-  _ai_candy_resolve_external_command ssh && _HAS_SSH=1
-  _ai_candy_resolve_external_command curl && _HAS_CURL=1
+  _ai_candy_resolve_external_command gh && _AI_CANDY_HAS_GH=1
+  _ai_candy_resolve_external_command ssh && _AI_CANDY_HAS_SSH=1
+  _ai_candy_resolve_external_command curl && _AI_CANDY_HAS_CURL=1
 
   # Remote URLs are hashed before becoming persistent PR cache keys.
   if _ai_candy_resolve_external_command sha256sum; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   elif _ai_candy_resolve_external_command shasum; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   elif _ai_candy_resolve_external_command openssl; then
-    _HASH_CMD="$REPLY"
-    _HAS_HASH_CMD=1
+    _AI_CANDY_HASH_CMD="$REPLY"
+    _AI_CANDY_HAS_HASH_CMD=1
   fi
 }
 
 function _ai_candy_detect_optional_commands() {
-  _HAS_CLAUDE=0
-  _HAS_CODEX=0
-  _HAS_GEMINI=0
-  _HAS_KIMI=0
+  _AI_CANDY_HAS_CLAUDE=0
+  _AI_CANDY_HAS_CODEX=0
+  _AI_CANDY_HAS_GEMINI=0
+  _AI_CANDY_HAS_KIMI=0
 
-  _ai_candy_resolve_external_command claude && _HAS_CLAUDE=1
-  _ai_candy_resolve_external_command codex && _HAS_CODEX=1
-  _ai_candy_resolve_external_command gemini && _HAS_GEMINI=1
-  _ai_candy_resolve_external_command kimi && _HAS_KIMI=1
-  _AI_TOOLS_DETECTED=1
+  _ai_candy_resolve_external_command claude && _AI_CANDY_HAS_CLAUDE=1
+  _ai_candy_resolve_external_command codex && _AI_CANDY_HAS_CODEX=1
+  _ai_candy_resolve_external_command gemini && _AI_CANDY_HAS_GEMINI=1
+  _ai_candy_resolve_external_command kimi && _AI_CANDY_HAS_KIMI=1
+  _AI_CANDY_AI_TOOLS_DETECTED=1
 }
 
 _ai_candy_detect_core_commands
@@ -234,13 +249,20 @@ function _ai_candy_sleep_ticks() {
   return 0
 }
 
+function _ai_candy_terminal_codepoint_is_emoji_joinable() {
+  integer codepoint="$1"
+  (( (codepoint >= 0x2300 && codepoint <= 0x23ff) ||
+      (codepoint >= 0x2600 && codepoint <= 0x27ff) ||
+      (codepoint >= 0x1f000 && codepoint <= 0x1faff) ))
+}
+
 function _ai_candy_sanitize_terminal_text() {
   emulate -L zsh
   local LC_ALL=C
   local value="$1"
-  local byte second third fourth
+  local byte second third fourth pending_joiner_text=""
   integer index=1 length=${#value} code second_code third_code fourth_code width
-  integer codepoint
+  integer codepoint previous_joinable=0 pending_joiner=0
   REPLY=""
 
   while (( index <= length )); do
@@ -249,11 +271,23 @@ function _ai_candy_sanitize_terminal_text() {
     width=0
 
     if (( code >= 32 && code <= 126 )); then
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="$byte"
+      previous_joinable=0
       (( index++ ))
       continue
     elif (( code < 128 )); then
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="?"
+      previous_joinable=0
       (( index++ ))
       continue
     fi
@@ -299,19 +333,55 @@ function _ai_candy_sanitize_terminal_text() {
         3) codepoint=$(( (code - 224) * 4096 + (second_code - 128) * 64 + third_code - 128 )) ;;
         4) codepoint=$(( (code - 240) * 262144 + (second_code - 128) * 4096 + (third_code - 128) * 64 + fourth_code - 128 )) ;;
       esac
-      if (( codepoint == 1564 || codepoint == 8206 || codepoint == 8207 ||
+      if (( pending_joiner )); then
+        if _ai_candy_terminal_codepoint_is_emoji_joinable "$codepoint"; then
+          REPLY+="$pending_joiner_text"
+        else
+          REPLY+="?"
+        fi
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
+      if (( codepoint == 8205 )); then
+        if (( previous_joinable )); then
+          pending_joiner=1
+          pending_joiner_text="${value[index,index+width-1]}"
+        else
+          REPLY+="?"
+        fi
+        previous_joinable=0
+        (( index += width ))
+        continue
+      fi
+      if (( codepoint == 173 || codepoint == 1564 || codepoint == 6158 ||
+            (codepoint >= 8203 && codepoint <= 8207 && codepoint != 8205) ||
             (codepoint >= 8232 && codepoint <= 8238) ||
-            (codepoint >= 8294 && codepoint <= 8297) )); then
+            (codepoint >= 8288 && codepoint <= 8303) ||
+            codepoint == 65279 ||
+            (codepoint >= 65529 && codepoint <= 65531) ||
+            (codepoint >= 917504 && codepoint <= 917631) )); then
         REPLY+="?"
       else
         REPLY+="${value[index,index+width-1]}"
       fi
+      if _ai_candy_terminal_codepoint_is_emoji_joinable "$codepoint"; then
+        previous_joinable=1
+      elif (( codepoint != 65039 )); then
+        previous_joinable=0
+      fi
       (( index += width ))
     else
+      if (( pending_joiner )); then
+        REPLY+="?"
+        pending_joiner=0
+        pending_joiner_text=""
+      fi
       REPLY+="?"
+      previous_joinable=0
       (( index++ ))
     fi
   done
+  (( pending_joiner )) && REPLY+="?"
 }
 
 function _ai_candy_prompt_escape_text() {
@@ -329,17 +399,17 @@ function _ai_candy_prompt_escape_text() {
 # COLOR CONSTANTS - Centralized color definitions for easy customization
 # ============================================================================
 # 256-color palette (FG[N] format)
-typeset -g _CLR_TIME_MORNING=214      # Warm yellow (6am-12pm)
-typeset -g _CLR_TIME_AFTERNOON=255    # Bright white (12pm-6pm)
-typeset -g _CLR_TIME_EVENING=208      # Soft orange (6pm-10pm)
-typeset -g _CLR_TIME_NIGHT=111        # Dim blue (10pm-6am)
-typeset -g _CLR_TRUNCATED=240         # Gray for truncated path indicator
-typeset -g _CLR_CLAUDE=173            # Coral
-typeset -g _CLR_CODEX=250             # Light gray
-typeset -g _CLR_GEMINI=141            # Purple
-typeset -g _CLR_KIMI=75               # Sky blue
-typeset -g _CLR_PR=213                # Pink - GitHub PR
-typeset -g _CLR_USER_HOST=136         # Brown - user@host
+typeset -g _AI_CANDY_CLR_TIME_MORNING=214      # Warm yellow (6am-12pm)
+typeset -g _AI_CANDY_CLR_TIME_AFTERNOON=255    # Bright white (12pm-6pm)
+typeset -g _AI_CANDY_CLR_TIME_EVENING=208      # Soft orange (6pm-10pm)
+typeset -g _AI_CANDY_CLR_TIME_NIGHT=111        # Dim blue (10pm-6am)
+typeset -g _AI_CANDY_CLR_TRUNCATED=240         # Gray for truncated path indicator
+typeset -g _AI_CANDY_CLR_CLAUDE=173            # Coral
+typeset -g _AI_CANDY_CLR_CODEX=250             # Light gray
+typeset -g _AI_CANDY_CLR_GEMINI=141            # Purple
+typeset -g _AI_CANDY_CLR_KIMI=75               # Sky blue
+typeset -g _AI_CANDY_CLR_PR=213                # Pink - GitHub PR
+typeset -g _AI_CANDY_CLR_USER_HOST=136         # Brown - user@host
 
 # Standard color names (fg[name] format) - for reference/documentation
 # cyan    - SSH indicator, system info
@@ -350,47 +420,47 @@ typeset -g _CLR_USER_HOST=136         # Brown - user@host
 # white   - path segments, optional-tool brackets
 # blue    - prompt arrow
 
-typeset -g _SYM_CHECK=$'\xe2\x9c\x93'
-typeset -g _SYM_CROSS=$'\xe2\x9c\x97'
-typeset -g _SYM_UP=$'\xe2\x86\x91'
-typeset -g _SYM_DOWN=$'\xe2\x86\x93'
-typeset -g _SYM_STASH=$'\xe2\x9a\x91'
-typeset -g _SYM_WARNING=$'\xe2\x9a\xa0'
-typeset -g _SYM_JOBS=$'\xe2\x9a\x99'
-typeset -g _SYM_PENDING=$'\xe2\x8f\xb3'
-typeset -g _SYM_HOST=$'\xf0\x9f\x92\xbb'
-typeset -g _SYM_BRANCH=$'\xf0\x9f\x94\x80'
-typeset -g _SYM_CHERRY=$'\xf0\x9f\x8d\x92'
-typeset -g _SYM_REWIND=$'\xe2\x8f\xaa'
-typeset -g _SYM_SEARCH=$'\xf0\x9f\x94\x8d'
-typeset -g _SYM_PLUG=$'\xf0\x9f\x94\x8c'
-typeset -g _BOX_TL=$'\xe2\x95\x94'
-typeset -g _BOX_TR=$'\xe2\x95\x97'
-typeset -g _BOX_BL=$'\xe2\x95\x9a'
-typeset -g _BOX_BR=$'\xe2\x95\x9d'
-typeset -g _BOX_ML=$'\xe2\x95\xa0'
-typeset -g _BOX_MR=$'\xe2\x95\xa3'
-typeset -g _BOX_H=$'\xe2\x95\x90'
-typeset -g _BOX_V=$'\xe2\x95\x91'
+typeset -g _AI_CANDY_SYM_CHECK=$'\xe2\x9c\x93'
+typeset -g _AI_CANDY_SYM_CROSS=$'\xe2\x9c\x97'
+typeset -g _AI_CANDY_SYM_UP=$'\xe2\x86\x91'
+typeset -g _AI_CANDY_SYM_DOWN=$'\xe2\x86\x93'
+typeset -g _AI_CANDY_SYM_STASH=$'\xe2\x9a\x91'
+typeset -g _AI_CANDY_SYM_WARNING=$'\xe2\x9a\xa0'
+typeset -g _AI_CANDY_SYM_JOBS=$'\xe2\x9a\x99'
+typeset -g _AI_CANDY_SYM_PENDING=$'\xe2\x8f\xb3'
+typeset -g _AI_CANDY_SYM_HOST=$'\xf0\x9f\x92\xbb'
+typeset -g _AI_CANDY_SYM_BRANCH=$'\xf0\x9f\x94\x80'
+typeset -g _AI_CANDY_SYM_CHERRY=$'\xf0\x9f\x8d\x92'
+typeset -g _AI_CANDY_SYM_REWIND=$'\xe2\x8f\xaa'
+typeset -g _AI_CANDY_SYM_SEARCH=$'\xf0\x9f\x94\x8d'
+typeset -g _AI_CANDY_SYM_PLUG=$'\xf0\x9f\x94\x8c'
+typeset -g _AI_CANDY_BOX_TL=$'\xe2\x95\x94'
+typeset -g _AI_CANDY_BOX_TR=$'\xe2\x95\x97'
+typeset -g _AI_CANDY_BOX_BL=$'\xe2\x95\x9a'
+typeset -g _AI_CANDY_BOX_BR=$'\xe2\x95\x9d'
+typeset -g _AI_CANDY_BOX_ML=$'\xe2\x95\xa0'
+typeset -g _AI_CANDY_BOX_MR=$'\xe2\x95\xa3'
+typeset -g _AI_CANDY_BOX_H=$'\xe2\x95\x90'
+typeset -g _AI_CANDY_BOX_V=$'\xe2\x95\x91'
 
 # Background colors for git path segments (256-color palette)
 # Level 0 (outermost/top repo): light cyan
 # Level 1 (first submodule): light yellow
 # Level 2 (second submodule): light green
 # Level 3+ (deeper): light magenta
-typeset -ga _PATH_BG_COLORS=(159 229 157 225)
+typeset -ga _AI_CANDY_PATH_BG_COLORS=(159 229 157 225)
 
 # Internal separator for git hierarchy cache (avoid common path characters).
 # ASCII Unit Separator bytes are neutralized by the hierarchy encoder.
 # IMPORTANT: When splitting strings with this separator in zsh, use:
 #   ${(@ps.$sep.)string}   -- CORRECT (p flag + s.$var. syntax)
 #   ${(@s:$sep:)string}    -- WRONG (s:X: requires literal X, not variable)
-typeset -g _GIT_HIERARCHY_SEP=$'\x1f'
+typeset -g _AI_CANDY_GIT_HIERARCHY_SEP=$'\x1f'
 
 # GitHub username badge background color (white background for normal, red for mismatch)
-typeset -g _CLR_GH_USER_BG=255        # White background
-typeset -g _CLR_GH_USER_FG=16         # Black foreground
-typeset -g _CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
+typeset -g _AI_CANDY_CLR_GH_USER_BG=255        # White background
+typeset -g _AI_CANDY_CLR_GH_USER_FG=16         # Black foreground
+typeset -g _AI_CANDY_CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
 
 # ============================================================================
 # TIMING CONSTANTS - Centralized timeout and cache TTL settings
@@ -398,43 +468,43 @@ typeset -g _CLR_GH_USER_MISMATCH=196  # Bright red for username mismatch
 # All timing values in seconds for easy adjustment
 
 # Network timeout (prevents hanging on slow/unreachable services)
-typeset -g _NETWORK_TIMEOUT=3         # 3 seconds
+typeset -g _AI_CANDY_NETWORK_TIMEOUT=3         # 3 seconds
 
 # Local probe timeout (prevents optional local tools from blocking prompt startup)
-typeset -g _LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
+typeset -g _AI_CANDY_LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
 
 # Background and user-requested probes do not block prompt rendering.
-typeset -g _BACKGROUND_LOCAL_PROBE_TIMEOUT=1 # 1 second
+typeset -g _AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT=1 # 1 second
 
 # Process count timeout (tool instance counts are optional prompt decoration)
-typeset -g _PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
+typeset -g _AI_CANDY_PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
 
 # High frequency cache (fast-changing data, checked frequently)
-typeset -g _CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
+typeset -g _AI_CANDY_CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
 
 # Medium frequency cache (moderately changing data)
-typeset -g _CACHE_TTL_MEDIUM=300      # 5 minutes - git status, GitHub username
+typeset -g _AI_CANDY_CACHE_TTL_MEDIUM=300      # 5 minutes - git status, GitHub username
 
 # Low frequency cache (rarely changing data)
-typeset -g _CACHE_TTL_LOW=3600        # 1 hour - system info, tool versions, auth status
+typeset -g _AI_CANDY_CACHE_TTL_LOW=3600        # 1 hour - system info, tool versions, auth status
 
 # ============================================================================
 # PATH & LAYOUT CONSTANTS - Centralized settings for path display and layout
 # ============================================================================
 # Maximum depth for git hierarchy traversal (prevents infinite loops)
-typeset -g _GIT_HIERARCHY_MAX_DEPTH=20
+typeset -g _AI_CANDY_GIT_HIERARCHY_MAX_DEPTH=20
 
 # Bump when git hierarchy serialization changes in a way that makes old cache
 # entries visually incorrect.
-typeset -g _GIT_HIERARCHY_CACHE_VERSION=2
+typeset -g _AI_CANDY_GIT_HIERARCHY_CACHE_VERSION=2
 
 # Target width for path truncation
-typeset -g _PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
-typeset -g _PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
+typeset -g _AI_CANDY_PATH_TARGET_WIDTH_DEFAULT=50  # Default target width
+typeset -g _AI_CANDY_PATH_TARGET_WIDTH_SHORT=40    # Target width in short mode
 
 # Layout margin - minimum free space to leave before switching to shorter format
 # If remaining terminal width is less than this, trigger RPROMPT or shorter mode
-typeset -g _LAYOUT_MARGIN=8
+typeset -g _AI_CANDY_LAYOUT_MARGIN=8
 
 # ============================================================================
 # TIMEOUT WRAPPER - Universal timeout command abstraction
@@ -446,13 +516,14 @@ typeset -g _LAYOUT_MARGIN=8
 # Usage: _ai_candy_run_with_timeout <timeout_seconds> <command> [args...]
 # Returns: command output on success, empty string on timeout or error
 # Exit code: mirrors the underlying command's exit code
-# Note: _HAS_TIMEOUT and _TIMEOUT_CMD are set in COMMAND AVAILABILITY section
+# Note: _AI_CANDY_HAS_TIMEOUT and _AI_CANDY_TIMEOUT_CMD are set in COMMAND AVAILABILITY section
 
-typeset -g _TIMEOUT_OUTPUT_MAX_BYTES=$((256 * 1024))
-typeset -g _TIMEOUT_STALE_FILES_SCANNED=0
+typeset -g _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=$((256 * 1024))
+typeset -g _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=0
+typeset -g _AI_CANDY_TIMEOUT_TEMP_DIR=""
 
 function _ai_candy_timeout_output_limit_bytes() {
-  integer max_output_bytes=${_TIMEOUT_OUTPUT_MAX_BYTES:-262144}
+  integer max_output_bytes=${_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES:-262144}
   if (( max_output_bytes < 512 || max_output_bytes > 1048576 )); then
     max_output_bytes=262144
   fi
@@ -461,7 +532,7 @@ function _ai_candy_timeout_output_limit_bytes() {
 
 function _ai_candy_remove_timeout_files() {
   (( $# > 0 )) || return 0
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
     builtin zf_rm -f "$@" 2>/dev/null
   else
     command /bin/rm -f "$@" 2>/dev/null
@@ -486,6 +557,48 @@ function _ai_candy_cleanup_stale_timeout_files() {
   done
 }
 
+function _ai_candy_timeout_temp_directory() {
+  emulate -L zsh
+  local temp_base="${${TMPDIR:-/tmp}:A}"
+  local temp_dir="$_AI_CANDY_TIMEOUT_TEMP_DIR"
+  REPLY=""
+
+  if [[ -n "$temp_dir" && -d "$temp_dir" && ! -L "$temp_dir" && \
+        -O "$temp_dir" && -w "$temp_dir" ]]; then
+    REPLY="$temp_dir"
+    return 0
+  fi
+  _AI_CANDY_TIMEOUT_TEMP_DIR=""
+
+  if [[ -d "$temp_base" && -w "$temp_base" && ! -L "$temp_base" ]] && \
+     [[ -O "$temp_base" || -k "$temp_base" ]]; then
+    temp_dir="${temp_base%/}/ai-candy-${EUID}"
+    if [[ ! -e "$temp_dir" && ! -L "$temp_dir" ]]; then
+      if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
+        ( umask 077 && builtin zf_mkdir -m 700 "$temp_dir" ) 2>/dev/null || true
+      else
+        ( umask 077 && command mkdir -m 700 "$temp_dir" ) 2>/dev/null || true
+      fi
+    fi
+    if [[ -d "$temp_dir" && ! -L "$temp_dir" && -O "$temp_dir" ]]; then
+      _ai_candy_chmod 700 "$temp_dir" 2>/dev/null || true
+      if [[ -w "$temp_dir" ]]; then
+        _AI_CANDY_TIMEOUT_TEMP_DIR="$temp_dir"
+        REPLY="$temp_dir"
+        return 0
+      fi
+    fi
+  fi
+
+  if (( ${_AI_CANDY_CACHE_READY:-0} )) && [[ -d "$_AI_CANDY_CACHE_DIR" && \
+       -w "$_AI_CANDY_CACHE_DIR" && ! -L "$_AI_CANDY_CACHE_DIR" ]]; then
+    _AI_CANDY_TIMEOUT_TEMP_DIR="$_AI_CANDY_CACHE_DIR"
+    REPLY="$_AI_CANDY_CACHE_DIR"
+    return 0
+  fi
+  return 1
+}
+
 function _ai_candy_create_timeout_output_file() {
   emulate -L zsh
   local temp_root=""
@@ -495,20 +608,15 @@ function _ai_candy_create_timeout_output_file() {
   REPLY=""
   [[ "$process_pid" == <-> ]] || process_pid="$$"
 
-  if (( ${_CACHE_READY:-0} )) && [[ -d "$_CACHE_DIR" && \
-       -w "$_CACHE_DIR" && ! -L "$_CACHE_DIR" ]]; then
-    temp_root="$_CACHE_DIR"
-  else
-    temp_root="${TMPDIR:-/tmp}"
-  fi
-  [[ -d "$temp_root" && -w "$temp_root" ]] || return 1
-  if (( ! _TIMEOUT_STALE_FILES_SCANNED )); then
+  _ai_candy_timeout_temp_directory || return 1
+  temp_root="$REPLY"
+  if (( ! _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED )); then
     _ai_candy_cleanup_stale_timeout_files "$temp_root"
-    _TIMEOUT_STALE_FILES_SCANNED=1
+    _AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=1
   fi
   for (( attempt=1; attempt<=8; attempt++ )); do
     output_file="${temp_root%/}/ai-candy-timeout.${process_pid}.${RANDOM}"
-    if (( _HAS_ZSH_SYSTEM && ${+builtins[sysopen]} )); then
+    if (( _AI_CANDY_HAS_ZSH_SYSTEM && ${+builtins[sysopen]} )); then
       if ! builtin sysopen -w -o create,excl -m 600 -u output_fd \
            "$output_file" 2>/dev/null; then
         continue
@@ -531,7 +639,7 @@ function _ai_candy_print_timeout_output_file() {
   local chunk=""
   integer input_fd read_status=0
 
-  if (( ! _HAS_ZSH_SYSTEM || ! ${+builtins[sysopen]} )); then
+  if (( ! _AI_CANDY_HAS_ZSH_SYSTEM || ! ${+builtins[sysopen]} )); then
     [[ -f "$output_file" && ! -L "$output_file" ]] || return 1
     chunk="$(<"$output_file")"
     builtin print -rn -- "$chunk"
@@ -560,7 +668,7 @@ function _ai_candy_capture_bounded_timeout_output() {
 
   while true; do
     chunk=""
-    if (( _HAS_ZSH_SYSTEM && ${+builtins[sysread]} )); then
+    if (( _AI_CANDY_HAS_ZSH_SYSTEM && ${+builtins[sysread]} )); then
       builtin sysread -i 0 -s 8192 chunk 2>/dev/null
       read_status=$?
     else
@@ -596,7 +704,7 @@ function _ai_candy_run_bounded_output_command() {
   emulate -L zsh
   local output_file="$1"
   integer max_output_bytes="$2"
-  integer capture_stderr=${_TIMEOUT_CAPTURE_STDERR:-0}
+  integer capture_stderr=${_AI_CANDY_TIMEOUT_CAPTURE_STDERR:-0}
   shift 2
   local -a pipeline_status
   integer command_status capture_status
@@ -773,20 +881,13 @@ function _ai_candy_run_external_timeout() {
   return "$command_status"
 }
 
-typeset -ga _TIMEOUT_PROCESS_TREE
-typeset -gA _PROCESS_CHILDREN_BY_PARENT
-typeset -gA _PROCESS_STATE_BY_PID
+typeset -ga _AI_CANDY_TIMEOUT_PROCESS_TREE
+typeset -gA _AI_CANDY_PROCESS_CHILDREN_BY_PARENT
+typeset -gA _AI_CANDY_PROCESS_STATE_BY_PID
 
 function _ai_candy_read_process_table() {
-  local ps_command=""
+  local IFS=$' \t\n'
   REPLY=""
-  [[ -x /bin/ps ]] && ps_command=/bin/ps
-  [[ -n "$ps_command" || ! -x /usr/bin/ps ]] || ps_command=/usr/bin/ps
-  if [[ -n "$ps_command" ]]; then
-    REPLY=$("$ps_command" -ax -o pid= -o ppid= -o stat= 2>/dev/null) && \
-      return 0
-    REPLY=""
-  fi
   if [[ -d /proc ]]; then
     setopt localoptions null_glob
     local proc_stat stat_contents stat_tail pid parent_pid process_state
@@ -802,18 +903,28 @@ function _ai_candy_read_process_table() {
       [[ "$pid" == <-> && "$parent_pid" == <-> ]] || continue
       REPLY+="${pid} ${parent_pid} ${process_state}"$'\n'
     done
-  else
-    return 1
+    return 0
   fi
+
+  local ps_command=""
+  [[ -x /bin/ps ]] && ps_command=/bin/ps
+  [[ -n "$ps_command" || ! -x /usr/bin/ps ]] || ps_command=/usr/bin/ps
+  if [[ -n "$ps_command" ]]; then
+    REPLY=$("$ps_command" -ax -o pid= -o ppid= -o stat= 2>/dev/null) && \
+      return 0
+    REPLY=""
+  fi
+  return 1
 }
 
 function _ai_candy_index_process_table() {
+  local IFS=$' \t\n'
   local process_table="$1"
   local line pid parent_pid process_state
   local -a fields
 
-  _PROCESS_CHILDREN_BY_PARENT=()
-  _PROCESS_STATE_BY_PID=()
+  _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+  _AI_CANDY_PROCESS_STATE_BY_PID=()
   for line in "${(@f)process_table}"; do
     fields=(${=line})
     (( ${#fields} >= 3 )) || continue
@@ -822,23 +933,24 @@ function _ai_candy_index_process_table() {
     process_state="${fields[3]}"
     [[ "$pid" == <-> && "$parent_pid" == <-> && \
        -n "$process_state" ]] || continue
-    _PROCESS_CHILDREN_BY_PARENT[$parent_pid]+=" ${pid}"
-    _PROCESS_STATE_BY_PID[$pid]="$process_state"
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT[$parent_pid]+=" ${pid}"
+    _AI_CANDY_PROCESS_STATE_BY_PID[$pid]="$process_state"
   done
 }
 
 function _ai_candy_collect_process_tree_from_index() {
+  local IFS=$' \t\n'
   local root_pid="$1"
   local parent_pid pid children
   integer index=1
 
-  _TIMEOUT_PROCESS_TREE=("$root_pid")
-  while (( index <= ${#_TIMEOUT_PROCESS_TREE} )); do
-    parent_pid="${_TIMEOUT_PROCESS_TREE[index]}"
-    children="${_PROCESS_CHILDREN_BY_PARENT[$parent_pid]-}"
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=("$root_pid")
+  while (( index <= ${#_AI_CANDY_TIMEOUT_PROCESS_TREE} )); do
+    parent_pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
+    children="${_AI_CANDY_PROCESS_CHILDREN_BY_PARENT[$parent_pid]-}"
     for pid in ${=children}; do
-      (( ${_TIMEOUT_PROCESS_TREE[(Ie)$pid]} )) || \
-        _TIMEOUT_PROCESS_TREE+=("$pid")
+      (( ${_AI_CANDY_TIMEOUT_PROCESS_TREE[(Ie)$pid]} )) || \
+        _AI_CANDY_TIMEOUT_PROCESS_TREE+=("$pid")
     done
     (( index++ ))
   done
@@ -848,7 +960,7 @@ function _ai_candy_collect_process_tree() {
   local root_pid="$1"
   local process_table="${2-}"
 
-  _TIMEOUT_PROCESS_TREE=("$root_pid")
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=("$root_pid")
   if (( $# < 2 )); then
     _ai_candy_read_process_table || return 0
     process_table="$REPLY"
@@ -889,14 +1001,14 @@ function _ai_candy_kill_process_tree() {
   builtin kill -STOP "$root_pid" 2>/dev/null
   for attempt in {1..4}; do
     _ai_candy_collect_process_tree "$root_pid"
-    for pid in "${_TIMEOUT_PROCESS_TREE[@]}"; do
+    for pid in "${_AI_CANDY_TIMEOUT_PROCESS_TREE[@]}"; do
       builtin kill -STOP "$pid" 2>/dev/null
     done
-    (( ${#_TIMEOUT_PROCESS_TREE} == previous_count )) && break
-    previous_count=${#_TIMEOUT_PROCESS_TREE}
+    (( ${#_AI_CANDY_TIMEOUT_PROCESS_TREE} == previous_count )) && break
+    previous_count=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}
   done
-  for (( index=${#_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
-    pid="${_TIMEOUT_PROCESS_TREE[index]}"
+  for (( index=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
+    pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
     builtin kill -KILL "$pid" 2>/dev/null
   done
   builtin kill -KILL "$root_pid" 2>/dev/null
@@ -907,6 +1019,7 @@ typeset -gA _AI_CANDY_BACKGROUND_IDENTITIES
 typeset -g _AI_CANDY_BACKGROUND_JOB_LIMIT=16
 
 function _ai_candy_background_pid_identity() {
+  local IFS=$' \t\n'
   local background_pid="$1"
   local identity=""
   REPLY=""
@@ -935,6 +1048,7 @@ function _ai_candy_background_pid_identity() {
 }
 
 function _ai_candy_background_pid_parent_is_shell() {
+  local IFS=$' \t\n'
   local background_pid="$1"
   local shell_pid="$$"
   local parent_pid=""
@@ -982,7 +1096,7 @@ function _ai_candy_start_registered_background_worker() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
   (( $# )) || return 1
-  (( ${_CACHE_READY:-0} )) || return 1
+  (( ${_AI_CANDY_CACHE_READY:-0} )) || return 1
   if (( ${#_AI_CANDY_BACKGROUND_PIDS} >= _AI_CANDY_BACKGROUND_JOB_LIMIT )); then
     _ai_candy_prune_registered_background_pids
     (( ${#_AI_CANDY_BACKGROUND_PIDS} < _AI_CANDY_BACKGROUND_JOB_LIMIT )) || \
@@ -996,15 +1110,15 @@ function _ai_candy_start_registered_background_worker() {
       _ai_candy_cache_drop_inherited_locks
     fi
     "$@"
-  ) </dev/null &>/dev/null &!
+  ) </dev/null &>/dev/null &
   local worker_pid=$!
 
   if _ai_candy_register_background_pid "$worker_pid"; then
+    builtin disown %+ 2>/dev/null || true
     return 0
   fi
-  if builtin kill -0 "$worker_pid" 2>/dev/null; then
-    _ai_candy_kill_process_tree "$worker_pid"
-  fi
+  _ai_candy_kill_process_tree "$worker_pid"
+  builtin wait "$worker_pid" 2>/dev/null || true
   return 1
 }
 
@@ -1040,7 +1154,7 @@ function _ai_candy_stop_registered_background_jobs() {
   emulate -L zsh
   local background_pid process_pid process_state process_table=""
   local process_signature="" stopped_signature=""
-  local -a owned_pids descendants cleanup_pids
+  local -a owned_pids verified_pids descendants cleanup_pids
   local -A owned_identities
   integer attempt index all_stopped forest_stable=0 descendant_alive
 
@@ -1065,9 +1179,9 @@ function _ai_candy_stop_registered_background_jobs() {
     all_stopped=1
     for background_pid in "${owned_pids[@]}"; do
       _ai_candy_collect_process_tree_from_index "$background_pid"
-      process_signature+="${background_pid}:${(j:,:)_TIMEOUT_PROCESS_TREE};"
-      for process_pid in "${_TIMEOUT_PROCESS_TREE[@]}"; do
-        process_state="${_PROCESS_STATE_BY_PID[$process_pid]-}"
+      process_signature+="${background_pid}:${(j:,:)_AI_CANDY_TIMEOUT_PROCESS_TREE};"
+      for process_pid in "${_AI_CANDY_TIMEOUT_PROCESS_TREE[@]}"; do
+        process_state="${_AI_CANDY_PROCESS_STATE_BY_PID[$process_pid]-}"
         if [[ -n "$process_state" && \
               "${process_state[1]}" != "T" && \
               "${process_state[1]}" != "Z" ]]; then
@@ -1090,37 +1204,48 @@ function _ai_candy_stop_registered_background_jobs() {
   done
   if (( ! forest_stable )); then
     for background_pid in "${owned_pids[@]}"; do
-      _ai_candy_kill_process_tree "$background_pid"
-      builtin wait "$background_pid" 2>/dev/null || true
+      if _ai_candy_background_pid_identity "$background_pid" && \
+         [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
+         _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+        _ai_candy_kill_process_tree "$background_pid"
+        builtin wait "$background_pid" 2>/dev/null || true
+      fi
     done
-    _TIMEOUT_PROCESS_TREE=()
-    _PROCESS_CHILDREN_BY_PARENT=()
-    _PROCESS_STATE_BY_PID=()
+    _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+    _AI_CANDY_PROCESS_STATE_BY_PID=()
     return 0
   fi
 
+  verified_pids=()
   descendants=()
   for background_pid in "${owned_pids[@]}"; do
-    _ai_candy_collect_process_tree_from_index "$background_pid"
-    for (( index=${#_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
-      process_pid="${_TIMEOUT_PROCESS_TREE[index]}"
-      descendants+=("$process_pid")
-      builtin kill -TERM "$process_pid" 2>/dev/null
-    done
-  done
-  for background_pid in "${owned_pids[@]}"; do
     if _ai_candy_background_pid_identity "$background_pid" && \
-       [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]]; then
+       [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
+       _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+      verified_pids+=("$background_pid")
+      _ai_candy_collect_process_tree_from_index "$background_pid"
+      for (( index=${#_AI_CANDY_TIMEOUT_PROCESS_TREE}; index>=2; index-- )); do
+        process_pid="${_AI_CANDY_TIMEOUT_PROCESS_TREE[index]}"
+        descendants+=("$process_pid")
+        builtin kill -TERM "$process_pid" 2>/dev/null
+      done
       builtin kill -TERM "$background_pid" 2>/dev/null
     fi
   done
   for process_pid in "${descendants[@]}"; do
     builtin kill -CONT "$process_pid" 2>/dev/null
   done
-  for background_pid in "${owned_pids[@]}"; do
+  for background_pid in "${verified_pids[@]}"; do
     builtin kill -CONT "$background_pid" 2>/dev/null
   done
-  cleanup_pids=("${owned_pids[@]}" "${descendants[@]}")
+  cleanup_pids=("${verified_pids[@]}" "${descendants[@]}")
+  if (( ! ${#cleanup_pids} )); then
+    _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+    _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+    _AI_CANDY_PROCESS_STATE_BY_PID=()
+    return 0
+  fi
   for attempt in {1..2}; do
     descendant_alive=0
     for process_pid in "${cleanup_pids[@]}"; do
@@ -1137,24 +1262,29 @@ function _ai_candy_stop_registered_background_jobs() {
       builtin kill -KILL "$process_pid" 2>/dev/null
     done
   fi
-  for background_pid in "${owned_pids[@]}"; do
+  for background_pid in "${verified_pids[@]}"; do
+    integer root_is_owned=0
     if _ai_candy_background_pid_identity "$background_pid" && \
        [[ "$REPLY" == "${owned_identities[$background_pid]-}" ]] && \
        _ai_candy_background_pid_parent_is_shell "$background_pid"; then
+      root_is_owned=1
       if (( descendant_alive )); then
         _ai_candy_kill_process_tree "$background_pid"
       fi
     fi
-    builtin wait "$background_pid" 2>/dev/null || true
+    if (( root_is_owned )) || ! _ai_candy_process_pid_is_active "$background_pid"; then
+      builtin wait "$background_pid" 2>/dev/null || true
+    fi
   done
-  _TIMEOUT_PROCESS_TREE=()
-  _PROCESS_CHILDREN_BY_PARENT=()
-  _PROCESS_STATE_BY_PID=()
+  _AI_CANDY_TIMEOUT_PROCESS_TREE=()
+  _AI_CANDY_PROCESS_CHILDREN_BY_PARENT=()
+  _AI_CANDY_PROCESS_STATE_BY_PID=()
 }
 
 function _ai_candy_preexec_cleanup_for_exec() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn extendedglob
+  local REPLY=""
 
   local typed_command="${1:-}"
   local expanded_command="${2:-$typed_command}"
@@ -1313,6 +1443,7 @@ function _ai_candy_install_signal_traps() {
 }
 
 function _ai_candy_run_with_timeout() {
+  emulate -L zsh
   local timeout_sec="$1"
   shift
   local -a command_args=("$@")
@@ -1324,16 +1455,16 @@ function _ai_candy_run_with_timeout() {
       command_args[1]="$REPLY"
       target_is_external=1
     elif [[ "$command_name" != */* ]] && \
-         (( _HAS_ZSH_NATIVE_TIMEOUT && ${+builtins[$command_name]} )); then
+         (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT && ${+builtins[$command_name]} )); then
       command_args=(builtin "$command_name" "${command_args[@]:1}")
     else
       return 127
     fi
   fi
 
-  if [[ "$_TIMEOUT_CMD" == /* ]]; then
-    _ai_candy_run_external_timeout "$_TIMEOUT_CMD" "$timeout_sec" "${command_args[@]}"
-  elif (( _HAS_ZSH_NATIVE_TIMEOUT )); then
+  if [[ "$_AI_CANDY_TIMEOUT_CMD" == /* ]]; then
+    _ai_candy_run_external_timeout "$_AI_CANDY_TIMEOUT_CMD" "$timeout_sec" "${command_args[@]}"
+  elif (( _AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT )); then
     if (( target_is_external )); then
       _ai_candy_run_native_timeout "$timeout_sec" command "${command_args[@]}"
     else
@@ -1345,20 +1476,20 @@ function _ai_candy_run_with_timeout() {
 }
 
 function _ai_candy_run_with_timeout_combined_output() {
-  local _TIMEOUT_CAPTURE_STDERR=1
+  local _AI_CANDY_TIMEOUT_CAPTURE_STDERR=1
   _ai_candy_run_with_timeout "$@"
 }
 
 function _ai_candy_run_local_probe() {
-  _ai_candy_run_with_timeout "${_LOCAL_PROMPT_TIMEOUT:-0.25}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_LOCAL_PROMPT_TIMEOUT:-0.25}" "$@"
 }
 
 function _ai_candy_run_background_probe() {
-  _ai_candy_run_with_timeout "${_BACKGROUND_LOCAL_PROBE_TIMEOUT:-1}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT:-1}" "$@"
 }
 
 function _ai_candy_run_process_count_probe() {
-  _ai_candy_run_with_timeout "${_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
+  _ai_candy_run_with_timeout "${_AI_CANDY_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
 }
 
 # ============================================================================
@@ -1366,28 +1497,28 @@ function _ai_candy_run_process_count_probe() {
 # ============================================================================
 # Cache files are stored in $HOME/.cache/zsh-prompt/ with strict permissions
 # to prevent information leakage on shared systems.
-typeset -g _CACHE_DIR=""
+typeset -g _AI_CANDY_CACHE_DIR=""
 if [[ "${XDG_CACHE_HOME:-}" == /* ]]; then
-  _CACHE_DIR="${XDG_CACHE_HOME%/}/zsh-prompt"
+  _AI_CANDY_CACHE_DIR="${XDG_CACHE_HOME%/}/zsh-prompt"
 elif [[ "${HOME:-}" == /* ]]; then
-  _CACHE_DIR="${HOME%/}/.cache/zsh-prompt"
+  _AI_CANDY_CACHE_DIR="${HOME%/}/.cache/zsh-prompt"
 else
-  _CACHE_DIR="/dev/null/ai-candy-cache-disabled"
+  _AI_CANDY_CACHE_DIR="/dev/null/ai-candy-cache-disabled"
 fi
-typeset -g _CACHE_READY=0
+typeset -g _AI_CANDY_CACHE_READY=0
 
 function _ai_candy_cache_init_dir() {
-  [[ -L "$_CACHE_DIR" ]] && return 1
+  [[ -L "$_AI_CANDY_CACHE_DIR" ]] && return 1
 
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
-    ( umask 077 && builtin zf_mkdir -p -m 700 "$_CACHE_DIR" ) 2>/dev/null || return 1
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
+    ( umask 077 && builtin zf_mkdir -p -m 700 "$_AI_CANDY_CACHE_DIR" ) 2>/dev/null || return 1
   else
-    ( umask 077 && command mkdir -p "$_CACHE_DIR" ) 2>/dev/null || return 1
+    ( umask 077 && command mkdir -p "$_AI_CANDY_CACHE_DIR" ) 2>/dev/null || return 1
   fi
-  _ai_candy_chmod 700 "$_CACHE_DIR" 2>/dev/null || return 1
+  _ai_candy_chmod 700 "$_AI_CANDY_CACHE_DIR" 2>/dev/null || return 1
 
-  [[ -d "$_CACHE_DIR" && -w "$_CACHE_DIR" ]] || return 1
-  _CACHE_READY=1
+  [[ -d "$_AI_CANDY_CACHE_DIR" && -w "$_AI_CANDY_CACHE_DIR" ]] || return 1
+  _AI_CANDY_CACHE_READY=1
 }
 
 _ai_candy_cache_init_dir || true
@@ -1396,35 +1527,35 @@ _ai_candy_cache_init_dir || true
 # CACHE FILE PATHS - Centralized definitions for all cache files
 # ============================================================================
 # System and prompt state caches
-typeset -g _SYSINFO_CACHE_FILE="${_CACHE_DIR}/sysinfo_cache"
-typeset -g _EMOJI_MODE_FILE="${_CACHE_DIR}/emoji_mode"
-typeset -g _PATH_SEP_MODE_FILE="${_CACHE_DIR}/path_sep_mode"
-typeset -g _NETWORK_MODE_FILE="${_CACHE_DIR}/network_mode"
-typeset -g _AI_MODE_FILE="${_CACHE_DIR}/ai_mode"
-typeset -g _OS_MODE_FILE="${_CACHE_DIR}/os_mode"
+typeset -g _AI_CANDY_SYSINFO_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/sysinfo_cache"
+typeset -g _AI_CANDY_EMOJI_MODE_FILE="${_AI_CANDY_CACHE_DIR}/emoji_mode"
+typeset -g _AI_CANDY_PATH_SEP_MODE_FILE="${_AI_CANDY_CACHE_DIR}/path_sep_mode"
+typeset -g _AI_CANDY_NETWORK_MODE_FILE="${_AI_CANDY_CACHE_DIR}/network_mode"
+typeset -g _AI_CANDY_AI_MODE_FILE="${_AI_CANDY_CACHE_DIR}/ai_mode"
+typeset -g _AI_CANDY_OS_MODE_FILE="${_AI_CANDY_CACHE_DIR}/os_mode"
 
 # Optional-tool version caches
-typeset -g _CLAUDE_CACHE_FILE="${_CACHE_DIR}/claude_version_cache"
-typeset -g _CODEX_CACHE_FILE="${_CACHE_DIR}/codex_version_cache"
-typeset -g _GEMINI_CACHE_FILE="${_CACHE_DIR}/gemini_version_cache"
-typeset -g _KIMI_CACHE_FILE="${_CACHE_DIR}/kimi_version_cache"
+typeset -g _AI_CANDY_CLAUDE_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/claude_version_cache"
+typeset -g _AI_CANDY_CODEX_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/codex_version_cache"
+typeset -g _AI_CANDY_GEMINI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gemini_version_cache"
+typeset -g _AI_CANDY_KIMI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/kimi_version_cache"
 
 # GitHub integration caches
-typeset -g _GH_AUTH_CACHE_FILE="${_CACHE_DIR}/gh_auth_status"
-typeset -g _GH_USERNAME_GH_CACHE_FILE="${_CACHE_DIR}/gh_username_gh"
-typeset -g _GH_USERNAME_SSH_CACHE_FILE="${_CACHE_DIR}/gh_username_ssh"
+typeset -g _AI_CANDY_GH_AUTH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_auth_status"
+typeset -g _AI_CANDY_GH_USERNAME_GH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_username_gh"
+typeset -g _AI_CANDY_GH_USERNAME_SSH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_username_ssh"
 
 # Public IP cache (refreshes every 5 minutes)
-typeset -g _PUBLIC_IP_CACHE_FILE="${_CACHE_DIR}/public_ip_cache"
+typeset -g _AI_CANDY_PUBLIC_IP_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/public_ip_cache"
 
 # Lock file patterns (used with .d suffix for atomic mkdir locks)
-typeset -g _GH_USERNAME_UPDATING_GH="${_CACHE_DIR}/gh_username_updating_gh.lock"
-typeset -g _GH_USERNAME_UPDATING_SSH="${_CACHE_DIR}/gh_username_updating_ssh.lock"
-typeset -g _GH_AUTH_UPDATING="${_CACHE_DIR}/gh_auth_updating.lock"
-typeset -g _PUBLIC_IP_UPDATING="${_CACHE_DIR}/public_ip_updating.lock"
+typeset -g _AI_CANDY_GH_USERNAME_UPDATING_GH="${_AI_CANDY_CACHE_DIR}/gh_username_updating_gh.lock"
+typeset -g _AI_CANDY_GH_USERNAME_UPDATING_SSH="${_AI_CANDY_CACHE_DIR}/gh_username_updating_ssh.lock"
+typeset -g _AI_CANDY_GH_AUTH_UPDATING="${_AI_CANDY_CACHE_DIR}/gh_auth_updating.lock"
+typeset -g _AI_CANDY_PUBLIC_IP_UPDATING="${_AI_CANDY_CACHE_DIR}/public_ip_updating.lock"
 # Unicode 15.0 zero-width and East Asian wide/full-width intervals. The raw
 # data is split lazily so ASCII-only prompts do not pay the table setup cost.
-typeset -ga _PROMPT_ZERO_WIDTH_DATA=(
+typeset -ga _AI_CANDY_PROMPT_ZERO_WIDTH_DATA=(
   '300-36f,483-489,591-5bd,5bf-5bf,5c1-5c2,5c4-5c5,5c7-5c7,610-61a,64b-65f,670-670,6d6-6dc,'\
   '6df-6e4,6e7-6e8,6ea-6ed,711-711,730-74a,7a6-7b0,7eb-7f3,7fd-7fd,816-819,81b-823,825-827,'\
   '829-82d,859-85b,898-89f,8ca-8e1,8e3-902,93a-93a,93c-93c,941-948,94d-94d,951-957,962-963,'\
@@ -1468,7 +1599,7 @@ typeset -ga _PROMPT_ZERO_WIDTH_DATA=(
   '1e944-1e94a,e0100-e01ef'
 )
 
-typeset -ga _PROMPT_WIDE_WIDTH_DATA=(
+typeset -ga _AI_CANDY_PROMPT_WIDE_WIDTH_DATA=(
   '1100-115f,231a-231b,2329-232a,23e9-23ec,23f0-23f0,23f3-23f3,25fd-25fe,2614-2615,2648-2653,'\
   '267f-267f,2693-2693,26a1-26a1,26aa-26ab,26bd-26be,26c4-26c5,26ce-26ce,26d4-26d4,26ea-26ea,'\
   '26f2-26f3,26f5-26f5,26fa-26fa,26fd-26fd,2705-2705,270a-270b,2728-2728,274c-274c,274e-274e,'\
@@ -1487,7 +1618,7 @@ typeset -ga _PROMPT_WIDE_WIDTH_DATA=(
   '1faf0-1faf8,20000-2fffd,30000-3fffd'
 )
 
-typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_DATA=(
+typeset -ga _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_DATA=(
   '261d-261d,26f9-26f9,270a-270c,270d-270d,1f385-1f385,1f3c2-1f3c4,1f3c7-1f3c7,1f3ca-1f3ca,'
   '1f3cb-1f3cc,1f442-1f443,1f446-1f450,1f466-1f46b,1f46c-1f46d,1f46e-1f478,1f47c-1f47c,'
   '1f481-1f483,1f485-1f487,1f48f-1f48f,1f491-1f491,1f4aa-1f4aa,1f574-1f575,1f57a-1f57a,'
@@ -1497,25 +1628,25 @@ typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_DATA=(
   '1f9b8-1f9b9,1f9bb-1f9bb,1f9cd-1f9cf,1f9d1-1f9dd,1fac3-1fac5,1faf0-1faf6,1faf7-1faf8'
 )
 
-typeset -g _PROMPT_WIDTH_TABLES_READY=0
-typeset -ga _PROMPT_ZERO_WIDTH_RANGES=()
-typeset -ga _PROMPT_WIDE_WIDTH_RANGES=()
-typeset -ga _PROMPT_EMOJI_MODIFIER_BASE_RANGES=()
-typeset -ga _PROMPT_MEASURED_CHARACTERS=()
-typeset -ga _PROMPT_MEASURED_WIDTHS=()
-typeset -ga _PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
-typeset -ga _PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
-typeset -g _PROMPT_TEXT_WIDTH_CACHE_LIMIT=64
+typeset -g _AI_CANDY_PROMPT_WIDTH_TABLES_READY=0
+typeset -ga _AI_CANDY_PROMPT_ZERO_WIDTH_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_WIDE_WIDTH_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES=()
+typeset -ga _AI_CANDY_PROMPT_MEASURED_CHARACTERS=()
+typeset -ga _AI_CANDY_PROMPT_MEASURED_WIDTHS=()
+typeset -ga _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
+typeset -ga _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
+typeset -g _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_LIMIT=64
 
 function _ai_candy_prompt_width_tables_init() {
-  (( _PROMPT_WIDTH_TABLES_READY )) && return 0
-  local zero_data="${(j::)_PROMPT_ZERO_WIDTH_DATA}"
-  local wide_data="${(j::)_PROMPT_WIDE_WIDTH_DATA}"
-  local modifier_base_data="${(j::)_PROMPT_EMOJI_MODIFIER_BASE_DATA}"
-  _PROMPT_ZERO_WIDTH_RANGES=("${(@s:,:)zero_data}")
-  _PROMPT_WIDE_WIDTH_RANGES=("${(@s:,:)wide_data}")
-  _PROMPT_EMOJI_MODIFIER_BASE_RANGES=("${(@s:,:)modifier_base_data}")
-  _PROMPT_WIDTH_TABLES_READY=1
+  (( _AI_CANDY_PROMPT_WIDTH_TABLES_READY )) && return 0
+  local zero_data="${(j::)_AI_CANDY_PROMPT_ZERO_WIDTH_DATA}"
+  local wide_data="${(j::)_AI_CANDY_PROMPT_WIDE_WIDTH_DATA}"
+  local modifier_base_data="${(j::)_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_DATA}"
+  _AI_CANDY_PROMPT_ZERO_WIDTH_RANGES=("${(@s:,:)zero_data}")
+  _AI_CANDY_PROMPT_WIDE_WIDTH_RANGES=("${(@s:,:)wide_data}")
+  _AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES=("${(@s:,:)modifier_base_data}")
+  _AI_CANDY_PROMPT_WIDTH_TABLES_READY=1
 }
 
 function _ai_candy_prompt_codepoint_in_width_table() {
@@ -1525,18 +1656,18 @@ function _ai_candy_prompt_codepoint_in_width_table() {
   integer low=1 high=0 midpoint range_start range_end
 
   case "$table_name" in
-    zero) high=${#_PROMPT_ZERO_WIDTH_RANGES} ;;
-    wide) high=${#_PROMPT_WIDE_WIDTH_RANGES} ;;
-    modifier-base) high=${#_PROMPT_EMOJI_MODIFIER_BASE_RANGES} ;;
+    zero) high=${#_AI_CANDY_PROMPT_ZERO_WIDTH_RANGES} ;;
+    wide) high=${#_AI_CANDY_PROMPT_WIDE_WIDTH_RANGES} ;;
+    modifier-base) high=${#_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES} ;;
     *) return 1 ;;
   esac
   while (( low <= high )); do
     midpoint=$(( (low + high) / 2 ))
     case "$table_name" in
-      zero) interval="${_PROMPT_ZERO_WIDTH_RANGES[midpoint]}" ;;
-      wide) interval="${_PROMPT_WIDE_WIDTH_RANGES[midpoint]}" ;;
+      zero) interval="${_AI_CANDY_PROMPT_ZERO_WIDTH_RANGES[midpoint]}" ;;
+      wide) interval="${_AI_CANDY_PROMPT_WIDE_WIDTH_RANGES[midpoint]}" ;;
       modifier-base)
-        interval="${_PROMPT_EMOJI_MODIFIER_BASE_RANGES[midpoint]}"
+        interval="${_AI_CANDY_PROMPT_EMOJI_MODIFIER_BASE_RANGES[midpoint]}"
         ;;
     esac
     range_start=$(( 16#${interval%%-*} ))
@@ -1628,8 +1759,8 @@ function _ai_candy_prompt_measure_text() {
   integer cluster_width=0 cluster_last_index=0 cluster_width_increment=0
 
   if (( capture_characters )); then
-    _PROMPT_MEASURED_CHARACTERS=()
-    _PROMPT_MEASURED_WIDTHS=()
+    _AI_CANDY_PROMPT_MEASURED_CHARACTERS=()
+    _AI_CANDY_PROMPT_MEASURED_WIDTHS=()
   fi
   while (( index <= length )); do
     _ai_candy_prompt_decode_utf8_at "$text" "$index"
@@ -1686,14 +1817,14 @@ function _ai_candy_prompt_measure_text() {
     fi
     width=$(( width + codepoint_width ))
     if (( capture_characters )); then
-      _PROMPT_MEASURED_CHARACTERS+=("$character")
+      _AI_CANDY_PROMPT_MEASURED_CHARACTERS+=("$character")
       if (( continuation && cluster_last_index > 0 )); then
-        _PROMPT_MEASURED_WIDTHS[cluster_last_index]=0
+        _AI_CANDY_PROMPT_MEASURED_WIDTHS[cluster_last_index]=0
         cluster_width=$(( cluster_width + cluster_width_increment ))
       else
         cluster_width="$codepoint_width"
       fi
-      _PROMPT_MEASURED_WIDTHS+=("$cluster_width")
+      _AI_CANDY_PROMPT_MEASURED_WIDTHS+=("$cluster_width")
       cluster_last_index="$character_index"
     fi
     index=$(( index + byte_count ))
@@ -1706,22 +1837,22 @@ function _ai_candy_prompt_text_width() {
   local text="$1"
   integer index
 
-  for (( index=1; index<=${#_PROMPT_TEXT_WIDTH_CACHE_TEXTS}; index++ )); do
-    if [[ "${_PROMPT_TEXT_WIDTH_CACHE_TEXTS[index]}" == "$text" ]]; then
-      REPLY="${_PROMPT_TEXT_WIDTH_CACHE_WIDTHS[index]}"
+  for (( index=1; index<=${#_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS}; index++ )); do
+    if [[ "${_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS[index]}" == "$text" ]]; then
+      REPLY="${_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS[index]}"
       return 0
     fi
   done
 
   _ai_candy_prompt_measure_text "$text" 0
   local measured_width="$REPLY"
-  if (( ${#_PROMPT_TEXT_WIDTH_CACHE_TEXTS} >= \
-        _PROMPT_TEXT_WIDTH_CACHE_LIMIT )); then
-    _PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
-    _PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
+  if (( ${#_AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS} >= \
+        _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_LIMIT )); then
+    _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS=()
+    _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS=()
   fi
-  _PROMPT_TEXT_WIDTH_CACHE_TEXTS+=("$text")
-  _PROMPT_TEXT_WIDTH_CACHE_WIDTHS+=("$measured_width")
+  _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_TEXTS+=("$text")
+  _AI_CANDY_PROMPT_TEXT_WIDTH_CACHE_WIDTHS+=("$measured_width")
   REPLY="$measured_width"
 }
 
@@ -1736,9 +1867,9 @@ function _ai_candy_prompt_text_tail_by_width() {
     return 0
   }
   _ai_candy_prompt_measure_text "$1" 1
-  for (( index=${#_PROMPT_MEASURED_CHARACTERS}; index>=1; index-- )); do
-    character="${_PROMPT_MEASURED_CHARACTERS[index]}"
-    character_width="${_PROMPT_MEASURED_WIDTHS[index]}"
+  for (( index=${#_AI_CANDY_PROMPT_MEASURED_CHARACTERS}; index>=1; index-- )); do
+    character="${_AI_CANDY_PROMPT_MEASURED_CHARACTERS[index]}"
+    character_width="${_AI_CANDY_PROMPT_MEASURED_WIDTHS[index]}"
     (( width + character_width <= target_width )) || break
     result="${character}${result}"
     width=$(( width + character_width ))
@@ -1751,14 +1882,15 @@ function _ai_candy_prompt_text_tail_by_width() {
 # CACHE PRIMITIVES
 # ============================================================================
 
-typeset -g _CACHE_TIMESTAMP_MAX_DIGITS=12
-typeset -g _CACHE_FILE_MAX_BYTES=$((256 * 1024))
-typeset -g _CACHE_LINE_MAX_BYTES=$((32 * 1024))
-typeset -gA _CACHE_LOCK_FDS
-typeset -gA _CACHE_LOCK_TOKENS
+typeset -g _AI_CANDY_CACHE_TIMESTAMP_MAX_DIGITS=12
+typeset -g _AI_CANDY_CACHE_FILE_MAX_BYTES=$((256 * 1024))
+typeset -g _AI_CANDY_CACHE_LINE_MAX_BYTES=$((64 * 1024))
+typeset -g _AI_CANDY_CACHE_VALUE_MAX_BYTES=$((16 * 1024))
+typeset -gA _AI_CANDY_CACHE_LOCK_FDS
+typeset -gA _AI_CANDY_CACHE_LOCK_TOKENS
 
 function _ai_candy_cache_file_limit_bytes() {
-  local configured_limit="${_CACHE_FILE_MAX_BYTES:-262144}"
+  local configured_limit="${_AI_CANDY_CACHE_FILE_MAX_BYTES:-262144}"
   if [[ "$configured_limit" != <-> || ${#configured_limit} -gt 7 ]] || \
      (( configured_limit < 1024 || configured_limit > 1048576 )); then
     configured_limit=262144
@@ -1767,22 +1899,40 @@ function _ai_candy_cache_file_limit_bytes() {
 }
 
 function _ai_candy_cache_line_limit_bytes() {
-  local configured_limit="${_CACHE_LINE_MAX_BYTES:-32768}"
+  local configured_limit="${_AI_CANDY_CACHE_LINE_MAX_BYTES:-65536}"
   _ai_candy_cache_file_limit_bytes
   local file_limit="$REPLY"
   if [[ "$configured_limit" != <-> || ${#configured_limit} -gt 6 ]] || \
      (( configured_limit < 128 || configured_limit > 65536 )); then
-    configured_limit=32768
+    configured_limit=65536
   fi
   (( configured_limit > file_limit )) && configured_limit="$file_limit"
   REPLY="$configured_limit"
+}
+
+function _ai_candy_cache_value_limit_bytes() {
+  local configured_limit="${_AI_CANDY_CACHE_VALUE_MAX_BYTES:-16384}"
+  if [[ "$configured_limit" != <-> || ${#configured_limit} -gt 5 ]] || \
+     (( configured_limit < 128 || configured_limit > 16384 )); then
+    configured_limit=16384
+  fi
+  REPLY="$configured_limit"
+}
+
+function _ai_candy_cache_value_is_within_limit() {
+  emulate -L zsh
+  local LC_ALL=C
+  local value="$1"
+
+  _ai_candy_cache_value_limit_bytes
+  (( ${#value} <= REPLY ))
 }
 
 function _ai_candy_cache_timestamp_field_is_valid() {
   local timestamp="$1"
 
   [[ "$timestamp" == <-> ]] || return 1
-  (( ${#timestamp} <= _CACHE_TIMESTAMP_MAX_DIGITS )) || return 1
+  (( ${#timestamp} <= _AI_CANDY_CACHE_TIMESTAMP_MAX_DIGITS )) || return 1
 }
 
 function _ai_candy_cache_timestamp_is_valid() {
@@ -1809,7 +1959,7 @@ function _ai_candy_file_mtime() {
   local target_path="$1"
   local value=""
 
-  if (( _HAS_ZSH_STAT_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     local -a metadata
     if builtin zstat -A metadata +mtime -- "$target_path" 2>/dev/null; then
       value="${metadata[1]}"
@@ -1826,7 +1976,7 @@ function _ai_candy_file_mtime() {
 
 function _ai_candy_cache_remove_path() {
   local target_path="$1"
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
     builtin zf_rm -f "$target_path" 2>/dev/null
   else
     command rm -f "$target_path" 2>/dev/null
@@ -1835,7 +1985,7 @@ function _ai_candy_cache_remove_path() {
 
 function _ai_candy_cache_remove_directory() {
   local target_path="$1"
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
     builtin zf_rmdir "$target_path" 2>/dev/null
   else
     command rmdir "$target_path" 2>/dev/null
@@ -1876,7 +2026,7 @@ function _ai_candy_cache_quarantine_expired_lock() {
 
   quarantine="${lock_dir}.stale.$$.$RANDOM.$RANDOM"
   [[ ! -e "$quarantine" && ! -L "$quarantine" ]] || return 1
-  if (( _HAS_ZSH_FILE_BUILTINS )); then
+  if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
     builtin zf_mv -f "$lock_dir" "$quarantine" 2>/dev/null || return 1
   else
     command mv "$lock_dir" "$quarantine" 2>/dev/null || return 1
@@ -1892,12 +2042,12 @@ function _ai_candy_cache_lock_acquire() {
   local lock_file="${lock_dir}.flock"
   integer waited_ticks=0
 
-  if [[ -n "${_CACHE_LOCK_FDS[$lock_dir]-}" || \
-        -n "${_CACHE_LOCK_TOKENS[$lock_dir]-}" ]]; then
+  if [[ -n "${_AI_CANDY_CACHE_LOCK_FDS[$lock_dir]-}" || \
+        -n "${_AI_CANDY_CACHE_LOCK_TOKENS[$lock_dir]-}" ]]; then
     return 1
   fi
 
-  if (( _HAS_ZSH_SYSTEM )); then
+  if (( _AI_CANDY_HAS_ZSH_SYSTEM )); then
     integer create_fd lock_fd
     if [[ ! -e "$lock_file" ]]; then
       if builtin sysopen -w -o create,excl -m 600 -u create_fd "$lock_file" 2>/dev/null; then
@@ -1910,7 +2060,7 @@ function _ai_candy_cache_lock_acquire() {
 
     while true; do
       if builtin zsystem flock -f lock_fd -t 0 "$lock_file" 2>/dev/null; then
-        _CACHE_LOCK_FDS[$lock_dir]="$lock_fd"
+        _AI_CANDY_CACHE_LOCK_FDS[$lock_dir]="$lock_fd"
         return 0
       fi
       (( waited_ticks >= max_wait_ticks )) && return 1
@@ -1921,7 +2071,7 @@ function _ai_candy_cache_lock_acquire() {
 
   while true; do
     integer directory_created=0
-    if (( _HAS_ZSH_FILE_BUILTINS )); then
+    if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
       ( umask 077 && builtin zf_mkdir -m 700 "$lock_dir" ) 2>/dev/null && \
         directory_created=1
     else
@@ -1931,7 +2081,7 @@ function _ai_candy_cache_lock_acquire() {
     if (( directory_created )); then
       local token="owner.$$.$RANDOM.$RANDOM"
       if ( umask 077 && builtin print -r -- "$$" >| "${lock_dir}/${token}" ) 2>/dev/null; then
-        _CACHE_LOCK_TOKENS[$lock_dir]="$token"
+        _AI_CANDY_CACHE_LOCK_TOKENS[$lock_dir]="$token"
         return 0
       fi
       _ai_candy_cache_remove_directory "$lock_dir"
@@ -1946,18 +2096,18 @@ function _ai_candy_cache_lock_acquire() {
 
 function _ai_candy_cache_lock_release() {
   local lock_dir="$1"
-  local lock_fd="${_CACHE_LOCK_FDS[$lock_dir]-}"
+  local lock_fd="${_AI_CANDY_CACHE_LOCK_FDS[$lock_dir]-}"
   if [[ "$lock_fd" == <-> ]]; then
     builtin zsystem flock -u "$lock_fd" 2>/dev/null
-    _CACHE_LOCK_FDS[$lock_dir]=""
+    _AI_CANDY_CACHE_LOCK_FDS[$lock_dir]=""
   else
-    local token="${_CACHE_LOCK_TOKENS[$lock_dir]-}"
+    local token="${_AI_CANDY_CACHE_LOCK_TOKENS[$lock_dir]-}"
     if [[ -n "$token" && -f "${lock_dir}/${token}" && \
           ! -L "${lock_dir}/${token}" ]]; then
       _ai_candy_cache_remove_path "${lock_dir}/${token}"
       _ai_candy_cache_remove_directory "$lock_dir"
     fi
-    _CACHE_LOCK_TOKENS[$lock_dir]=""
+    _AI_CANDY_CACHE_LOCK_TOKENS[$lock_dir]=""
   fi
 }
 
@@ -1965,11 +2115,11 @@ function _ai_candy_cache_drop_inherited_locks() {
   emulate -L zsh
   local lock_fd
 
-  for lock_fd in "${(@v)_CACHE_LOCK_FDS}"; do
+  for lock_fd in "${(@v)_AI_CANDY_CACHE_LOCK_FDS}"; do
     [[ "$lock_fd" == <-> ]] && exec {lock_fd}>&-
   done
-  _CACHE_LOCK_FDS=()
-  _CACHE_LOCK_TOKENS=()
+  _AI_CANDY_CACHE_LOCK_FDS=()
+  _AI_CANDY_CACHE_LOCK_TOKENS=()
 }
 
 function _ai_candy_cache_atomic_write_unlocked() {
@@ -1988,7 +2138,7 @@ function _ai_candy_cache_atomic_write_unlocked() {
     _ai_candy_chmod 600 "$temp_file" 2>/dev/null || write_status=$?
   fi
   if (( write_status == 0 )); then
-    if (( _HAS_ZSH_FILE_BUILTINS )); then
+    if (( _AI_CANDY_HAS_ZSH_FILE_BUILTINS )); then
       builtin zf_mv -f "$temp_file" "$cache_file" 2>/dev/null || write_status=$?
     else
       command mv -f "$temp_file" "$cache_file" 2>/dev/null || write_status=$?
@@ -2002,28 +2152,28 @@ function _ai_candy_cache_atomic_write_unlocked() {
 function _ai_candy_cache_write() {
   local cache_file="$1"
   local content="$2"
-  local max_wait_ticks="${3:-${_CACHE_COMMIT_WAIT_TICKS:-250}}"
+  local max_wait_ticks="${3:-${_AI_CANDY_CACHE_COMMIT_WAIT_TICKS:-250}}"
   local expected_epoch="${4:-}"
   local lock_dir="${cache_file}.lock.d"
   local write_status=0
 
-  (( _CACHE_READY )) || return 1
-  _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$max_wait_ticks" || return 1
+  (( _AI_CANDY_CACHE_READY )) || return 1
+  _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$max_wait_ticks" || return 1
   if [[ -n "$expected_epoch" ]] && \
      ! _ai_candy_cache_persistence_epoch_matches "$expected_epoch"; then
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
     return 1
   fi
   if ! _ai_candy_cache_lock_acquire "$lock_dir" 300 "$max_wait_ticks"; then
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
     return 1
   fi
   {
     _ai_candy_cache_atomic_write_unlocked "$cache_file" "$content" || write_status=$?
   } always {
     _ai_candy_cache_lock_release "$lock_dir"
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
   }
   return "$write_status"
 }
@@ -2032,31 +2182,27 @@ function _ai_candy_hex_encode() {
   emulate -L zsh
   local LC_ALL=C
   local input="$1"
-  local byte hex
-  integer index code
+  local byte
+  local -a input_bytes byte_codes
   REPLY=""
 
-  for (( index=1; index<=${#input}; index++ )); do
-    byte="${input[index]}"
-    code=$(( #byte ))
-    builtin printf -v hex '%02X' "$code"
-    REPLY+="$hex"
+  input_bytes=("${(@s::)input}")
+  for byte in "${input_bytes[@]}"; do
+    byte_codes+=($(( #byte )))
   done
+  (( ${#byte_codes} )) && builtin printf -v REPLY '%02X' "${byte_codes[@]}"
 }
 
 function _ai_candy_hex_decode() {
   emulate -L zsh
+  setopt localoptions extendedglob
   local encoded="$1"
-  local pair byte
-  integer index
+  local escaped=""
   REPLY=""
 
   [[ "$encoded" != *[^0-9A-Fa-f]* && $(( ${#encoded} % 2 )) -eq 0 ]] || return 1
-  for (( index=1; index<=${#encoded}; index+=2 )); do
-    pair="${encoded[index,index+1]}"
-    builtin printf -v byte '%b' "\\x${pair}"
-    REPLY+="$byte"
-  done
+  escaped="${encoded//(#b)(??)/\\x${match[1]}}"
+  builtin printf -v REPLY '%b' "$escaped"
 }
 
 function _ai_candy_cache_read_size_checked_file() {
@@ -2068,7 +2214,7 @@ function _ai_candy_cache_read_size_checked_file() {
   REPLY=""
 
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  (( _HAS_ZSH_STAT_BUILTIN )) || return 2
+  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 2
   builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
   [[ "${metadata[1]-}" == <-> ]] || return 2
   _ai_candy_cache_file_limit_bytes
@@ -2084,7 +2230,7 @@ function _ai_candy_cache_read_small_file() {
   local cache_file="$1"
   REPLY=""
 
-  if (( _HAS_ZSH_STAT_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     _ai_candy_cache_read_size_checked_file "$cache_file"
     return $?
   fi
@@ -2100,21 +2246,21 @@ function _ai_candy_cache_read_bounded_file() {
   REPLY=""
 
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  if (( _HAS_ZSH_STAT_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     local -a metadata
     builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
     [[ "${metadata[1]-}" == <-> ]] || return 2
     _ai_candy_cache_file_limit_bytes
     (( metadata[1] <= REPLY )) || return 2
   fi
-  if (( ! _HAS_TIMEOUT )); then
+  if (( ! _AI_CANDY_HAS_TIMEOUT )); then
     _ai_candy_cache_read_size_checked_file "$cache_file"
     return $?
   fi
 
   _ai_candy_cache_file_limit_bytes
-  local _TIMEOUT_OUTPUT_MAX_BYTES="$REPLY"
-  content=$(_ai_candy_run_with_timeout "${_CACHE_IO_TIMEOUT:-0.75}" \
+  local _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES="$REPLY"
+  content=$(_ai_candy_run_with_timeout "${_AI_CANDY_CACHE_IO_TIMEOUT:-0.75}" \
     /bin/cat "$cache_file" 2>/dev/null) || read_status=$?
   (( read_status == 0 )) || return 2
   _ai_candy_cache_file_limit_bytes
@@ -2175,7 +2321,7 @@ function _ai_candy_cache_read_validated_lines() {
   local record_kind="$2"
   local content line
   local -a lines
-  integer max_lines=${_FILE_CACHE_MAX_LINES:-500}
+  integer max_lines=${_AI_CANDY_FILE_CACHE_MAX_LINES:-500}
   reply=()
 
   (( max_lines >= 1 && max_lines <= 2000 )) || max_lines=500
@@ -2200,7 +2346,7 @@ function _ai_candy_cache_join_bounded_lines() {
   shift
   local -a lines=("$@")
   local line content
-  integer max_lines=${_FILE_CACHE_MAX_LINES:-500}
+  integer max_lines=${_AI_CANDY_FILE_CACHE_MAX_LINES:-500}
   REPLY=""
 
   (( max_lines >= 1 && max_lines <= 2000 )) || max_lines=500
@@ -2259,14 +2405,14 @@ function _ai_candy_cache_update_line_by_prefix() {
   local cache_file="$1"
   local prefix="$2"
   local new_line="$3"
-  local max_wait_ticks="${4:-${_CACHE_OPERATION_WAIT_TICKS:-200}}"
+  local max_wait_ticks="${4:-${_AI_CANDY_CACHE_OPERATION_WAIT_TICKS:-200}}"
   local prefix_len=${#prefix}
   local lock_dir="${cache_file}.lock.d"
   local -a lines new_lines
   local entry content
   local write_status=0 read_status=0
 
-  (( _CACHE_READY )) || return 1
+  (( _AI_CANDY_CACHE_READY )) || return 1
   _ai_candy_cache_record_is_valid persistent "$new_line" || return 1
   _ai_candy_cache_lock_acquire "$lock_dir" 300 "$max_wait_ticks" || return 1
   {
@@ -2331,13 +2477,13 @@ function _ai_candy_cache_remove_line_by_prefix() {
 # SESSION MEMORY CACHE
 # ============================================================================
 
-typeset -gA _MEM_CACHE_GIT_ROOT
-typeset -gA _MEM_CACHE_GIT_ROOT_GENERATION
-typeset -gA _MEM_CACHE_GIT_HIERARCHY
-typeset -gA _MEM_CACHE_GH_PR
-typeset -gA _MEM_CACHE_TOMBSTONES
-typeset -g _MEM_CACHE_MAX_ENTRIES=100
-typeset -g _MEM_CACHE_CLEANUP_THRESHOLD=120
+typeset -gA _AI_CANDY_MEM_CACHE_GIT_ROOT
+typeset -gA _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION
+typeset -gA _AI_CANDY_MEM_CACHE_GIT_HIERARCHY
+typeset -gA _AI_CANDY_MEM_CACHE_GH_PR
+typeset -gA _AI_CANDY_MEM_CACHE_TOMBSTONES
+typeset -g _AI_CANDY_MEM_CACHE_MAX_ENTRIES=100
+typeset -g _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD=120
 
 function _ai_candy_mem_cache_remove_key() {
   emulate -L zsh
@@ -2348,58 +2494,72 @@ function _ai_candy_mem_cache_remove_key() {
 
   case "$cache_name" in
     git_root)
-      for candidate in "${(@k)_MEM_CACHE_GIT_ROOT}"; do
+      for candidate in "${(@k)_AI_CANDY_MEM_CACHE_GIT_ROOT}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_MEM_CACHE_GIT_ROOT[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_MEM_CACHE_GIT_ROOT[$candidate]}"
       done
-      _MEM_CACHE_GIT_ROOT=("${(@kv)kept}")
-      for candidate in "${(@k)_MEM_CACHE_GIT_ROOT_GENERATION}"; do
+      _AI_CANDY_MEM_CACHE_GIT_ROOT=("${(@kv)kept}")
+      for candidate in "${(@k)_AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept_generation[$candidate]="${_MEM_CACHE_GIT_ROOT_GENERATION[$candidate]}"
+          kept_generation[$candidate]="${_AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION[$candidate]}"
       done
-      _MEM_CACHE_GIT_ROOT_GENERATION=("${(@kv)kept_generation}")
+      _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION=("${(@kv)kept_generation}")
       ;;
     git_hierarchy)
-      for candidate in "${(@k)_MEM_CACHE_GIT_HIERARCHY}"; do
+      for candidate in "${(@k)_AI_CANDY_MEM_CACHE_GIT_HIERARCHY}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_MEM_CACHE_GIT_HIERARCHY[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$candidate]}"
       done
-      _MEM_CACHE_GIT_HIERARCHY=("${(@kv)kept}")
+      _AI_CANDY_MEM_CACHE_GIT_HIERARCHY=("${(@kv)kept}")
       ;;
     gh_pr)
-      for candidate in "${(@k)_MEM_CACHE_GH_PR}"; do
+      for candidate in "${(@k)_AI_CANDY_MEM_CACHE_GH_PR}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_MEM_CACHE_GH_PR[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_MEM_CACHE_GH_PR[$candidate]}"
       done
-      _MEM_CACHE_GH_PR=("${(@kv)kept}")
+      _AI_CANDY_MEM_CACHE_GH_PR=("${(@kv)kept}")
       ;;
     tombstone)
-      for candidate in "${(@k)_MEM_CACHE_TOMBSTONES}"; do
+      for candidate in "${(@k)_AI_CANDY_MEM_CACHE_TOMBSTONES}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_MEM_CACHE_TOMBSTONES[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_MEM_CACHE_TOMBSTONES[$candidate]}"
       done
-      _MEM_CACHE_TOMBSTONES=("${(@kv)kept}")
+      _AI_CANDY_MEM_CACHE_TOMBSTONES=("${(@kv)kept}")
       ;;
     git_options)
-      for candidate in "${(@k)_GIT_OMZ_OPTIONS_BY_ROOT}"; do
+      for candidate in "${(@k)_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_GIT_OMZ_OPTIONS_BY_ROOT[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$candidate]}"
       done
-      _GIT_OMZ_OPTIONS_BY_ROOT=("${(@kv)kept}")
+      _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=("${(@kv)kept}")
       ;;
     git_remote)
-      for candidate in "${(@k)_GIT_REMOTE_KEY_BY_ROOT}"; do
+      for candidate in "${(@k)_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_GIT_REMOTE_KEY_BY_ROOT[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$candidate]}"
       done
-      _GIT_REMOTE_KEY_BY_ROOT=("${(@kv)kept}")
+      _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=("${(@kv)kept}")
       ;;
     git_snapshot_retry)
-      for candidate in "${(@k)_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT}"; do
+      for candidate in "${(@k)_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT}"; do
         [[ "$candidate" == "$remove_key" ]] || \
-          kept[$candidate]="${_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT[$candidate]}"
+          kept[$candidate]="${_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT[$candidate]}"
       done
-      _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT=("${(@kv)kept}")
+      _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=("${(@kv)kept}")
+      ;;
+    git_stash)
+      for candidate in "${(@k)_AI_CANDY_GIT_STASH_COUNT_BY_LOG}"; do
+        [[ "$candidate" == "$remove_key" ]] || \
+          kept[$candidate]="${_AI_CANDY_GIT_STASH_COUNT_BY_LOG[$candidate]}"
+      done
+      _AI_CANDY_GIT_STASH_COUNT_BY_LOG=("${(@kv)kept}")
+      ;;
+    refresh)
+      for candidate in "${(@k)_AI_CANDY_REFRESH_REQUESTED}"; do
+        [[ "$candidate" == "$remove_key" ]] || \
+          kept[$candidate]="${_AI_CANDY_REFRESH_REQUESTED[$candidate]}"
+      done
+      _AI_CANDY_REFRESH_REQUESTED=("${(@kv)kept}")
       ;;
     *) return 1 ;;
   esac
@@ -2408,20 +2568,22 @@ function _ai_candy_mem_cache_remove_key() {
 function _ai_candy_mem_cache_cleanup() {
   emulate -L zsh
   local cache_name="$1"
-  local max_entries=${_MEM_CACHE_MAX_ENTRIES:-100}
-  local threshold=${_MEM_CACHE_CLEANUP_THRESHOLD:-120}
+  local max_entries=${_AI_CANDY_MEM_CACHE_MAX_ENTRIES:-100}
+  local threshold=${_AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD:-120}
   local -a keys entries sorted
   local key value timestamp entry remove_key
   integer count to_remove index
 
   case "$cache_name" in
-    git_root) keys=("${(@k)_MEM_CACHE_GIT_ROOT}") ;;
-    git_hierarchy) keys=("${(@k)_MEM_CACHE_GIT_HIERARCHY}") ;;
-    gh_pr) keys=("${(@k)_MEM_CACHE_GH_PR}") ;;
-    tombstone) keys=("${(@k)_MEM_CACHE_TOMBSTONES}") ;;
-    git_options) keys=("${(@k)_GIT_OMZ_OPTIONS_BY_ROOT}") ;;
-    git_remote) keys=("${(@k)_GIT_REMOTE_KEY_BY_ROOT}") ;;
-    git_snapshot_retry) keys=("${(@k)_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT}") ;;
+    git_root) keys=("${(@k)_AI_CANDY_MEM_CACHE_GIT_ROOT}") ;;
+    git_hierarchy) keys=("${(@k)_AI_CANDY_MEM_CACHE_GIT_HIERARCHY}") ;;
+    gh_pr) keys=("${(@k)_AI_CANDY_MEM_CACHE_GH_PR}") ;;
+    tombstone) keys=("${(@k)_AI_CANDY_MEM_CACHE_TOMBSTONES}") ;;
+    git_options) keys=("${(@k)_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}") ;;
+    git_remote) keys=("${(@k)_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}") ;;
+    git_snapshot_retry) keys=("${(@k)_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT}") ;;
+    git_stash) keys=("${(@k)_AI_CANDY_GIT_STASH_COUNT_BY_LOG}") ;;
+    refresh) keys=("${(@k)_AI_CANDY_REFRESH_REQUESTED}") ;;
     *) return 1 ;;
   esac
 
@@ -2429,13 +2591,15 @@ function _ai_candy_mem_cache_cleanup() {
   (( count > threshold )) || return 0
   for key in "${keys[@]}"; do
     case "$cache_name" in
-      git_root) value="${_MEM_CACHE_GIT_ROOT[$key]-}" ;;
-      git_hierarchy) value="${_MEM_CACHE_GIT_HIERARCHY[$key]-}" ;;
-      gh_pr) value="${_MEM_CACHE_GH_PR[$key]-}" ;;
-      tombstone) value="${_MEM_CACHE_TOMBSTONES[$key]-}" ;;
-      git_options) value="${_GIT_OMZ_OPTIONS_BY_ROOT[$key]-}" ;;
-      git_remote) value="${_GIT_REMOTE_KEY_BY_ROOT[$key]-}" ;;
-      git_snapshot_retry) value="${_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT[$key]-}" ;;
+      git_root) value="${_AI_CANDY_MEM_CACHE_GIT_ROOT[$key]-}" ;;
+      git_hierarchy) value="${_AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$key]-}" ;;
+      gh_pr) value="${_AI_CANDY_MEM_CACHE_GH_PR[$key]-}" ;;
+      tombstone) value="${_AI_CANDY_MEM_CACHE_TOMBSTONES[$key]-}" ;;
+      git_options) value="${_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$key]-}" ;;
+      git_remote) value="${_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$key]-}" ;;
+      git_snapshot_retry) value="${_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT[$key]-}" ;;
+      git_stash) value="${_AI_CANDY_GIT_STASH_COUNT_BY_LOG[$key]-}" ;;
+      refresh) value="${_AI_CANDY_REFRESH_REQUESTED[$key]-}" ;;
     esac
     timestamp="${value##*|}"
     _ai_candy_cache_timestamp_is_valid "$timestamp" || timestamp=0
@@ -2455,24 +2619,25 @@ function _ai_candy_mem_cache_cleanup() {
 # LAZY PERSISTENT CACHE
 # ============================================================================
 
-typeset -g _CACHE_DB_FILE="${_CACHE_DIR}/prompt_cache.db"
-typeset -g _CACHE_BACKEND_OWNER_FILE="${_CACHE_DIR}/persistent_backend"
-typeset -g _CACHE_BACKEND_STATE=0
-typeset -g _CACHE_BACKEND="none"
-typeset -g _CACHE_IO_TIMEOUT=0.75
-typeset -g _CACHE_PROMPT_IO_TIMEOUT=0.05
-typeset -gF _CACHE_BACKEND_RETRY_AFTER=0
-typeset -gF _CACHE_BACKEND_RETRY_DELAY=1
-typeset -g _CACHE_OPERATION_FILE="${_CACHE_DIR}/persist_operations"
-typeset -g _CACHE_OPERATION_SEQUENCE_FILE="${_CACHE_DIR}/persist_sequence"
-typeset -g _CACHE_PERSISTENCE_EPOCH_FILE="${_CACHE_DIR}/persistent_epoch"
-typeset -g _CACHE_COMMIT_LOCK="${_CACHE_DIR}/persist_commit.lock.d"
-typeset -g _CACHE_COMMIT_STALE_AFTER=15
-typeset -g _CACHE_COMMIT_WAIT_TICKS=250
-typeset -g _CACHE_OPERATION_WAIT_TICKS=200
-typeset -g _CACHE_OPERATION_RESERVE_WAIT_TICKS=2
-typeset -g _CACHE_OPERATION_SEQUENCE_MAX=999999999999999999
-typeset -g _CACHE_GENERATION_TOKEN_COUNTER=0
+typeset -g _AI_CANDY_CACHE_DB_FILE="${_AI_CANDY_CACHE_DIR}/prompt_cache.db"
+typeset -g _AI_CANDY_CACHE_BACKEND_OWNER_FILE="${_AI_CANDY_CACHE_DIR}/persistent_backend"
+typeset -g _AI_CANDY_CACHE_BACKEND_STATE=0
+typeset -g _AI_CANDY_CACHE_BACKEND="none"
+typeset -g _AI_CANDY_CACHE_IO_TIMEOUT=0.75
+typeset -g _AI_CANDY_CACHE_PROMPT_IO_TIMEOUT=0.05
+typeset -gF _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=0
+typeset -gF _AI_CANDY_CACHE_BACKEND_RETRY_DELAY=1
+typeset -g _AI_CANDY_CACHE_OPERATION_FILE="${_AI_CANDY_CACHE_DIR}/persist_operations"
+typeset -g _AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE="${_AI_CANDY_CACHE_DIR}/persist_sequence"
+typeset -g _AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE="${_AI_CANDY_CACHE_DIR}/persistent_epoch"
+typeset -g _AI_CANDY_CACHE_COMMIT_LOCK="${_AI_CANDY_CACHE_DIR}/persist_commit.lock.d"
+typeset -g _AI_CANDY_CACHE_COMMIT_STALE_AFTER=15
+typeset -g _AI_CANDY_CACHE_COMMIT_WAIT_TICKS=250
+typeset -g _AI_CANDY_CACHE_OPERATION_WAIT_TICKS=200
+typeset -g _AI_CANDY_CACHE_OPERATION_RESERVE_WAIT_TICKS=2
+typeset -g _AI_CANDY_CACHE_OPERATION_DELETE_WAIT_TICKS=5
+typeset -g _AI_CANDY_CACHE_OPERATION_SEQUENCE_MAX=999999999999999999
+typeset -g _AI_CANDY_CACHE_GENERATION_TOKEN_COUNTER=0
 
 function _ai_candy_cache_generation_token_is_valid() {
   emulate -L zsh
@@ -2481,7 +2646,7 @@ function _ai_candy_cache_generation_token_is_valid() {
   local field
 
   if [[ "$epoch" == <-> ]]; then
-    (( ${#epoch} <= _CACHE_TIMESTAMP_MAX_DIGITS ))
+    (( ${#epoch} <= _AI_CANDY_CACHE_TIMESTAMP_MAX_DIGITS ))
     return $?
   fi
   fields=("${(@s.:.)epoch}")
@@ -2509,13 +2674,13 @@ function _ai_candy_cache_operation_sequence_state_is_valid() {
 
 function _ai_candy_cache_read_persistence_epoch() {
   REPLY=0
-  if [[ ! -e "$_CACHE_PERSISTENCE_EPOCH_FILE" && \
-        ! -L "$_CACHE_PERSISTENCE_EPOCH_FILE" ]]; then
+  if [[ ! -e "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" && \
+        ! -L "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" ]]; then
     return 0
   fi
-  [[ -f "$_CACHE_PERSISTENCE_EPOCH_FILE" && \
-     ! -L "$_CACHE_PERSISTENCE_EPOCH_FILE" ]] || return 1
-  _ai_candy_cache_read_small_file "$_CACHE_PERSISTENCE_EPOCH_FILE" || return 1
+  [[ -f "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" && \
+     ! -L "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" ]] || return 1
+  _ai_candy_cache_read_small_file "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" || return 1
   local epoch="$REPLY"
   _ai_candy_cache_generation_token_is_valid "$epoch" || return 1
   REPLY="$epoch"
@@ -2529,22 +2694,22 @@ function _ai_candy_cache_persistence_epoch_matches() {
 }
 
 function _ai_candy_cache_new_generation_token() {
-  (( ++_CACHE_GENERATION_TOKEN_COUNTER ))
+  (( ++_AI_CANDY_CACHE_GENERATION_TOKEN_COUNTER ))
   local clock="${EPOCHREALTIME:-${EPOCHSECONDS:-0}.0}"
   local owner_pid="${sysparams[pid]-$$}"
-  REPLY="v1:${clock}:${owner_pid}:${_CACHE_GENERATION_TOKEN_COUNTER}:${RANDOM}"
+  REPLY="v1:${clock}:${owner_pid}:${_AI_CANDY_CACHE_GENERATION_TOKEN_COUNTER}:${RANDOM}"
   _ai_candy_cache_generation_token_is_valid "$REPLY"
 }
 
 function _ai_candy_cache_advance_persistence_epoch_unlocked() {
-  if [[ -e "$_CACHE_PERSISTENCE_EPOCH_FILE" || \
-        -L "$_CACHE_PERSISTENCE_EPOCH_FILE" ]]; then
-    [[ -f "$_CACHE_PERSISTENCE_EPOCH_FILE" && \
-       ! -L "$_CACHE_PERSISTENCE_EPOCH_FILE" ]] || return 1
+  if [[ -e "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" || \
+        -L "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" ]]; then
+    [[ -f "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" && \
+       ! -L "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" ]] || return 1
   fi
   _ai_candy_cache_new_generation_token || return 1
   local next_epoch="$REPLY"
-  _ai_candy_cache_atomic_write_unlocked "$_CACHE_PERSISTENCE_EPOCH_FILE" \
+  _ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_PERSISTENCE_EPOCH_FILE" \
     "$next_epoch" || return 1
   REPLY="$next_epoch"
 }
@@ -2552,26 +2717,26 @@ function _ai_candy_cache_advance_persistence_epoch_unlocked() {
 function _ai_candy_cache_file_backend_artifact_exists() {
   local cache_file
   for cache_file in \
-    "${_CACHE_DIR}/git_root_cache" \
-    "${_CACHE_DIR}/git_hierarchy_cache" \
-    "${_CACHE_DIR}/gh_pr_cache"; do
+    "${_AI_CANDY_CACHE_DIR}/git_root_cache" \
+    "${_AI_CANDY_CACHE_DIR}/git_hierarchy_cache" \
+    "${_AI_CANDY_CACHE_DIR}/gh_pr_cache"; do
     [[ -e "$cache_file" || -L "$cache_file" ]] && return 0
   done
   return 1
 }
 
 function _ai_candy_cache_persistent_artifact_exists() {
-  [[ -e "$_CACHE_BACKEND_OWNER_FILE" || -L "$_CACHE_BACKEND_OWNER_FILE" || \
-     -e "$_CACHE_DB_FILE" || -L "$_CACHE_DB_FILE" ]] || \
+  [[ -e "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" || -L "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" || \
+     -e "$_AI_CANDY_CACHE_DB_FILE" || -L "$_AI_CANDY_CACHE_DB_FILE" ]] || \
     _ai_candy_cache_file_backend_artifact_exists
 }
 
 function _ai_candy_cache_file_backend_is_safe() {
   local cache_file
   for cache_file in \
-    "${_CACHE_DIR}/git_root_cache" \
-    "${_CACHE_DIR}/git_hierarchy_cache" \
-    "${_CACHE_DIR}/gh_pr_cache"; do
+    "${_AI_CANDY_CACHE_DIR}/git_root_cache" \
+    "${_AI_CANDY_CACHE_DIR}/git_hierarchy_cache" \
+    "${_AI_CANDY_CACHE_DIR}/gh_pr_cache"; do
     [[ ! -L "$cache_file" ]] || return 1
     [[ ! -e "$cache_file" || -f "$cache_file" ]] || return 1
   done
@@ -2580,9 +2745,9 @@ function _ai_candy_cache_file_backend_is_safe() {
 
 function _ai_candy_cache_read_backend_owner() {
   REPLY=""
-  [[ -f "$_CACHE_BACKEND_OWNER_FILE" && \
-     ! -L "$_CACHE_BACKEND_OWNER_FILE" ]] || return 1
-  _ai_candy_cache_read_small_file "$_CACHE_BACKEND_OWNER_FILE" || return 1
+  [[ -f "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" && \
+     ! -L "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" ]] || return 1
+  _ai_candy_cache_read_small_file "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" || return 1
   local owner="$REPLY"
   [[ "$owner" == "sqlite" || "$owner" == "file" ]] || return 1
   REPLY="$owner"
@@ -2597,7 +2762,7 @@ function _ai_candy_cache_operation_is_current() {
   integer read_status=0
 
   _ai_candy_cache_get_line_by_prefix \
-    "$_CACHE_OPERATION_FILE" "$prefix" operation || read_status=$?
+    "$_AI_CANDY_CACHE_OPERATION_FILE" "$prefix" operation || read_status=$?
   (( read_status == 0 )) || return "$read_status"
   fields=("${(@s:|:)REPLY}")
   [[ "${fields[2]}" == "$token" ]]
@@ -2613,13 +2778,13 @@ function _ai_candy_cache_clear_operation_if_current_unlocked() {
   local line content
   integer removed=0 write_status=0 read_status=0
 
-  [[ -e "$_CACHE_OPERATION_FILE" || -L "$_CACHE_OPERATION_FILE" ]] || return 0
-  [[ -f "$_CACHE_OPERATION_FILE" && ! -L "$_CACHE_OPERATION_FILE" ]] || return 1
+  [[ -e "$_AI_CANDY_CACHE_OPERATION_FILE" || -L "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 0
+  [[ -f "$_AI_CANDY_CACHE_OPERATION_FILE" && ! -L "$_AI_CANDY_CACHE_OPERATION_FILE" ]] || return 1
   if ! _ai_candy_cache_persistence_epoch_matches "$expected_epoch"; then
     write_status=1
   else
     _ai_candy_cache_read_validated_lines \
-      "$_CACHE_OPERATION_FILE" operation || read_status=$?
+      "$_AI_CANDY_CACHE_OPERATION_FILE" operation || read_status=$?
   fi
   if (( write_status == 0 && read_status == 0 )); then
     lines=("${reply[@]}")
@@ -2638,12 +2803,12 @@ function _ai_candy_cache_clear_operation_if_current_unlocked() {
         if _ai_candy_cache_join_bounded_lines operation "${kept[@]}"; then
           content="$REPLY"
           _ai_candy_cache_atomic_write_unlocked \
-            "$_CACHE_OPERATION_FILE" "$content" || write_status=$?
+            "$_AI_CANDY_CACHE_OPERATION_FILE" "$content" || write_status=$?
         else
           write_status=1
         fi
       else
-        _ai_candy_cache_remove_path "$_CACHE_OPERATION_FILE" || write_status=$?
+        _ai_candy_cache_remove_path "$_AI_CANDY_CACHE_OPERATION_FILE" || write_status=$?
       fi
     fi
   elif (( write_status == 0 )); then
@@ -2654,8 +2819,8 @@ function _ai_candy_cache_clear_operation_if_current_unlocked() {
 
 function _ai_candy_cache_clear_operation_if_current() {
   emulate -L zsh
-  local max_wait_ticks="${4:-${_CACHE_OPERATION_WAIT_TICKS:-200}}"
-  local lock_dir="${_CACHE_OPERATION_FILE}.lock.d"
+  local max_wait_ticks="${4:-${_AI_CANDY_CACHE_OPERATION_WAIT_TICKS:-200}}"
+  local lock_dir="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
   integer clear_status=0
 
   _ai_candy_cache_lock_acquire "$lock_dir" 300 "$max_wait_ticks" || return 1
@@ -2698,12 +2863,12 @@ function _ai_candy_cache_reserve_operation_unlocked() {
   fi
 
   if (( reserve_status == 0 )) && \
-     [[ -e "$_CACHE_OPERATION_SEQUENCE_FILE" || \
-        -L "$_CACHE_OPERATION_SEQUENCE_FILE" ]]; then
-    if [[ ! -f "$_CACHE_OPERATION_SEQUENCE_FILE" || \
-          -L "$_CACHE_OPERATION_SEQUENCE_FILE" ]]; then
+     [[ -e "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" || \
+        -L "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" ]]; then
+    if [[ ! -f "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" || \
+          -L "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" ]]; then
       reserve_status=1
-    elif _ai_candy_cache_read_small_file "$_CACHE_OPERATION_SEQUENCE_FILE" && \
+    elif _ai_candy_cache_read_small_file "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" && \
          _ai_candy_cache_operation_sequence_state_is_valid "$REPLY"; then
       sequence_fields=("${(@s:|:)REPLY}")
       sequence_epoch="${sequence_fields[1]}"
@@ -2716,12 +2881,12 @@ function _ai_candy_cache_reserve_operation_unlocked() {
   fi
 
   if (( reserve_status == 0 )) && \
-     [[ -e "$_CACHE_OPERATION_FILE" || -L "$_CACHE_OPERATION_FILE" ]]; then
-    if [[ ! -f "$_CACHE_OPERATION_FILE" || -L "$_CACHE_OPERATION_FILE" ]]; then
+     [[ -e "$_AI_CANDY_CACHE_OPERATION_FILE" || -L "$_AI_CANDY_CACHE_OPERATION_FILE" ]]; then
+    if [[ ! -f "$_AI_CANDY_CACHE_OPERATION_FILE" || -L "$_AI_CANDY_CACHE_OPERATION_FILE" ]]; then
       reserve_status=1
     elif (( ! reset_lines )); then
       if _ai_candy_cache_read_validated_lines \
-           "$_CACHE_OPERATION_FILE" operation; then
+           "$_AI_CANDY_CACHE_OPERATION_FILE" operation; then
         lines=("${reply[@]}")
       else
         reserve_status=$?
@@ -2746,7 +2911,7 @@ function _ai_candy_cache_reserve_operation_unlocked() {
       done
       lines=("${current_lines[@]}")
     fi
-    if (( sequence >= _CACHE_OPERATION_SEQUENCE_MAX )); then
+    if (( sequence >= _AI_CANDY_CACHE_OPERATION_SEQUENCE_MAX )); then
       reserve_status=1
     else
       (( sequence++ ))
@@ -2759,11 +2924,11 @@ function _ai_candy_cache_reserve_operation_unlocked() {
         content="$REPLY"
         sequence_content="${expected_epoch}|${sequence}"
         _ai_candy_cache_atomic_write_unlocked \
-          "$_CACHE_OPERATION_SEQUENCE_FILE" "$sequence_content" || \
+          "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" "$sequence_content" || \
           reserve_status=$?
         if (( reserve_status == 0 )); then
           _ai_candy_cache_atomic_write_unlocked \
-            "$_CACHE_OPERATION_FILE" "$content" || reserve_status=$?
+            "$_AI_CANDY_CACHE_OPERATION_FILE" "$content" || reserve_status=$?
         fi
       else
         reserve_status=1
@@ -2776,11 +2941,11 @@ function _ai_candy_cache_reserve_operation_unlocked() {
 
 function _ai_candy_cache_reserve_operation() {
   emulate -L zsh
-  local lock_dir="${_CACHE_OPERATION_FILE}.lock.d"
+  local lock_dir="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
   integer reserve_status=0
 
   _ai_candy_cache_lock_acquire "$lock_dir" 300 \
-    "$_CACHE_OPERATION_RESERVE_WAIT_TICKS" || return 1
+    "$_AI_CANDY_CACHE_OPERATION_RESERVE_WAIT_TICKS" || return 1
   {
     _ai_candy_cache_reserve_operation_unlocked "$@" || reserve_status=$?
   } always {
@@ -2800,8 +2965,8 @@ function _ai_candy_cache_commit_operation() {
   local expected_epoch="$8"
   integer commit_status=0 operation_status=0 was_current=0
 
-  _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS" || return 1
+  _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" || return 1
   {
     if ! _ai_candy_cache_persistence_epoch_matches "$expected_epoch"; then
       commit_status=1
@@ -2818,7 +2983,7 @@ function _ai_candy_cache_commit_operation() {
       (( operation_status == 1 )) || commit_status="$operation_status"
     fi
   } always {
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
   }
 
   if (( was_current && commit_status == 0 )); then
@@ -2837,14 +3002,14 @@ function _ai_candy_cache_run_scheduled_operation() {
   local hex_key="$6"
   local token="$7"
   local persistence_epoch="$8"
-  local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
 
   _ai_candy_cache_lock_acquire "$operation_lock" 300 \
-    "$_CACHE_OPERATION_WAIT_TICKS" || return 1
+    "$_AI_CANDY_CACHE_OPERATION_WAIT_TICKS" || return 1
   _ai_candy_cache_lock_release "$operation_lock"
 
-  if [[ "$_CACHE_BACKEND" == "none" ]]; then
-    _CACHE_BACKEND_STATE=0
+  if [[ "$_AI_CANDY_CACHE_BACKEND" == "none" ]]; then
+    _AI_CANDY_CACHE_BACKEND_STATE=0
   fi
   _ai_candy_cache_commit_operation "$action" "$cache_name" "$key" "$value" \
     "$timestamp" "$hex_key" "$token" "$persistence_epoch"
@@ -2858,12 +3023,21 @@ function _ai_candy_cache_schedule_operation() {
   local value="$4"
   local timestamp="$5"
   local now="${EPOCHSECONDS:-$timestamp}"
-  local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
+  local reserve_wait_ticks="$_AI_CANDY_CACHE_OPERATION_RESERVE_WAIT_TICKS"
   local -a reservation
   integer schedule_status=0
 
+  if [[ "$action" == "set" ]] && \
+     ! _ai_candy_cache_value_is_within_limit "$value"; then
+    return 1
+  fi
+
+  [[ "$action" == "delete" ]] && \
+    reserve_wait_ticks="$_AI_CANDY_CACHE_OPERATION_DELETE_WAIT_TICKS"
+
   _ai_candy_cache_lock_acquire "$operation_lock" 300 \
-    "$_CACHE_OPERATION_RESERVE_WAIT_TICKS" || return 1
+    "$reserve_wait_ticks" || return 1
   {
     _ai_candy_cache_reserve_operation_unlocked \
       "$action" "$cache_name" "$key" "$now" || schedule_status=$?
@@ -2888,63 +3062,63 @@ function _ai_candy_cache_schedule_operation() {
 }
 
 function _ai_candy_cache_backend_init_unlocked() {
-  if (( _CACHE_BACKEND_STATE )); then
-    if [[ "$_CACHE_BACKEND" == "none" ]]; then
+  if (( _AI_CANDY_CACHE_BACKEND_STATE )); then
+    if [[ "$_AI_CANDY_CACHE_BACKEND" == "none" ]]; then
       local -F current_clock="${EPOCHREALTIME:-${EPOCHSECONDS:-0}}"
-      if (( ! ${_CACHE_FORCE_BACKEND_RETRY:-0} && \
-            current_clock < _CACHE_BACKEND_RETRY_AFTER )); then
+      if (( ! ${_AI_CANDY_CACHE_FORCE_BACKEND_RETRY:-0} && \
+            current_clock < _AI_CANDY_CACHE_BACKEND_RETRY_AFTER )); then
         return 1
       fi
-      _CACHE_BACKEND_STATE=0
+      _AI_CANDY_CACHE_BACKEND_STATE=0
     fi
   fi
-  if (( _CACHE_BACKEND_STATE )); then
+  if (( _AI_CANDY_CACHE_BACKEND_STATE )); then
     local cached_owner=""
     _ai_candy_cache_read_backend_owner && cached_owner="$REPLY"
-    if [[ "$_CACHE_BACKEND" == "sqlite" && "$cached_owner" == "sqlite" && \
-          -f "$_CACHE_DB_FILE" && ! -L "$_CACHE_DB_FILE" ]]; then
+    if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" && "$cached_owner" == "sqlite" && \
+          -f "$_AI_CANDY_CACHE_DB_FILE" && ! -L "$_AI_CANDY_CACHE_DB_FILE" ]]; then
       return 0
     fi
-    if [[ "$_CACHE_BACKEND" == "file" && "$cached_owner" == "file" ]] && \
+    if [[ "$_AI_CANDY_CACHE_BACKEND" == "file" && "$cached_owner" == "file" ]] && \
        _ai_candy_cache_file_backend_is_safe; then
       return 0
     fi
-    _CACHE_BACKEND_STATE=0
-    _CACHE_BACKEND="none"
+    _AI_CANDY_CACHE_BACKEND_STATE=0
+    _AI_CANDY_CACHE_BACKEND="none"
   fi
 
-  _CACHE_BACKEND_STATE=1
-  _CACHE_BACKEND="none"
-  _CACHE_BACKEND_RETRY_AFTER=$(( \
-    ${EPOCHREALTIME:-${EPOCHSECONDS:-0}} + _CACHE_BACKEND_RETRY_DELAY ))
-  (( _CACHE_READY )) || return 1
+  _AI_CANDY_CACHE_BACKEND_STATE=1
+  _AI_CANDY_CACHE_BACKEND="none"
+  _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=$(( \
+    ${EPOCHREALTIME:-${EPOCHSECONDS:-0}} + _AI_CANDY_CACHE_BACKEND_RETRY_DELAY ))
+  (( _AI_CANDY_CACHE_READY )) || return 1
 
   local owner=""
-  if [[ -e "$_CACHE_BACKEND_OWNER_FILE" || -L "$_CACHE_BACKEND_OWNER_FILE" ]]; then
+  if [[ -e "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" || -L "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" ]]; then
     _ai_candy_cache_read_backend_owner || return 1
     owner="$REPLY"
   else
-    if [[ -e "$_CACHE_DB_FILE" || -L "$_CACHE_DB_FILE" ]]; then
+    if [[ -e "$_AI_CANDY_CACHE_DB_FILE" || -L "$_AI_CANDY_CACHE_DB_FILE" ]]; then
       owner="sqlite"
     elif _ai_candy_cache_file_backend_artifact_exists; then
       owner="file"
-    elif (( _HAS_SQLITE3 )); then
+    elif (( _AI_CANDY_HAS_SQLITE3 )); then
       owner="sqlite"
     else
       owner="file"
     fi
 
-    [[ "$owner" != "sqlite" || ! -L "$_CACHE_DB_FILE" ]] || return 1
+    [[ "$owner" != "sqlite" || ! -L "$_AI_CANDY_CACHE_DB_FILE" ]] || return 1
     [[ "$owner" != "file" ]] || _ai_candy_cache_file_backend_is_safe || return 1
-    _ai_candy_cache_atomic_write_unlocked "$_CACHE_BACKEND_OWNER_FILE" "$owner" || return 1
+    _ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" "$owner" || return 1
   fi
 
   if [[ "$owner" == "sqlite" ]]; then
-    (( _HAS_SQLITE3 )) || return 1
-    [[ ! -L "$_CACHE_DB_FILE" && \
-       ( ! -e "$_CACHE_DB_FILE" || -f "$_CACHE_DB_FILE" ) ]] || return 1
-    if ! ( umask 077 && _ai_candy_run_with_timeout "$_CACHE_IO_TIMEOUT" \
-          sqlite3 -batch -cmd '.timeout 500' "$_CACHE_DB_FILE" \
+    (( _AI_CANDY_HAS_SQLITE3 )) || return 1
+    [[ ! -L "$_AI_CANDY_CACHE_DB_FILE" && \
+       ( ! -e "$_AI_CANDY_CACHE_DB_FILE" || -f "$_AI_CANDY_CACHE_DB_FILE" ) ]] || return 1
+    if ! ( umask 077 && _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+          sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
           'PRAGMA journal_mode=WAL;
            CREATE TABLE IF NOT EXISTS cache (
              key TEXT PRIMARY KEY,
@@ -2955,28 +3129,28 @@ function _ai_candy_cache_backend_init_unlocked() {
           &>/dev/null ); then
       return 1
     fi
-    _CACHE_BACKEND="sqlite"
-    _CACHE_BACKEND_RETRY_AFTER=0
-    _ai_candy_chmod 600 "$_CACHE_DB_FILE" 2>/dev/null
+    _AI_CANDY_CACHE_BACKEND="sqlite"
+    _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=0
+    _ai_candy_chmod 600 "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null
     return 0
   fi
 
   _ai_candy_cache_file_backend_is_safe || return 1
-  _CACHE_BACKEND="file"
-  _CACHE_BACKEND_RETRY_AFTER=0
+  _AI_CANDY_CACHE_BACKEND="file"
+  _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=0
   return 0
 }
 
 function _ai_candy_cache_backend_init() {
-  local _CACHE_FORCE_BACKEND_RETRY=1
+  local _AI_CANDY_CACHE_FORCE_BACKEND_RETRY=1
   local init_status=0
 
-  _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS" || return 1
+  _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" || return 1
   {
     _ai_candy_cache_backend_init_unlocked || init_status=$?
   } always {
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
   }
   return "$init_status"
 }
@@ -2996,7 +3170,7 @@ function _ai_candy_cache_persist_read_unlocked() {
   local operation_epoch=""
   local -a operation_fields operation_token_fields
   if _ai_candy_cache_get_line_by_prefix \
-       "$_CACHE_OPERATION_FILE" "$operation_prefix" operation; then
+       "$_AI_CANDY_CACHE_OPERATION_FILE" "$operation_prefix" operation; then
     operation_fields=("${(@s:|:)REPLY}")
     operation_token_fields=("${(@s.:.)operation_fields[2]}")
     _ai_candy_cache_read_persistence_epoch || return 1
@@ -3009,16 +3183,16 @@ function _ai_candy_cache_persist_read_unlocked() {
   fi
   _ai_candy_cache_backend_init_unlocked || return 1
 
-  if [[ "$_CACHE_BACKEND" == "sqlite" ]]; then
-    raw_output=$(_ai_candy_run_with_timeout "$_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -noheader -cmd '.timeout 500' "$_CACHE_DB_FILE" \
+  if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
+    raw_output=$(_ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+      sqlite3 -batch -noheader -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
       "SELECT hex(value) || '|' || timestamp FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT) LIMIT 1;" \
       2>/dev/null) || return 1
     [[ -n "$raw_output" ]] || return 1
     hex_value="${raw_output%%|*}"
     timestamp="${raw_output#*|}"
   else
-    local cache_file="${_CACHE_DIR}/${cache_name}_cache"
+    local cache_file="${_AI_CANDY_CACHE_DIR}/${cache_name}_cache"
     prefix="${hex_key}|"
     _ai_candy_cache_get_line_by_prefix \
       "$cache_file" "$prefix" persistent || return 1
@@ -3029,12 +3203,15 @@ function _ai_candy_cache_persist_read_unlocked() {
   fi
 
   _ai_candy_cache_timestamp_is_valid "$timestamp" || return 1
+  _ai_candy_cache_value_limit_bytes
+  (( ${#hex_value} <= REPLY * 2 )) || return 1
   _ai_candy_hex_decode "$hex_value" || return 1
   REPLY="${REPLY}|${timestamp}"
   return 0
 }
 
 function _ai_candy_cache_persist_write_unlocked() {
+  local LC_ALL=C
   local cache_name="$1"
   local key="$2"
   local value="$3"
@@ -3045,6 +3222,7 @@ function _ai_candy_cache_persist_write_unlocked() {
 
   _ai_candy_cache_timestamp_field_is_valid "$timestamp" || return 1
   _ai_candy_cache_timestamp_field_is_valid "$current_time" || return 1
+  _ai_candy_cache_value_is_within_limit "$value" || return 1
   (( timestamp > current_time )) && timestamp="$current_time"
   _ai_candy_cache_backend_init_unlocked || return 1
   _ai_candy_hex_encode "$namespaced_key"
@@ -3052,15 +3230,15 @@ function _ai_candy_cache_persist_write_unlocked() {
   _ai_candy_hex_encode "$value"
   hex_value="$REPLY"
 
-  if [[ "$_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_CACHE_DB_FILE" \
+  if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
+    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
       "INSERT OR REPLACE INTO cache (key, value, timestamp)
        VALUES (CAST(X'${hex_key}' AS TEXT), CAST(X'${hex_value}' AS TEXT), ${timestamp})
        ;" \
       &>/dev/null
   else
-    local cache_file="${_CACHE_DIR}/${cache_name}_cache"
+    local cache_file="${_AI_CANDY_CACHE_DIR}/${cache_name}_cache"
     local prefix="${hex_key}|"
     _ai_candy_cache_update_line_by_prefix "$cache_file" "$prefix" "${hex_key}|${hex_value}|${timestamp}"
   fi
@@ -3075,19 +3253,19 @@ function _ai_candy_cache_persist_delete_unlocked() {
   _ai_candy_hex_encode "$namespaced_key"
   local hex_key="$REPLY"
 
-  if [[ "$_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_CACHE_DB_FILE" \
+  if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
+    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
       "DELETE FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT);" \
       &>/dev/null
   else
-    local cache_file="${_CACHE_DIR}/${cache_name}_cache"
+    local cache_file="${_AI_CANDY_CACHE_DIR}/${cache_name}_cache"
     _ai_candy_cache_remove_line_by_prefix "$cache_file" "${hex_key}|"
   fi
 }
 
 function _ai_candy_cache_persist_write() {
-  local _CACHE_FORCE_BACKEND_RETRY=1
+  local _AI_CANDY_CACHE_FORCE_BACKEND_RETRY=1
   local cache_name="$1"
   local key="$2"
   local value="$3"
@@ -3095,8 +3273,8 @@ function _ai_candy_cache_persist_write() {
   local expected_epoch="${5:-}"
   local write_status=0
 
-  _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS" || return 1
+  _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" || return 1
   {
     if [[ -n "$expected_epoch" ]] && \
        ! _ai_candy_cache_persistence_epoch_matches "$expected_epoch"; then
@@ -3106,7 +3284,7 @@ function _ai_candy_cache_persist_write() {
         "$timestamp" || write_status=$?
     fi
   } always {
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
   }
   return "$write_status"
 }
@@ -3116,42 +3294,42 @@ function _ai_candy_cache_persist_read_with_waits() {
   local commit_wait_ticks="$2"
   shift 2
   local read_status=0
-  local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
 
   _ai_candy_cache_lock_acquire "$operation_lock" 300 "$operation_wait_ticks" || return 1
-  if ! _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$commit_wait_ticks"; then
+  if ! _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$commit_wait_ticks"; then
     _ai_candy_cache_lock_release "$operation_lock"
     return 1
   fi
   {
     _ai_candy_cache_persist_read_unlocked "$@" || read_status=$?
   } always {
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
     _ai_candy_cache_lock_release "$operation_lock"
   }
   return "$read_status"
 }
 
 function _ai_candy_cache_persist_read() {
-  local _CACHE_FORCE_BACKEND_RETRY=1
-  _ai_candy_cache_persist_read_with_waits "$_CACHE_OPERATION_WAIT_TICKS" \
-    "$_CACHE_COMMIT_WAIT_TICKS" "$@"
+  local _AI_CANDY_CACHE_FORCE_BACKEND_RETRY=1
+  _ai_candy_cache_persist_read_with_waits "$_AI_CANDY_CACHE_OPERATION_WAIT_TICKS" \
+    "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$@"
 }
 
 function _ai_candy_cache_get() {
-  local _CACHE_IO_TIMEOUT="${_CACHE_PROMPT_IO_TIMEOUT:-0.05}"
+  local _AI_CANDY_CACHE_IO_TIMEOUT="${_AI_CANDY_CACHE_PROMPT_IO_TIMEOUT:-0.05}"
   local tombstone_key="$1:$2"
-  local tombstone_time="${_MEM_CACHE_TOMBSTONES[$tombstone_key]-}"
+  local tombstone_time="${_AI_CANDY_MEM_CACHE_TOMBSTONES[$tombstone_key]-}"
 
   if [[ -n "$tombstone_time" ]]; then
     if _ai_candy_cache_timestamp_is_fresh "$tombstone_time" \
-      "${_CACHE_TTL_MEDIUM:-300}"; then
+      "${_AI_CANDY_CACHE_TTL_MEDIUM:-300}"; then
       return 1
     fi
     _ai_candy_mem_cache_remove_key tombstone "$tombstone_key"
   fi
-  if (( ! _CACHE_BACKEND_STATE )) && ! _ai_candy_cache_persistent_artifact_exists; then
+  if (( ! _AI_CANDY_CACHE_BACKEND_STATE )) && ! _ai_candy_cache_persistent_artifact_exists; then
     return 1
   fi
   _ai_candy_cache_persist_read_with_waits 0 0 "$1" "$2"
@@ -3165,17 +3343,17 @@ function _ai_candy_cache_set() {
   local memory_key="${5:-$key}"
   local tombstone_key="${cache_name}:${key}"
 
-  [[ -n "${_MEM_CACHE_TOMBSTONES[$tombstone_key]-}" ]] && \
+  [[ -n "${_AI_CANDY_MEM_CACHE_TOMBSTONES[$tombstone_key]-}" ]] && \
     _ai_candy_mem_cache_remove_key tombstone "$tombstone_key"
 
   case "$cache_name" in
-    git_root) _MEM_CACHE_GIT_ROOT[$memory_key]="${value}|${timestamp}" ;;
-    git_hierarchy) _MEM_CACHE_GIT_HIERARCHY[$memory_key]="${value}|${timestamp}" ;;
-    gh_pr) _MEM_CACHE_GH_PR[$memory_key]="${value}|${timestamp}" ;;
+    git_root) _AI_CANDY_MEM_CACHE_GIT_ROOT[$memory_key]="${value}|${timestamp}" ;;
+    git_hierarchy) _AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$memory_key]="${value}|${timestamp}" ;;
+    gh_pr) _AI_CANDY_MEM_CACHE_GH_PR[$memory_key]="${value}|${timestamp}" ;;
   esac
 
-  [[ "${_CACHE_SCHEDULE_PERSISTENCE:-1}" == 1 ]] || return 0
-  (( _CACHE_READY )) || return 0
+  [[ "${_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE:-1}" == 1 ]] || return 0
+  (( _AI_CANDY_CACHE_READY )) || return 0
   _ai_candy_cache_schedule_operation set "$cache_name" "$key" "$value" "$timestamp" || true
   return 0
 }
@@ -3185,15 +3363,15 @@ function _ai_candy_cache_delete_key() {
   local key="$2"
   local tombstone_key="${cache_name}:${key}"
 
-  _MEM_CACHE_TOMBSTONES[$tombstone_key]="${EPOCHSECONDS:-0}"
-  (( ${#_MEM_CACHE_TOMBSTONES} > _MEM_CACHE_CLEANUP_THRESHOLD )) && \
+  _AI_CANDY_MEM_CACHE_TOMBSTONES[$tombstone_key]="${EPOCHSECONDS:-0}"
+  (( ${#_AI_CANDY_MEM_CACHE_TOMBSTONES} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
     _ai_candy_mem_cache_cleanup tombstone
 
   case "$cache_name" in
     git_root|git_hierarchy|gh_pr) _ai_candy_mem_cache_remove_key "$cache_name" "$key" ;;
   esac
-  [[ "${_CACHE_SCHEDULE_PERSISTENCE:-1}" == 1 ]] || return 0
-  (( _CACHE_READY )) || return 0
+  [[ "${_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE:-1}" == 1 ]] || return 0
+  (( _AI_CANDY_CACHE_READY )) || return 0
   _ai_candy_cache_schedule_operation delete "$cache_name" "$key" "" \
     "${EPOCHSECONDS:-0}" || true
   return 0
@@ -3203,10 +3381,10 @@ function _ai_candy_cache_delete_key() {
 # BOUNDED CLEANUP
 # ============================================================================
 
-typeset -g _CACHE_CLEANUP_INTERVAL=100
-typeset -g _CACHE_MAX_AGE=$((7 * 24 * 3600))
-typeset -g _FILE_CACHE_MAX_LINES=500
-typeset -g _CACHE_CLEANUP_LAST_RUN=0
+typeset -g _AI_CANDY_CACHE_CLEANUP_INTERVAL=100
+typeset -g _AI_CANDY_CACHE_MAX_AGE=$((7 * 24 * 3600))
+typeset -g _AI_CANDY_FILE_CACHE_MAX_LINES=500
+typeset -g _AI_CANDY_CACHE_CLEANUP_LAST_RUN=0
 
 function _ai_candy_file_cache_prune_unlocked() {
   emulate -L zsh
@@ -3215,7 +3393,7 @@ function _ai_candy_file_cache_prune_unlocked() {
   local record_kind="${3:-persistent}"
   local -a lines kept_reverse kept
   local line timestamp content
-  integer index count=0 max_lines=${_FILE_CACHE_MAX_LINES:-500} read_status=0
+  integer index count=0 max_lines=${_AI_CANDY_FILE_CACHE_MAX_LINES:-500} read_status=0
 
   [[ -e "$cache_file" || -L "$cache_file" ]] || return 0
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
@@ -3267,29 +3445,29 @@ function _ai_candy_file_cache_prune() {
 }
 
 function _ai_candy_cache_cleanup_unlocked() {
-  (( _CACHE_READY )) || return 0
-  local max_age="${1:-$_CACHE_MAX_AGE}"
+  (( _AI_CANDY_CACHE_READY )) || return 0
+  local max_age="${1:-$_AI_CANDY_CACHE_MAX_AGE}"
   local current_time=$EPOCHSECONDS
   local cutoff=$(( current_time - max_age ))
   local cache_file
   local -a simple_cache_files
 
-  if [[ "$_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_CACHE_DB_FILE" \
+  if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
+    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
       "DELETE FROM cache WHERE timestamp < ${cutoff} OR timestamp > ${current_time};" &>/dev/null
   fi
 
   simple_cache_files=(
-    "$_SYSINFO_CACHE_FILE"
-    "$_CLAUDE_CACHE_FILE"
-    "$_CODEX_CACHE_FILE"
-    "$_GEMINI_CACHE_FILE"
-    "$_KIMI_CACHE_FILE"
-    "$_GH_AUTH_CACHE_FILE"
-    "$_GH_USERNAME_GH_CACHE_FILE"
-    "$_GH_USERNAME_SSH_CACHE_FILE"
-    "$_PUBLIC_IP_CACHE_FILE"
+    "$_AI_CANDY_SYSINFO_CACHE_FILE"
+    "$_AI_CANDY_CLAUDE_CACHE_FILE"
+    "$_AI_CANDY_CODEX_CACHE_FILE"
+    "$_AI_CANDY_GEMINI_CACHE_FILE"
+    "$_AI_CANDY_KIMI_CACHE_FILE"
+    "$_AI_CANDY_GH_AUTH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"
+    "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
   )
   for cache_file in "${simple_cache_files[@]}"; do
     [[ -f "$cache_file" ]] || continue
@@ -3299,29 +3477,29 @@ function _ai_candy_cache_cleanup_unlocked() {
     fi
   done
 
-  _ai_candy_file_cache_prune "${_CACHE_DIR}/git_root_cache" "$cutoff"
-  _ai_candy_file_cache_prune "${_CACHE_DIR}/git_hierarchy_cache" "$cutoff"
-  _ai_candy_file_cache_prune "${_CACHE_DIR}/gh_pr_cache" "$cutoff"
+  _ai_candy_file_cache_prune "${_AI_CANDY_CACHE_DIR}/git_root_cache" "$cutoff"
+  _ai_candy_file_cache_prune "${_AI_CANDY_CACHE_DIR}/git_hierarchy_cache" "$cutoff"
+  _ai_candy_file_cache_prune "${_AI_CANDY_CACHE_DIR}/gh_pr_cache" "$cutoff"
   _ai_candy_file_cache_prune_unlocked \
-    "$_CACHE_OPERATION_FILE" "$cutoff" operation
+    "$_AI_CANDY_CACHE_OPERATION_FILE" "$cutoff" operation
 
 }
 
 function _ai_candy_cache_cleanup() {
   local cleanup_status=0
-  local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
 
-  (( _CACHE_READY )) || return 0
+  (( _AI_CANDY_CACHE_READY )) || return 0
   _ai_candy_cache_lock_acquire "$operation_lock" 300 100 || return 1
-  if ! _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-    "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS"; then
+  if ! _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+    "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS"; then
     _ai_candy_cache_lock_release "$operation_lock"
     return 1
   fi
   {
     _ai_candy_cache_cleanup_unlocked "$@" || cleanup_status=$?
   } always {
-    _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+    _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
     _ai_candy_cache_lock_release "$operation_lock"
   }
   return "$cleanup_status"
@@ -3331,9 +3509,9 @@ function _ai_candy_periodic_cache_cleanup() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
 
-  local current_id="${_PROMPT_RENDER_ID:-0}"
-  (( current_id - _CACHE_CLEANUP_LAST_RUN >= _CACHE_CLEANUP_INTERVAL )) || return 0
-  _CACHE_CLEANUP_LAST_RUN="$current_id"
+  local current_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
+  (( current_id - _AI_CANDY_CACHE_CLEANUP_LAST_RUN >= _AI_CANDY_CACHE_CLEANUP_INTERVAL )) || return 0
+  _AI_CANDY_CACHE_CLEANUP_LAST_RUN="$current_id"
   _ai_candy_start_registered_background_worker _ai_candy_cache_cleanup || true
   return 0
 }
@@ -3344,29 +3522,29 @@ function _ai_candy_periodic_cache_cleanup() {
 # Acquire a background lock using atomic mkdir to prevent TOCTOU race conditions
 # Returns 0 if lock acquired, 1 if already locked (another process is running)
 # Args: $1=lock_name (base path, will use .d suffix for directory lock)
-# Args: $2=timeout (optional, defaults to _NETWORK_TIMEOUT)
+# Args: $2=timeout (optional, defaults to _AI_CANDY_NETWORK_TIMEOUT)
 # SECURITY: Uses mkdir which is atomic on POSIX systems, preventing race conditions
 function _ai_candy_acquire_background_lock() {
-  (( _CACHE_READY )) || return 1
+  (( _AI_CANDY_CACHE_READY )) || return 1
 
   local lock_name="$1"
-  local timeout="${2:-${_NETWORK_TIMEOUT:-5}}"
+  local timeout="${2:-${_AI_CANDY_NETWORK_TIMEOUT:-5}}"
   local lock_dir="${lock_name}.d"
-  local commit_wait_seconds=$(( (_CACHE_COMMIT_WAIT_TICKS + 99) / 100 ))
-  local stale_after=$(( timeout + commit_wait_seconds + _CACHE_COMMIT_STALE_AFTER ))
+  local commit_wait_seconds=$(( (_AI_CANDY_CACHE_COMMIT_WAIT_TICKS + 99) / 100 ))
+  local stale_after=$(( timeout + commit_wait_seconds + _AI_CANDY_CACHE_COMMIT_STALE_AFTER ))
   _ai_candy_cache_lock_acquire "$lock_dir" "$stale_after" 0
 }
 
 # Emoji mode toggle (1 = emoji-rich, 0 = plaintext)
 # Persisted to file so it survives shell restarts
-# (_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
+# (_AI_CANDY_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
 
 function _ai_candy_load_boolean_setting() {
   local setting_file="$1"
   local default_value="$2"
   local value=""
 
-  if (( _CACHE_READY )) && _ai_candy_cache_read_small_file "$setting_file"; then
+  if (( _AI_CANDY_CACHE_READY )) && _ai_candy_cache_read_small_file "$setting_file"; then
     value="$REPLY"
   fi
 
@@ -3378,57 +3556,31 @@ function _ai_candy_persist_boolean_setting() {
   _ai_candy_cache_write "$1" "$2" || true
 }
 
-# Load emoji mode from file or default to 1 (emoji-rich)
-_ai_candy_load_boolean_setting "$_EMOJI_MODE_FILE" 1
-typeset -g _PROMPT_EMOJI_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_EMOJI_MODE="$REPLY"
 
-# Path separator mode toggle (0 = '/', 1 = ' ' space)
-# Space mode allows double-click selection of path segments in terminal
-# Persisted to file so it survives shell restarts
-# (_PATH_SEP_MODE_FILE defined in CACHE FILE PATHS section)
+_ai_candy_load_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_PATH_SEP_MODE="$REPLY"
 
-# Load path separator mode from file or default to 1 (space mode)
-_ai_candy_load_boolean_setting "$_PATH_SEP_MODE_FILE" 1
-typeset -g _PROMPT_PATH_SEP_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_NETWORK_MODE="$REPLY"
 
-# Network mode toggle (1 = enabled, 0 = disabled)
-# Controls public IP, GitHub identity/PR, and tool update checks.
-# When disabled, network features are hidden AND underlying network calls are skipped
-# Persisted to file so it survives shell restarts
-# (_NETWORK_MODE_FILE defined in CACHE FILE PATHS section)
+_ai_candy_load_boolean_setting "$_AI_CANDY_AI_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_AI_MODE="$REPLY"
 
-# Load network mode from file or default to 1 (network enabled)
-_ai_candy_load_boolean_setting "$_NETWORK_MODE_FILE" 1
-typeset -g _PROMPT_NETWORK_MODE="$REPLY"
-
-# Optional-tool display mode toggle (1 = show, 0 = hide)
-# Controls whether the tool section is displayed in the prompt.
-# Persisted to file so it survives shell restarts
-# (_AI_MODE_FILE defined in CACHE FILE PATHS section)
-
-# Load tool display mode from file or default to 1 (show).
-_ai_candy_load_boolean_setting "$_AI_MODE_FILE" 1
-typeset -g _PROMPT_AI_MODE="$REPLY"
-
-# OS/kernel display mode toggle (1 = show, 0 = hide)
-# Controls whether OS and kernel info is displayed in prompt
-# Persisted to file so it survives shell restarts
-# (_OS_MODE_FILE defined in CACHE FILE PATHS section)
-
-# Load OS mode from file or default to 1 (show)
-_ai_candy_load_boolean_setting "$_OS_MODE_FILE" 1
-typeset -g _PROMPT_OS_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_OS_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_OS_MODE="$REPLY"
 
 # Toggle emoji mode
 function _ai_candy_prompt_toggle_emoji() {
   emulate -L zsh
-  if (( _PROMPT_EMOJI_MODE )); then
-    _PROMPT_EMOJI_MODE=0
-    _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _AI_CANDY_PROMPT_EMOJI_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "0"
     builtin print -r -- "Switched to plaintext mode"
   else
-    _PROMPT_EMOJI_MODE=1
-    _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_EMOJI_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "1"
     builtin print -r -- "Switched to emoji mode"
   fi
 }
@@ -3437,10 +3589,10 @@ function _ai_candy_prompt_toggle_emoji() {
 # Note: Space mode is disabled when current path contains spaces (would cause ambiguity)
 function _ai_candy_prompt_toggle_path_sep() {
   emulate -L zsh
-  if (( _PROMPT_PATH_SEP_MODE )); then
+  if (( _AI_CANDY_PROMPT_PATH_SEP_MODE )); then
     # Currently in space mode, switch to slash mode (always allowed)
-    _PROMPT_PATH_SEP_MODE=0
-    _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "0"
+    _AI_CANDY_PROMPT_PATH_SEP_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "0"
     builtin print -r -- "Slash mode: [repo/root/submodule/path/in/submodule]"
   else
     # Currently in slash mode, try to switch to space mode
@@ -3452,8 +3604,8 @@ function _ai_candy_prompt_toggle_path_sep() {
       builtin print -r -- "Space mode would cause ambiguity with space-containing directory names."
       return 1
     fi
-    _PROMPT_PATH_SEP_MODE=1
-    _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_PATH_SEP_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "1"
     builtin print -r -- "Space mode: [repo/root submodule path/in/submodule]"
   fi
 }
@@ -3463,14 +3615,14 @@ function _ai_candy_prompt_toggle_path_sep() {
 # Affected features: public IP, GitHub identity/PR, and tool update checks.
 function _ai_candy_prompt_toggle_network() {
   emulate -L zsh
-  if (( _PROMPT_NETWORK_MODE )); then
-    _PROMPT_NETWORK_MODE=0
-    _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PROMPT_NETWORK_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "0"
     builtin print -r -- "Network mode: OFF"
     builtin print -r -- "Disabled: public IP, GitHub username/PR status, AI update checks"
   else
-    _PROMPT_NETWORK_MODE=1
-    _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_NETWORK_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "1"
     builtin print -r -- "Network mode: ON"
     builtin print -r -- "Enabled: public IP, GitHub username/PR status, AI update checks"
   fi
@@ -3479,13 +3631,13 @@ function _ai_candy_prompt_toggle_network() {
 # Toggle optional-tool display mode.
 function _ai_candy_prompt_toggle_ai() {
   emulate -L zsh
-  if (( _PROMPT_AI_MODE )); then
-    _PROMPT_AI_MODE=0
-    _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_AI_MODE )); then
+    _AI_CANDY_PROMPT_AI_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "0"
     builtin print -r -- "AI tools display: OFF"
   else
-    _PROMPT_AI_MODE=1
-    _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_AI_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "1"
     builtin print -r -- "AI tools display: ON"
   fi
 }
@@ -3493,13 +3645,13 @@ function _ai_candy_prompt_toggle_ai() {
 # Toggle OS/kernel display mode (show/hide)
 function _ai_candy_prompt_toggle_os() {
   emulate -L zsh
-  if (( _PROMPT_OS_MODE )); then
-    _PROMPT_OS_MODE=0
-    _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
+    _AI_CANDY_PROMPT_OS_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "0"
     builtin print -r -- "OS/kernel display: OFF"
   else
-    _PROMPT_OS_MODE=1
-    _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_OS_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "1"
     builtin print -r -- "OS/kernel display: ON"
   fi
 }
@@ -3508,24 +3660,24 @@ function _ai_candy_prompt_toggle_os() {
 function _ai_candy_prompt_all_off() {
   emulate -L zsh
   # 1. Plaintext mode (e)
-  _PROMPT_EMOJI_MODE=0
-  _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_EMOJI_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "0"
 
   # 2. Slash separator (p)
-  _PROMPT_PATH_SEP_MODE=0
-  _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_PATH_SEP_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "0"
 
   # 3. Network disabled (n)
-  _PROMPT_NETWORK_MODE=0
-  _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_NETWORK_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "0"
 
   # 4. Optional tools hidden (a)
-  _PROMPT_AI_MODE=0
-  _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_AI_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "0"
 
   # 5. OS hidden (o)
-  _PROMPT_OS_MODE=0
-  _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_OS_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "0"
 
   builtin print -r -- "All toggles turned OFF:"
   builtin print -r -- "  - Emoji mode: OFF (Plaintext)"
@@ -3539,25 +3691,25 @@ function _ai_candy_prompt_all_off() {
 function _ai_candy_prompt_all_on() {
   emulate -L zsh
   # 1. Emoji mode (e)
-  _PROMPT_EMOJI_MODE=1
-  _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_EMOJI_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "1"
 
   # 2. Space separator (p)
   # The variable sets the preference, the render logic handles the fallback if path has spaces
-  _PROMPT_PATH_SEP_MODE=1
-  _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_PATH_SEP_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "1"
 
   # 3. Network enabled (n)
-  _PROMPT_NETWORK_MODE=1
-  _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_NETWORK_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "1"
 
   # 4. Optional tools visible (a)
-  _PROMPT_AI_MODE=1
-  _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_AI_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "1"
 
   # 5. OS visible (o)
-  _PROMPT_OS_MODE=1
-  _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_OS_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "1"
 
   builtin print -r -- "All toggles turned ON:"
   builtin print -r -- "  - Emoji mode: ON"
@@ -3573,97 +3725,97 @@ function _ai_candy_prompt_emoji_help() {
   local border=""
   integer border_index
   for border_index in {1..66}; do
-    border+="$_BOX_H"
+    border+="$_AI_CANDY_BOX_H"
   done
-  local TOP="${_BOX_TL}${border}${_BOX_TR}"
-  local MID="${_BOX_ML}${border}${_BOX_MR}"
-  local BOT="${_BOX_BL}${border}${_BOX_BR}"
+  local TOP="${_AI_CANDY_BOX_TL}${border}${_AI_CANDY_BOX_TR}"
+  local MID="${_AI_CANDY_BOX_ML}${border}${_AI_CANDY_BOX_MR}"
+  local BOT="${_AI_CANDY_BOX_BL}${border}${_AI_CANDY_BOX_BR}"
 
   builtin print -r -- ""
   builtin print -r -- "$TOP"
-  builtin print -r -- "${_BOX_V}              ZSH Prompt Emoji/Symbol Reference                   ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}              ZSH Prompt Emoji/Symbol Reference                   ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  COMMAND STATUS                                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [${_SYM_CHECK}] / [OK]    Last command succeeded (exit code 0)            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [${_SYM_CROSS}N] / [ERRN] Last command failed with exit code N            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: [${_SYM_CROSS}127] means 'command not found'                     ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  COMMAND STATUS                                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [${_AI_CANDY_SYM_CHECK}] / [OK]    Last command succeeded (exit code 0)            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [${_AI_CANDY_SYM_CROSS}N] / [ERRN] Last command failed with exit code N            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: [${_AI_CANDY_SYM_CROSS}127] means 'command not found'                     ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  CONNECTION & ENVIRONMENT                                        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_SSH}/ [SSH] Connected via SSH                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_CONTAINER} / C     Running inside a container                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_TTY} / T     TTY session                                         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GNOME}/ G     GNOME desktop                                       ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_KDE} / K     KDE Plasma desktop                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_XFCE} / X     XFCE desktop                                        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_XORG} / O     Xorg session (generic X11)                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_HOST} / H     Other host environment                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    (x.x.x.x)  Public IP address (green=online, red=offline)      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}               ${_SYM_WARNING} Privacy: IP is sent to external services         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}               Use 'n' to disable network features if concerned   ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  CONNECTION & ENVIRONMENT                                        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_SSH}/ [SSH] Connected via SSH                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_CONTAINER} / C     Running inside a container                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_TTY} / T     TTY session                                         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GNOME}/ G     GNOME desktop                                       ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_KDE} / K     KDE Plasma desktop                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_XFCE} / X     XFCE desktop                                        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_XORG} / O     Xorg session (generic X11)                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_HOST} / H     Other host environment                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    (x.x.x.x)  Public IP address (green=online, red=offline)      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}               ${_AI_CANDY_SYM_WARNING} Privacy: IP is sent to external services         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}               Use 'n' to disable network features if concerned   ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GITHUB IDENTITY                                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GITHUB}User /     GitHub username (white bg, black text)           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [Username]   Emoji mode: icon, Plaintext mode: brackets       ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}                 Detected via gh auth (active) & ssh -T github    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GITHUB}A|B /      Mismatch warning (red) - A=gh, B=ssh identity    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [A|B]        Format: gh_user|ssh_user - check your config!    ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GITHUB IDENTITY                                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GITHUB}User /     GitHub username (white bg, black text)           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [Username]   Emoji mode: icon, Plaintext mode: brackets       ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}                 Detected via gh auth (active) & ssh -T github    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GITHUB}A|B /      Mismatch warning (red) - A=gh, B=ssh identity    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [A|B]        Format: gh_user|ssh_user - check your config!    ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GIT STATUS                                                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_UP}N / +N   N commits ahead of upstream (need to push)          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_DOWN}N / -N   N commits behind upstream (need to pull)            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_STASH}N / SN   N stashed changes                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    *         Uncommitted changes in working directory            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: main ${_SYM_UP}2${_SYM_DOWN}1${_SYM_STASH}3 means branch 'main', 2 ahead,            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}             1 behind, 3 stashes                                  ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GIT STATUS                                                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_UP}N / +N   N commits ahead of upstream (need to push)          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_DOWN}N / -N   N commits behind upstream (need to pull)            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_STASH}N / SN   N stashed changes                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    *         Uncommitted changes in working directory            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: main ${_AI_CANDY_SYM_UP}2${_AI_CANDY_SYM_DOWN}1${_AI_CANDY_SYM_STASH}3 means branch 'main', 2 ahead,            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}             1 behind, 3 stashes                                  ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GIT SPECIAL STATES                                              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_BRANCH} / [RB] Rebase in progress (with step/total if interactive) ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_BRANCH} / [MG] Merge in progress                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CHERRY} / [CP] Cherry-pick in progress                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_REWIND} / [RV] Revert in progress                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_SEARCH} / [BI] Bisect in progress                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_PLUG} / [DT] Detached HEAD state                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: ${_SYM_BRANCH}2/5 means interactive rebase at step 2 of 5        ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GIT SPECIAL STATES                                              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_BRANCH} / [RB] Rebase in progress (with step/total if interactive) ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_BRANCH} / [MG] Merge in progress                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CHERRY} / [CP] Cherry-pick in progress                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_REWIND} / [RV] Revert in progress                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_SEARCH} / [BI] Bisect in progress                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_PLUG} / [DT] Detached HEAD state                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: ${_AI_CANDY_SYM_BRANCH}2/5 means interactive rebase at step 2 of 5        ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GITHUB PR STATUS                                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    #N        Pull request number N for current branch            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CHECK} / OK    All CI checks passed                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CROSS} / X     Some CI checks failed                               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_PENDING} / ...   CI checks still running                            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: #42${_SYM_CHECK} means PR #42 with all checks passing            ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GITHUB PR STATUS                                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    #N        Pull request number N for current branch            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CHECK} / OK    All CI checks passed                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CROSS} / X     Some CI checks failed                               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_PENDING} / ...   CI checks still running                            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: #42${_AI_CANDY_SYM_CHECK} means PR #42 with all checks passing            ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  AI CODING TOOLS                                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_CLAUDE / Cl:   Claude Code version                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_CODEX / Cx:   OpenAI Codex version                               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_GEMINI / Gm:   Google Gemini CLI version                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_KIMI / Km:   Moonshot Kimi version                              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    *         Update available (shown after version)              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  AI CODING TOOLS                                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_CLAUDE / Cl:   Claude Code version                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_CODEX / Cx:   OpenAI Codex version                               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_GEMINI / Gm:   Google Gemini CLI version                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_KIMI / Km:   Moonshot Kimi version                              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    *         Update available (shown after version)              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: ${_AI_CANDY_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  SYSTEM INFO (shown in brackets at end of prompt)                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [OS, kernel] shows operating system and kernel version        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_REDHAT} RHEL  ${_NF_UBUNTU} Ubuntu  ${_NF_CENTOS} CentOS  ${_NF_FEDORA} Fedora  ${_NF_ALMA} AlmaLinux  ${_NF_MACOS} macOS    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_APPLE} Darwin kernel    ${_NF_LINUX} Linux kernel                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: [${_NF_REDHAT} 9.5, ${_NF_LINUX}-5.14.0] for RHEL 9.5 on Linux kernel       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  SYSTEM INFO (shown in brackets at end of prompt)                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [OS, kernel] shows operating system and kernel version        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_REDHAT} RHEL  ${_AI_CANDY_NF_UBUNTU} Ubuntu  ${_AI_CANDY_NF_CENTOS} CentOS  ${_AI_CANDY_NF_FEDORA} Fedora  ${_AI_CANDY_NF_ALMA} AlmaLinux  ${_AI_CANDY_NF_MACOS} macOS    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_APPLE} Darwin kernel    ${_AI_CANDY_NF_LINUX} Linux kernel                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: [${_AI_CANDY_NF_REDHAT} 9.5, ${_AI_CANDY_NF_LINUX}-5.14.0] for RHEL 9.5 on Linux kernel       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  OTHER                                                           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_JOBS}N / JN   N background jobs running                           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ..        Path truncated (in narrow terminal)                 ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  OTHER                                                           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_JOBS}N / JN   N background jobs running                           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ..        Path truncated (in narrow terminal)                 ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  PATH DISPLAY (in git repos)                                     ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Space mode: [repo/root submodule relative/path]               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Slash mode: [repo/root/submodule/relative/path]               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Space mode enables double-click to select path segments       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  PATH DISPLAY (in git repos)                                     ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Space mode: [repo/root submodule relative/path]               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Slash mode: [repo/root/submodule/relative/path]               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Space mode enables double-click to select path segments       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  QUICK COMMANDS                                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    u         Refresh all cached prompt info                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    e         Toggle emoji/plaintext mode                         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    p         Toggle path separator (space/slash)                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    n         Toggle network features (IP, GitHub, AI updates)    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    a         Toggle AI tools display (show/hide)                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    h         Show this help                                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    t         Show tool availability status                       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  QUICK COMMANDS                                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    u         Refresh all cached prompt info                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    e         Toggle emoji/plaintext mode                         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    p         Toggle path separator (space/slash)                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    n         Toggle network features (IP, GitHub, AI updates)    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    a         Toggle AI tools display (show/hide)                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    h         Show this help                                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    t         Show tool availability status                       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$BOT"
   builtin print -r -- ""
 }
@@ -3680,7 +3832,7 @@ function _ai_candy_tool_status_line() {
   local visible_length=${#visible}
   local padding=$(( inner - visible_length ))
   (( padding < 0 )) && padding=0
-  builtin printf "${_BOX_V}%s%*s${_BOX_V}\n" "$content" "$padding" ""
+  builtin printf "${_AI_CANDY_BOX_V}%s%*s${_AI_CANDY_BOX_V}\n" "$content" "$padding" ""
 }
 
 function _ai_candy_prompt_tool_status() {
@@ -3692,8 +3844,8 @@ function _ai_candy_prompt_tool_status() {
   local YELLOW=$'\e[33m'
   local CYAN=$'\e[36m'
   local RESET=$'\e[0m'
-  local CHECK="${GREEN}${_SYM_CHECK}${RESET}"
-  local CROSS="${RED}${_SYM_CROSS}${RESET}"
+  local CHECK="${GREEN}${_AI_CANDY_SYM_CHECK}${RESET}"
+  local CROSS="${RED}${_AI_CANDY_SYM_CROSS}${RESET}"
   local WARN="${YELLOW}!${RESET}"
   local QMARK="${YELLOW}?${RESET}"
 
@@ -3702,9 +3854,9 @@ function _ai_candy_prompt_tool_status() {
   local INNER=$((WIDTH - 2))  # Content width between borders
 
   # Border lines
-  local TOP="${_BOX_TL}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_TR}"
-  local MID="${_BOX_ML}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_MR}"
-  local BOT="${_BOX_BL}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_BR}"
+  local TOP="${_AI_CANDY_BOX_TL}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_TR}"
+  local MID="${_AI_CANDY_BOX_ML}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_MR}"
+  local BOT="${_AI_CANDY_BOX_BL}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_BR}"
 
   builtin print -r -- ""
   builtin print -r -- "$TOP"
@@ -3715,35 +3867,35 @@ function _ai_candy_prompt_tool_status() {
 
   # Emoji mode (e)
   local ZWS=$'\xe2\x80\x8b'  # Zero-width space affects string length only.
-  if (( _PROMPT_EMOJI_MODE )); then
-    _ai_candy_tool_status_line "    ${CHECK} e  Emoji mode      [${_SYM_CHECK}] ${_NF_SSH}$_NF_CLAUDE ${_SYM_UP}${_SYM_DOWN} ${_SYM_STASH}"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _ai_candy_tool_status_line "    ${CHECK} e  Emoji mode      [${_AI_CANDY_SYM_CHECK}] ${_AI_CANDY_NF_SSH}$_AI_CANDY_NF_CLAUDE ${_AI_CANDY_SYM_UP}${_AI_CANDY_SYM_DOWN} ${_AI_CANDY_SYM_STASH}"
   else
     _ai_candy_tool_status_line "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
   fi
 
   # Path separator mode (p)
-  if (( _PROMPT_PATH_SEP_MODE )); then
+  if (( _AI_CANDY_PROMPT_PATH_SEP_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} p  Space separator [repo submodule path]"
   else
     _ai_candy_tool_status_line "    ${CROSS} p  Slash separator [repo/submodule/path]"
   fi
 
   # Network mode (n)
-  if (( _PROMPT_NETWORK_MODE )); then
+  if (( _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} n  Network enabled (IP, GitHub, AI updates)"
   else
     _ai_candy_tool_status_line "    ${CROSS} n  Network disabled"
   fi
 
   # Optional-tool display mode (a)
-  if (( _PROMPT_AI_MODE )); then
+  if (( _AI_CANDY_PROMPT_AI_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} a  AI tools display enabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} a  AI tools display hidden"
   fi
 
   # OS/kernel display mode (o)
-  if (( _PROMPT_OS_MODE )); then
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} o  OS/kernel display enabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} o  OS/kernel display hidden"
@@ -3757,7 +3909,7 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_cache_backend_init >/dev/null 2>&1
 
   # sqlite3
-  if (( _HAS_SQLITE3 )); then
+  if (( _AI_CANDY_HAS_SQLITE3 )); then
     _ai_candy_tool_status_line "    ${CHECK} sqlite3     - Persistent cache backend available"
   else
     _ai_candy_tool_status_line "    ${WARN} sqlite3     - Portable file cache active"
@@ -3765,8 +3917,8 @@ function _ai_candy_prompt_tool_status() {
   fi
 
   # timeout/gtimeout
-  if (( _HAS_TIMEOUT )); then
-    _ai_candy_tool_status_line "    ${CHECK} ${_TIMEOUT_CMD:t}     - Command timeout support"
+  if (( _AI_CANDY_HAS_TIMEOUT )); then
+    _ai_candy_tool_status_line "    ${CHECK} ${_AI_CANDY_TIMEOUT_CMD:t}     - Command timeout support"
   else
     _ai_candy_tool_status_line "    ${CROSS} timeout     - Network features DISABLED (gh, PR status)"
     _ai_candy_tool_status_line "                    Install: apt install coreutils"
@@ -3779,16 +3931,16 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_tool_status_line ""
 
   # gh CLI
-  if (( _HAS_GH )); then
+  if (( _AI_CANDY_HAS_GH )); then
     local gh_output=$(_ai_candy_run_local_probe gh --version 2>/dev/null)
     local gh_version=""
     [[ "$gh_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && gh_version="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} gh          - GitHub CLI v${gh_version}"
-    if (( _HAS_TIMEOUT )); then
+    if (( _AI_CANDY_HAS_TIMEOUT )); then
       local auth_status=""
       local current_time=${EPOCHSECONDS}
       # Check cache first
-      if _ai_candy_cache_read_small_file "$_GH_AUTH_CACHE_FILE"; then
+      if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_AUTH_CACHE_FILE"; then
         local auth_data="$REPLY"
         local cached_auth_status="${auth_data%%|*}"
         local cache_time="${auth_data#*|}"
@@ -3800,12 +3952,12 @@ function _ai_candy_prompt_tool_status() {
       fi
       # If no valid cache, check synchronously (user explicitly requested status)
       if [[ -z "$auth_status" ]]; then
-        if _ai_candy_run_with_timeout "${_NETWORK_TIMEOUT:-5}" gh auth status &>/dev/null; then
+        if _ai_candy_run_with_timeout "${_AI_CANDY_NETWORK_TIMEOUT:-5}" gh auth status &>/dev/null; then
           auth_status="1"
-          _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "1|${current_time}"
+          _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "1|${current_time}"
         else
           auth_status="?"
-          _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "?|${current_time}"
+          _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "?|${current_time}"
         fi
       fi
       # Display result
@@ -3825,21 +3977,21 @@ function _ai_candy_prompt_tool_status() {
   fi
 
   # hash command (for PR cache key generation)
-  if (( _HAS_HASH_CMD )); then
-    _ai_candy_tool_status_line "    ${CHECK} ${_HASH_CMD:t}    - Private PR cache keys"
+  if (( _AI_CANDY_HAS_HASH_CMD )); then
+    _ai_candy_tool_status_line "    ${CHECK} ${_AI_CANDY_HASH_CMD:t}    - Private PR cache keys"
   else
     _ai_candy_tool_status_line "    ${WARN} hash        - PR caching disabled (no SHA-256 tool)"
   fi
 
   # ssh
-  if (( _HAS_SSH )); then
+  if (( _AI_CANDY_HAS_SSH )); then
     _ai_candy_tool_status_line "    ${CHECK} ssh         - GitHub SSH identity detection"
   else
     _ai_candy_tool_status_line "    ${CROSS} ssh         - No SSH identity in prompt"
   fi
 
   # curl
-  if (( _HAS_CURL )); then
+  if (( _AI_CANDY_HAS_CURL )); then
     _ai_candy_tool_status_line "    ${CHECK} curl        - AI tool update checks, public IP display"
   else
     _ai_candy_tool_status_line "    ${WARN} curl        - No update notifications for AI tools"
@@ -3850,13 +4002,13 @@ function _ai_candy_prompt_tool_status() {
   builtin print -r -- "$MID"
   _ai_candy_tool_status_line "  ${CYAN}CACHE STATUS${RESET}"
   _ai_candy_tool_status_line ""
-  _ai_candy_sanitize_terminal_text "$_CACHE_DIR"
+  _ai_candy_sanitize_terminal_text "$_AI_CANDY_CACHE_DIR"
   local display_cache_dir="$REPLY"
   _ai_candy_tool_status_line "    Cache directory: ${display_cache_dir}"
 
-  case "$_CACHE_BACKEND" in
+  case "$_AI_CANDY_CACHE_BACKEND" in
     sqlite)
-      local db_info=$(command du -h "$_CACHE_DB_FILE" 2>/dev/null)
+      local db_info=$(command du -h "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null)
       local db_size="${db_info%%[[:space:]]*}"
       _ai_candy_tool_status_line "    Persistent cache: ${CHECK} SQLite (${db_size:-0K})"
       ;;
@@ -3868,7 +4020,7 @@ function _ai_candy_prompt_tool_status() {
       ;;
   esac
 
-  local -a cache_entries=("$_CACHE_DIR"/*(N))
+  local -a cache_entries=("$_AI_CANDY_CACHE_DIR"/*(N))
   local cache_count=${#cache_entries}
   _ai_candy_tool_status_line "    Cache files:    ${cache_count} files"
 
@@ -3877,48 +4029,48 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_tool_status_line "  ${CYAN}AI CODING TOOLS${RESET} (Version display in prompt)"
   _ai_candy_tool_status_line ""
 
-  if (( _HAS_CLAUDE )); then
+  if (( _AI_CANDY_HAS_CLAUDE )); then
     local claude_output=$(_ai_candy_run_background_probe claude --version 2>/dev/null)
     local claude_ver=""
     [[ "$claude_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && claude_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} claude      - Claude Code v${claude_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} claude      - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} claude      - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @anthropic-ai/claude-code"
   fi
 
-  if (( _HAS_CODEX )); then
+  if (( _AI_CANDY_HAS_CODEX )); then
     local codex_output=$(_ai_candy_run_background_probe codex --version 2>/dev/null)
     local codex_ver=""
     [[ "$codex_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && codex_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} codex       - OpenAI Codex v${codex_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} codex       - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} codex       - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @openai/codex"
   fi
 
-  if (( _HAS_GEMINI )); then
+  if (( _AI_CANDY_HAS_GEMINI )); then
     local gemini_output=$(_ai_candy_run_background_probe gemini --version 2>/dev/null)
     local gemini_ver=""
     [[ "$gemini_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && gemini_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} gemini      - Google Gemini v${gemini_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} gemini      - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} gemini      - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @google/gemini-cli"
   fi
 
-  if (( _HAS_KIMI )); then
+  if (( _AI_CANDY_HAS_KIMI )); then
     local kimi_output=$(_ai_candy_run_background_probe kimi --version 2>/dev/null)
     local kimi_ver=""
     [[ "$kimi_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && kimi_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} kimi        - Moonshot Kimi v${kimi_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} kimi        - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} kimi        - Not installed"
@@ -3945,35 +4097,35 @@ function _ai_candy_prompt_refresh_all_caches() {
   local cache_file
   integer refresh_status=0
   local -a derived_cache_files=(
-    "$_CACHE_DB_FILE"
-    "$_CACHE_BACKEND_OWNER_FILE"
-    "$_GIT_TOPOLOGY_GENERATION_FILE"
-    "${_CACHE_DB_FILE}-journal"
-    "${_CACHE_DB_FILE}-shm"
-    "${_CACHE_DB_FILE}-wal"
-    "$_CACHE_OPERATION_FILE"
-    "$_CACHE_OPERATION_SEQUENCE_FILE"
-    "$_SYSINFO_CACHE_FILE"
-    "${_CACHE_DIR}/git_root_cache"
-    "${_CACHE_DIR}/git_hierarchy_cache"
-    "${_CACHE_DIR}/gh_pr_cache"
-    "$_GH_AUTH_CACHE_FILE"
-    "$_GH_USERNAME_GH_CACHE_FILE"
-    "$_GH_USERNAME_SSH_CACHE_FILE"
-    "$_PUBLIC_IP_CACHE_FILE"
-    "$_CLAUDE_CACHE_FILE"
-    "$_CODEX_CACHE_FILE"
-    "$_GEMINI_CACHE_FILE"
-    "$_KIMI_CACHE_FILE"
+    "$_AI_CANDY_CACHE_DB_FILE"
+    "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE"
+    "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE"
+    "${_AI_CANDY_CACHE_DB_FILE}-journal"
+    "${_AI_CANDY_CACHE_DB_FILE}-shm"
+    "${_AI_CANDY_CACHE_DB_FILE}-wal"
+    "$_AI_CANDY_CACHE_OPERATION_FILE"
+    "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE"
+    "$_AI_CANDY_SYSINFO_CACHE_FILE"
+    "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+    "${_AI_CANDY_CACHE_DIR}/git_hierarchy_cache"
+    "${_AI_CANDY_CACHE_DIR}/gh_pr_cache"
+    "$_AI_CANDY_GH_AUTH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"
+    "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
+    "$_AI_CANDY_CLAUDE_CACHE_FILE"
+    "$_AI_CANDY_CODEX_CACHE_FILE"
+    "$_AI_CANDY_GEMINI_CACHE_FILE"
+    "$_AI_CANDY_KIMI_CACHE_FILE"
   )
-  if (( _CACHE_READY )); then
-    local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  if (( _AI_CANDY_CACHE_READY )); then
+    local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
     if ! _ai_candy_cache_lock_acquire "$operation_lock" 300 200; then
       builtin print -u2 -- "ai-candy: cache refresh could not acquire the operation lock"
       return 1
     fi
-    if ! _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-      "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS"; then
+    if ! _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+      "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS"; then
       _ai_candy_cache_lock_release "$operation_lock"
       builtin print -u2 -- "ai-candy: cache refresh could not acquire the commit lock"
       return 1
@@ -3986,7 +4138,7 @@ function _ai_candy_prompt_refresh_all_caches() {
         done
       fi
     } always {
-      _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+      _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
       _ai_candy_cache_lock_release "$operation_lock"
     }
     if (( refresh_status != 0 )); then
@@ -3997,39 +4149,41 @@ function _ai_candy_prompt_refresh_all_caches() {
   fi
 
   # The next persistent access lazily recreates the selected backend.
-  _CACHE_BACKEND_STATE=0
-  _CACHE_BACKEND="none"
+  _AI_CANDY_CACHE_BACKEND_STATE=0
+  _AI_CANDY_CACHE_BACKEND="none"
 
   # Clear memory-based associative array caches
-  _MEM_CACHE_GIT_ROOT=()
-  _MEM_CACHE_GIT_ROOT_GENERATION=()
-  _MEM_CACHE_GIT_HIERARCHY=()
-  _MEM_CACHE_GH_PR=()
-  _MEM_CACHE_TOMBSTONES=()
-  _GIT_REMOTE_KEY_BY_ROOT=()
-  _GIT_OMZ_OPTIONS_BY_ROOT=()
-  _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT=()
+  _AI_CANDY_MEM_CACHE_GIT_ROOT=()
+  _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION=()
+  _AI_CANDY_MEM_CACHE_GIT_HIERARCHY=()
+  _AI_CANDY_MEM_CACHE_GH_PR=()
+  _AI_CANDY_MEM_CACHE_TOMBSTONES=()
+  _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
+  _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
+  _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
 
   # Reset in-memory per-prompt caches
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
-  _PROMPT_GIT_SPECIAL_CACHE=""
-  _PROMPT_GIT_SPECIAL_CACHE_ID=-1
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _SYSINFO_SESSION_READY=0
-  _GH_AUTH_MEM_CACHE=""
-  _GH_AUTH_MEM_CACHE_TIME=0
-  _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-  _AI_PROCESS_SNAPSHOT_TIME=0
-  _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
-  _AI_TOOL_REFRESH_REQUESTED=()
-  _GIT_SNAPSHOT_RENDER_ID=-1
-  _GIT_SNAPSHOT_ROOT=""
-  _SMART_PATH_CONTEXT_KEY=""
-  _SMART_PATH_CONTEXT_TIMESTAMP=0
-  _GIT_TOPOLOGY_GENERATION=0
-  _GIT_TOPOLOGY_GENERATION_VALID=1
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE=""
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_ID=-1
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_CONTEXT=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_SYSINFO_SESSION_READY=0
+  _AI_CANDY_GH_AUTH_MEM_CACHE=""
+  _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=0
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
+  _AI_CANDY_REFRESH_REQUESTED=()
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+  _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
 
   builtin print -r -- "Prompt caches refreshed."
 }
@@ -4057,11 +4211,11 @@ function _ai_candy_install_short_aliases() {
 }
 _ai_candy_install_short_aliases
 
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE=0
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE_PATH=""
-typeset -g _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-typeset -g _PROMPT_GIT_REMOTE_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
+typeset -g _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
 function _ai_candy_prompt_git_command_affects_cached_status() {
   local command_text="$1"
@@ -4109,42 +4263,43 @@ function _ai_candy_prompt_git_command_affects_cached_status() {
 function _ai_candy_prompt_mark_git_cache_invalidation() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
-  local _CACHE_SCHEDULE_PERSISTENCE=0
+  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+  local REPLY=""
 
   local typed_command="$1"
   local expanded_command="${2:-$typed_command}"
   local full_command="${3:-$expanded_command}"
   local command_text="${expanded_command:-${full_command:-$typed_command}}"
 
-  _PROMPT_GIT_CACHE_INVALIDATE=0
-  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-  _PROMPT_GIT_CACHE_INVALIDATE_PATH="$PWD"
-  _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-  _PROMPT_GIT_REMOTE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH="$PWD"
+  _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
   if ! _ai_candy_prompt_git_command_affects_cached_status "$command_text"; then
     return 0
   fi
   local git_subcommand="$REPLY"
 
-  [[ "$git_subcommand" == config ]] && _GIT_OMZ_OPTIONS_BY_ROOT=()
+  [[ "$git_subcommand" == config ]] && _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
 
   [[ "$git_subcommand" == init || "$git_subcommand" == clone || \
      "$git_subcommand" == submodule || "$git_subcommand" == worktree ]] && \
-    _PROMPT_GIT_TOPOLOGY_INVALIDATE=1
+    _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=1
   [[ "$git_subcommand" == remote || "$git_subcommand" == config ]] && \
-    _PROMPT_GIT_REMOTE_INVALIDATE=1
+    _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=1
 
-  _PROMPT_GIT_CACHE_INVALIDATE=1
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=1
 
-  local git_root="${_PP_CACHED_GIT_ROOT:-}"
+  local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-}"
   if [[ -z "$git_root" || "$git_root" == "NOT_GIT" ]]; then
     _ai_candy_get_cached_git_root
     git_root="$REPLY"
   fi
 
   if [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]]; then
-    _PROMPT_GIT_CACHE_INVALIDATE_ROOT="$git_root"
+    _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT="$git_root"
   fi
   return 0
 }
@@ -4152,48 +4307,52 @@ function _ai_candy_prompt_mark_git_cache_invalidation() {
 function _ai_candy_prompt_invalidate_git_status_cache_for_root() {
   local git_root="$1"
   [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
 
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _GIT_SNAPSHOT_RENDER_ID=-1
-  _GIT_SNAPSHOT_ROOT=""
-  _GIT_OMZ_OPTIONS_BY_ROOT[$git_root]=""
-  _ai_candy_mem_cache_remove_key git_snapshot_retry "$git_root"
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+  _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""
+  _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$context_key]=""
+  _ai_candy_mem_cache_remove_key git_snapshot_retry "$context_key"
 }
 
 function _ai_candy_prompt_invalidate_git_remote_cache_for_root() {
-  _GIT_REMOTE_KEY_BY_ROOT=()
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
 }
 
 function _ai_candy_prompt_invalidate_git_topology_for_path() {
   local directory="$1"
 
   _ai_candy_record_git_topology_invalidation "$directory" || true
-  _PP_CACHED_GIT_ROOT=""
-  _SMART_PATH_CONTEXT_KEY=""
-  _SMART_PATH_CONTEXT_TIMESTAMP=0
+  _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
 
 function _ai_candy_prompt_apply_git_cache_invalidation() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
-  (( _PROMPT_GIT_CACHE_INVALIDATE )) || return 0
+  (( _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE )) || return 0
 
-  local git_root="$_PROMPT_GIT_CACHE_INVALIDATE_ROOT"
-  local command_path="$_PROMPT_GIT_CACHE_INVALIDATE_PATH"
-  local invalidate_topology="$_PROMPT_GIT_TOPOLOGY_INVALIDATE"
-  local invalidate_remote="$_PROMPT_GIT_REMOTE_INVALIDATE"
-  _PROMPT_GIT_CACHE_INVALIDATE=0
-  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-  _PROMPT_GIT_CACHE_INVALIDATE_PATH=""
-  _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-  _PROMPT_GIT_REMOTE_INVALIDATE=0
+  local git_root="$_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT"
+  local command_path="$_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH"
+  local invalidate_topology="$_AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE"
+  local invalidate_remote="$_AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE"
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
+  _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
   (( invalidate_topology )) && _ai_candy_prompt_invalidate_git_topology_for_path "$command_path"
   [[ -n "$git_root" ]] && _ai_candy_prompt_invalidate_git_status_cache_for_root "$git_root"
@@ -4203,9 +4362,9 @@ function _ai_candy_prompt_apply_git_cache_invalidation() {
 
 # Capture exit status before any other precmd runs
 # IMPORTANT: Must be FIRST in precmd_functions to capture $? before other hooks modify it
-_LAST_EXIT_STATUS=0
+_AI_CANDY_LAST_EXIT_STATUS=0
 function _ai_candy_capture_exit_status() {
-  _LAST_EXIT_STATUS=$?
+  _AI_CANDY_LAST_EXIT_STATUS=$?
   return 0
 }
 # Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
@@ -4221,20 +4380,24 @@ precmd_functions=(
   ${precmd_functions[@]}
 )
 
-add-zsh-hook -d preexec _ai_candy_prompt_mark_git_cache_invalidation 2>/dev/null || true
-add-zsh-hook -d preexec _ai_candy_preexec_cleanup_for_exec 2>/dev/null || true
+# Per-prompt render id to avoid recomputing expensive segments multiple times
+_AI_CANDY_PROMPT_RENDER_ID=0
+function _ai_candy_prompt_bump_render_id() {
+  emulate -L zsh
+  (( ++_AI_CANDY_PROMPT_RENDER_ID ))
+  return 0
+}
+
+add-zsh-hook -d preexec _ai_candy_prompt_mark_git_cache_invalidation \
+  2>/dev/null || true
+add-zsh-hook -d preexec _ai_candy_preexec_cleanup_for_exec \
+  2>/dev/null || true
+add-zsh-hook -d chpwd _ai_candy_capture_physical_pwd 2>/dev/null || true
+add-zsh-hook chpwd _ai_candy_capture_physical_pwd
 add-zsh-hook preexec _ai_candy_prompt_mark_git_cache_invalidation
 add-zsh-hook preexec _ai_candy_preexec_cleanup_for_exec
 add-zsh-hook zshexit _ai_candy_stop_registered_background_jobs
 _ai_candy_install_signal_traps
-
-# Per-prompt render id to avoid recomputing expensive segments multiple times
-_PROMPT_RENDER_ID=0
-function _ai_candy_prompt_bump_render_id() {
-  emulate -L zsh
-  (( ++_PROMPT_RENDER_ID ))
-  return 0
-}
 add-zsh-hook precmd _ai_candy_prompt_bump_render_id
 # ============================================================================
 # PRECOMPUTED PROMPT PARTS - Computed once in precmd, used in PROMPT
@@ -4243,23 +4406,23 @@ add-zsh-hook precmd _ai_candy_prompt_bump_render_id
 # in PROMPT to avoid creating subshells for each prompt segment
 
 # Precomputed prompt segment variables
-typeset -g _PP_VENV=""           # Python virtual environment indicator
-typeset -g _PP_EXIT=""           # Exit status indicator
-typeset -g _PP_SSH=""            # SSH indicator
-typeset -g _PP_USER_HOST=""      # user@host with color
-typeset -g _PP_PUBLIC_IP=""      # Public IP address (cached)
-typeset -g _PP_GH_USER=""        # GitHub username badge [Username]
-typeset -g _PP_BADGE=""          # Host/container badge
-typeset -g _PP_TIME=""           # Time with dynamic color
-typeset -g _PP_PATH=""           # Smart path display
-typeset -g _PP_GIT_INFO=""       # Git branch/status
-typeset -g _PP_GIT_EXT=""        # Git extended status (ahead/behind/stash)
-typeset -g _PP_GIT_SPECIAL=""    # Git special state (rebase/merge/etc)
-typeset -g _PP_PR=""             # GitHub PR status
-typeset -g _PP_SYSINFO_LEFT=""   # System info (left prompt, long mode only)
-typeset -g _PP_AI_LEFT=""        # Optional tools in long mode
-typeset -g _PP_JOBS=""           # Jobs indicator prefix
-typeset -g _PP_RPROMPT=""        # Right prompt content
+typeset -g _AI_CANDY_PP_VENV=""           # Python virtual environment indicator
+typeset -g _AI_CANDY_PP_EXIT=""           # Exit status indicator
+typeset -g _AI_CANDY_PP_SSH=""            # SSH indicator
+typeset -g _AI_CANDY_PP_USER_HOST=""      # user@host with color
+typeset -g _AI_CANDY_PP_PUBLIC_IP=""      # Public IP address (cached)
+typeset -g _AI_CANDY_PP_GH_USER=""        # GitHub username badge [Username]
+typeset -g _AI_CANDY_PP_BADGE=""          # Host/container badge
+typeset -g _AI_CANDY_PP_TIME=""           # Time with dynamic color
+typeset -g _AI_CANDY_PP_PATH=""           # Smart path display
+typeset -g _AI_CANDY_PP_GIT_INFO=""       # Git branch/status
+typeset -g _AI_CANDY_PP_GIT_EXT=""        # Git extended status (ahead/behind/stash)
+typeset -g _AI_CANDY_PP_GIT_SPECIAL=""    # Git special state (rebase/merge/etc)
+typeset -g _AI_CANDY_PP_PR=""             # GitHub PR status
+typeset -g _AI_CANDY_PP_SYSINFO_LEFT=""   # System info (left prompt, long mode only)
+typeset -g _AI_CANDY_PP_AI_LEFT=""        # Optional tools in long mode
+typeset -g _AI_CANDY_PP_JOBS=""           # Jobs indicator prefix
+typeset -g _AI_CANDY_PP_RPROMPT=""        # Right prompt content
 
 # Precompute all prompt segments in precmd (avoids subshells in PROMPT)
 # ============================================================================
@@ -4267,39 +4430,39 @@ typeset -g _PP_RPROMPT=""        # Right prompt content
 # ============================================================================
 
 # Compute Python virtual environment indicator
-# Sets: _PP_VENV
+# Sets: _AI_CANDY_PP_VENV
 # Displays: (venv_name) in yellow when a virtual environment is active
 function _ai_candy_compute_venv_direct() {
   if [[ -n "${VIRTUAL_ENV:-}" ]]; then
     local venv_name="${VIRTUAL_ENV:t}"  # Get basename of the path
     _ai_candy_prompt_escape_text "$venv_name"
     venv_name="$REPLY"
-    _PP_VENV="%{$fg[yellow]%}(${venv_name})%{$reset_color%}"
+    _AI_CANDY_PP_VENV="%{$fg[yellow]%}(${venv_name})%{$reset_color%}"
   else
-    _PP_VENV=""
+    _AI_CANDY_PP_VENV=""
   fi
 }
 
 # Compute exit status indicator
-# Sets: _PP_EXIT
+# Sets: _AI_CANDY_PP_EXIT
 function _ai_candy_compute_exit_status_direct() {
-  if [[ $_LAST_EXIT_STATUS -eq 0 ]]; then
-    if (( _PROMPT_EMOJI_MODE )); then
-      _PP_EXIT="%{$fg[green]%}[${_SYM_CHECK}]%{$reset_color%}"
+  if [[ $_AI_CANDY_LAST_EXIT_STATUS -eq 0 ]]; then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_PP_EXIT="%{$fg[green]%}[${_AI_CANDY_SYM_CHECK}]%{$reset_color%}"
     else
-      _PP_EXIT="%{$fg[green]%}[OK]%{$reset_color%}"
+      _AI_CANDY_PP_EXIT="%{$fg[green]%}[OK]%{$reset_color%}"
     fi
   else
-    if (( _PROMPT_EMOJI_MODE )); then
-      _PP_EXIT="%{$fg[red]%}[${_SYM_CROSS}${_LAST_EXIT_STATUS}]%{$reset_color%}"
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_PP_EXIT="%{$fg[red]%}[${_AI_CANDY_SYM_CROSS}${_AI_CANDY_LAST_EXIT_STATUS}]%{$reset_color%}"
     else
-      _PP_EXIT="%{$fg[red]%}[ERR${_LAST_EXIT_STATUS}]%{$reset_color%}"
+      _AI_CANDY_PP_EXIT="%{$fg[red]%}[ERR${_AI_CANDY_LAST_EXIT_STATUS}]%{$reset_color%}"
     fi
   fi
 }
 
 # Compute time with dynamic color based on hour
-# Sets: _PP_TIME
+# Sets: _AI_CANDY_PP_TIME
 # Format: [HH:MM:SS TZ] where TZ is timezone abbreviation (e.g., PST, UTC)
 function _ai_candy_compute_time_direct() {
   local hour=""
@@ -4311,15 +4474,15 @@ function _ai_candy_compute_time_direct() {
   integer hour_value=$(( 10#$hour ))
   local time_color
   if (( hour_value >= 6 && hour_value < 12 )); then
-    time_color="%{$FG[$_CLR_TIME_MORNING]%}"
+    time_color="%{$FG[$_AI_CANDY_CLR_TIME_MORNING]%}"
   elif (( hour_value >= 12 && hour_value < 18 )); then
-    time_color="%{$FG[$_CLR_TIME_AFTERNOON]%}"
+    time_color="%{$FG[$_AI_CANDY_CLR_TIME_AFTERNOON]%}"
   elif (( hour_value >= 18 && hour_value < 22 )); then
-    time_color="%{$FG[$_CLR_TIME_EVENING]%}"
+    time_color="%{$FG[$_AI_CANDY_CLR_TIME_EVENING]%}"
   else
-    time_color="%{$FG[$_CLR_TIME_NIGHT]%}"
+    time_color="%{$FG[$_AI_CANDY_CLR_TIME_NIGHT]%}"
   fi
-  _PP_TIME="${time_color}[%D{%H:%M:%S %Z}]%{$reset_color%}"
+  _AI_CANDY_PP_TIME="${time_color}[%D{%H:%M:%S %Z}]%{$reset_color%}"
 }
 
 function _ai_candy_prompt_markup_width() {
@@ -4375,24 +4538,24 @@ function _ai_candy_prompt_markup_width() {
 }
 
 # Compute layout mode based on terminal width
-# Sets: _PP_BADGE, _PP_SYSINFO_LEFT, _PP_AI_LEFT, _PP_RPROMPT
-# May recompute: _PP_PATH (in min mode)
+# Sets: _AI_CANDY_PP_BADGE, _AI_CANDY_PP_SYSINFO_LEFT, _AI_CANDY_PP_AI_LEFT, _AI_CANDY_PP_RPROMPT
+# May recompute: _AI_CANDY_PP_PATH (in min mode)
 function _ai_candy_compute_layout_mode() {
   # Use precomputed sysinfo from global variables
   # In emoji mode, use versions with distro/kernel icons (, , , , )
   local os_long os_short kernel_long kernel_short
-  if (( _PROMPT_EMOJI_MODE )); then
-    os_long="$_PP_SYSINFO_OS_LONG_EMOJI"
-    os_short="$_PP_SYSINFO_OS_SHORT_EMOJI"
-    kernel_long="$_PP_SYSINFO_KERNEL_LONG_EMOJI"
-    kernel_short="$_PP_SYSINFO_KERNEL_SHORT_EMOJI"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    os_long="$_AI_CANDY_PP_SYSINFO_OS_LONG_EMOJI"
+    os_short="$_AI_CANDY_PP_SYSINFO_OS_SHORT_EMOJI"
+    kernel_long="$_AI_CANDY_PP_SYSINFO_KERNEL_LONG_EMOJI"
+    kernel_short="$_AI_CANDY_PP_SYSINFO_KERNEL_SHORT_EMOJI"
   else
-    os_long="$_PP_SYSINFO_OS_LONG"
-    os_short="$_PP_SYSINFO_OS_SHORT"
-    kernel_long="$_PP_SYSINFO_KERNEL_LONG"
-    kernel_short="$_PP_SYSINFO_KERNEL_SHORT"
+    os_long="$_AI_CANDY_PP_SYSINFO_OS_LONG"
+    os_short="$_AI_CANDY_PP_SYSINFO_OS_SHORT"
+    kernel_long="$_AI_CANDY_PP_SYSINFO_KERNEL_LONG"
+    kernel_short="$_AI_CANDY_PP_SYSINFO_KERNEL_SHORT"
   fi
-  if (( ! _PROMPT_OS_MODE )); then
+  if (( ! _AI_CANDY_PROMPT_OS_MODE )); then
     os_long=""
     os_short=""
     kernel_long=""
@@ -4404,36 +4567,36 @@ function _ai_candy_compute_layout_mode() {
   local _desktop_lower="${(L)${XDG_SESSION_DESKTOP:-}}"  # lowercase for case-insensitive matching
   if [[ -f /run/.containerenv ]]; then
     # Container environment
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_CONTAINER" || badge_icon="C"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_CONTAINER" || badge_icon="C"
     badge_color="%{$fg[magenta]%}"
   elif [[ "${XDG_SESSION_TYPE:-}" == "tty" ]]; then
     # TTY session
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_TTY" || badge_icon="T"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_TTY" || badge_icon="T"
     badge_color="%{$fg[yellow]%}"
   elif [[ "$_desktop_lower" == *gnome* ]]; then
     # GNOME desktop (matches gnome, gnome-xorg, gnome-wayland, etc.)
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_GNOME" || badge_icon="G"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_GNOME" || badge_icon="G"
     badge_color="%{$fg[yellow]%}"
   elif [[ "$_desktop_lower" == *kde* || "$_desktop_lower" == *plasma* ]]; then
     # KDE Plasma desktop
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_KDE" || badge_icon="K"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_KDE" || badge_icon="K"
     badge_color="%{$fg[yellow]%}"
   elif [[ "$_desktop_lower" == *xfce* ]]; then
     # XFCE desktop
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_XFCE" || badge_icon="X"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_XFCE" || badge_icon="X"
     badge_color="%{$fg[yellow]%}"
   elif [[ "$_desktop_lower" == *xorg* ]]; then
     # Xorg session (generic X11)
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_NF_XORG" || badge_icon="O"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_NF_XORG" || badge_icon="O"
     badge_color="%{$fg[yellow]%}"
   else
     # Default: Host
-    (( _PROMPT_EMOJI_MODE )) && badge_icon="$_SYM_HOST" || badge_icon="H"
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="$_AI_CANDY_SYM_HOST" || badge_icon="H"
     badge_color="%{$fg[yellow]%}"
   fi
   # In emoji mode, strip trailing space from Nerd Font environment icons
-  (( _PROMPT_EMOJI_MODE )) && badge_icon="${badge_icon% }"
-  _PP_BADGE=" ${badge_color}${badge_icon}%{$reset_color%}"
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && badge_icon="${badge_icon% }"
+  _AI_CANDY_PP_BADGE=" ${badge_color}${badge_icon}%{$reset_color%}"
 
   # Parse the path once so layout can use its visible length before rendering.
   _ai_candy_prepare_smart_path_context
@@ -4444,18 +4607,18 @@ function _ai_candy_compute_layout_mode() {
   #         %F{...}/%f (fg color), %K{...}/%k (bg color)
   local git_len git_ext_len git_special_len ai_len ai_len_long pr_len
   local venv_len
-  local path_len="${_SMART_PATH_TOTAL_LENGTH:-0}"
+  local path_len="${_AI_CANDY_SMART_PATH_TOTAL_LENGTH:-0}"
   local user_host_len gh_user_len exit_len ssh_len
-  _ai_candy_prompt_markup_width "$_PP_GIT_INFO"; git_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_GIT_EXT"; git_ext_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_GIT_SPECIAL"; git_special_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_AI_STATUS"; ai_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_AI_STATUS_LONG"; ai_len_long="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_PR"; pr_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_GH_USER"; gh_user_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_EXIT"; exit_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_SSH"; ssh_len="$REPLY"
-  _ai_candy_prompt_markup_width "$_PP_VENV"; venv_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_GIT_INFO"; git_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_GIT_EXT"; git_ext_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_GIT_SPECIAL"; git_special_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_AI_STATUS"; ai_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_AI_STATUS_LONG"; ai_len_long="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_PR"; pr_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_GH_USER"; gh_user_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_EXIT"; exit_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_SSH"; ssh_len="$REPLY"
+  _ai_candy_prompt_markup_width "$_AI_CANDY_PP_VENV"; venv_len="$REPLY"
 
   # user@host: %n@%m expands to actual username and hostname
   # Use actual values instead of literal "%n@%m" (4 chars)
@@ -4467,8 +4630,8 @@ function _ai_candy_compute_layout_mode() {
   # public_ip_len: (xxx.xxx.xxx.xxx) up to 17 chars, or (offline) 9 chars, or empty
   # NOTE: IPv4 only - see _ai_candy_public_ip_update_background for rationale
   local public_ip_len=0
-  if [[ -n "$_PP_PUBLIC_IP" ]]; then
-    _ai_candy_prompt_markup_width "$_PP_PUBLIC_IP"
+  if [[ -n "$_AI_CANDY_PP_PUBLIC_IP" ]]; then
+    _ai_candy_prompt_markup_width "$_AI_CANDY_PP_PUBLIC_IP"
     public_ip_len="$REPLY"
   fi
 
@@ -4487,9 +4650,9 @@ function _ai_candy_compute_layout_mode() {
   # badge_len accounts for leading space + icon (" H" = 2 chars)
   # fixed_len includes:
   #   - 2 literal spaces in PROMPT (after BADGE, after TIME)
-  #   - _LAYOUT_MARGIN buffer to trigger shorter format before overflow
+  #   - _AI_CANDY_LAYOUT_MARGIN buffer to trigger shorter format before overflow
   _ai_candy_prompt_text_width " ${badge_icon}"
-  local fixed_len=$((2 + _LAYOUT_MARGIN)) badge_len="$REPLY"
+  local fixed_len=$((2 + _AI_CANDY_LAYOUT_MARGIN)) badge_len="$REPLY"
 
   # min_len excludes system info and optional tools.
   # pr_space: 1 space before PR if PR is present
@@ -4500,19 +4663,19 @@ function _ai_candy_compute_layout_mode() {
   # Calculate lengths for different layout modes
   local short_version="${os_short}${kernel_short}"
   local short_sysinfo_len=0
-  if (( _PROMPT_OS_MODE )); then
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
     _ai_candy_prompt_text_width " [${short_version}]"
     short_sysinfo_len="$REPLY"
   fi
   local short_len=$((min_len + short_sysinfo_len))
 
   local ai_space=0
-  [[ -n "$_PP_AI_STATUS" ]] && ai_space=1
+  [[ -n "$_AI_CANDY_PP_AI_STATUS" ]] && ai_space=1
   local short_ai_len=$((short_len + ai_len + ai_space))
 
   local long_version="${os_long}${kernel_long}"
   local long_sysinfo_len=0
-  if (( _PROMPT_OS_MODE )); then
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
     _ai_candy_prompt_text_width " [${long_version}]"
     long_sysinfo_len="$REPLY"
   fi
@@ -4524,23 +4687,23 @@ function _ai_candy_compute_layout_mode() {
 
   if (( long_len <= COLUMNS )); then
     mode="long"
-    (( _PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${long_version}]%{$reset_color%}"
-    if (( ! _PROMPT_EMOJI_MODE )) && [[ -n "$_PP_AI_STATUS_LONG" ]] && (( long_len_with_long_ai <= COLUMNS )); then
-      ai_output=" $_PP_AI_STATUS_LONG"
-    elif [[ -n "$_PP_AI_STATUS" ]]; then
-      ai_output=" $_PP_AI_STATUS"
+    (( _AI_CANDY_PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${long_version}]%{$reset_color%}"
+    if (( ! _AI_CANDY_PROMPT_EMOJI_MODE )) && [[ -n "$_AI_CANDY_PP_AI_STATUS_LONG" ]] && (( long_len_with_long_ai <= COLUMNS )); then
+      ai_output=" $_AI_CANDY_PP_AI_STATUS_LONG"
+    elif [[ -n "$_AI_CANDY_PP_AI_STATUS" ]]; then
+      ai_output=" $_AI_CANDY_PP_AI_STATUS"
     fi
   elif (( short_ai_len <= COLUMNS )); then
     mode="short"
-    (( _PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
-    [[ -n "$_PP_AI_STATUS" ]] && ai_output=" $_PP_AI_STATUS"
+    (( _AI_CANDY_PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
+    [[ -n "$_AI_CANDY_PP_AI_STATUS" ]] && ai_output=" $_AI_CANDY_PP_AI_STATUS"
   elif (( short_len <= COLUMNS )); then
     mode="short"
-    (( _PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
+    (( _AI_CANDY_PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
     # Omit optional tools when they would overflow.
   else
     mode="min"
-    (( _PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
+    (( _AI_CANDY_PROMPT_OS_MODE )) && system_info=" %{$fg[cyan]%}[${short_version}]%{$reset_color%}"
   fi
 
   if [[ "$mode" == "min" ]]; then
@@ -4553,13 +4716,13 @@ function _ai_candy_compute_layout_mode() {
 
   # Set output based on mode
   if [[ "$mode" == "long" ]]; then
-    _PP_SYSINFO_LEFT="$system_info"
-    _PP_AI_LEFT="$ai_output"
-    _PP_RPROMPT=""
+    _AI_CANDY_PP_SYSINFO_LEFT="$system_info"
+    _AI_CANDY_PP_AI_LEFT="$ai_output"
+    _AI_CANDY_PP_RPROMPT=""
   else
-    _PP_SYSINFO_LEFT=""
-    _PP_AI_LEFT=""
-    _PP_RPROMPT="${system_info}${ai_output}"
+    _AI_CANDY_PP_SYSINFO_LEFT=""
+    _AI_CANDY_PP_AI_LEFT=""
+    _AI_CANDY_PP_RPROMPT="${system_info}${ai_output}"
   fi
 }
 
@@ -4570,7 +4733,7 @@ function _ai_candy_compute_layout_mode() {
 # Target: reduce from 10-15 subshells to 2-4 per prompt
 
 # Per-prompt git root cache (avoids repeated _ai_candy_get_cached_git_root calls)
-typeset -g _PP_CACHED_GIT_ROOT=""
+typeset -g _AI_CANDY_PP_CACHED_GIT_ROOT=""
 
 function _ai_candy_precmd_compute_prompt() {
   emulate -L zsh
@@ -4578,7 +4741,7 @@ function _ai_candy_precmd_compute_prompt() {
 
   # Cache git root once per prompt (used by multiple functions)
   _ai_candy_get_cached_git_root
-  _PP_CACHED_GIT_ROOT="$REPLY"
+  _AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
 
   # === Status indicators ===
   _ai_candy_compute_venv_direct
@@ -4586,13 +4749,13 @@ function _ai_candy_precmd_compute_prompt() {
 
   # SSH indicator
   if [[ -n "${SSH_CONNECTION:-}" ]]; then
-    (( _PROMPT_EMOJI_MODE )) && _PP_SSH="%{$fg[cyan]%}${_NF_SSH}%{$reset_color%}" || _PP_SSH="%{$fg[cyan]%}[SSH]%{$reset_color%} "
+    (( _AI_CANDY_PROMPT_EMOJI_MODE )) && _AI_CANDY_PP_SSH="%{$fg[cyan]%}${_AI_CANDY_NF_SSH}%{$reset_color%}" || _AI_CANDY_PP_SSH="%{$fg[cyan]%}[SSH]%{$reset_color%} "
   else
-    _PP_SSH=""
+    _AI_CANDY_PP_SSH=""
   fi
 
   # User@host
-  _PP_USER_HOST="%{$FG[$_CLR_USER_HOST]%}%n@%m%{$reset_color%}"
+  _AI_CANDY_PP_USER_HOST="%{$FG[$_AI_CANDY_CLR_USER_HOST]%}%n@%m%{$reset_color%}"
 
   # Public IP address (cached)
   _ai_candy_compute_public_ip_direct
@@ -4604,7 +4767,7 @@ function _ai_candy_precmd_compute_prompt() {
   _ai_candy_compute_time_direct
 
   # Jobs indicator
-  (( _PROMPT_EMOJI_MODE )) && _PP_JOBS="$_SYM_JOBS" || _PP_JOBS="J"
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && _AI_CANDY_PP_JOBS="$_AI_CANDY_SYM_JOBS" || _AI_CANDY_PP_JOBS="J"
 
   # === Git and GitHub status ===
   _ai_candy_compute_git_info_direct
@@ -4628,99 +4791,100 @@ add-zsh-hook precmd _ai_candy_periodic_cache_cleanup
 # Per-prompt caches for git/PR segments
 # IMPORTANT: These must be initialized here (not just in _ai_candy_prompt_refresh_all_caches)
 # to avoid "unset variable" errors when set -u (nounset) is enabled
-_PROMPT_GH_PR_CACHE=""
-_PROMPT_GH_PR_CACHE_ID=-1
-_PROMPT_GIT_SPECIAL_CACHE=""
-_PROMPT_GIT_SPECIAL_CACHE_ID=-1
+_AI_CANDY_PROMPT_GH_PR_CACHE=""
+_AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE=""
+_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_ID=-1
+_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_CONTEXT=""
 
-# System info cache (file-based, uses _CACHE_TTL_LOW - rarely changes)
-# (_SYSINFO_CACHE_FILE defined in CACHE FILE PATHS section)
+# System info cache (file-based, uses _AI_CANDY_CACHE_TTL_LOW - rarely changes)
+# (_AI_CANDY_SYSINFO_CACHE_FILE defined in CACHE FILE PATHS section)
 
 # Global variables for direct sysinfo assignment (avoids subshell)
-typeset -g _PP_SYSINFO_OS_LONG=""
-typeset -g _PP_SYSINFO_OS_SHORT=""
-typeset -g _PP_SYSINFO_OS_LONG_EMOJI=""
-typeset -g _PP_SYSINFO_OS_SHORT_EMOJI=""
-typeset -g _PP_SYSINFO_KERNEL_LONG=""
-typeset -g _PP_SYSINFO_KERNEL_SHORT=""
-typeset -g _PP_SYSINFO_KERNEL_LONG_EMOJI=""
-typeset -g _PP_SYSINFO_KERNEL_SHORT_EMOJI=""
+typeset -g _AI_CANDY_PP_SYSINFO_OS_LONG=""
+typeset -g _AI_CANDY_PP_SYSINFO_OS_SHORT=""
+typeset -g _AI_CANDY_PP_SYSINFO_OS_LONG_EMOJI=""
+typeset -g _AI_CANDY_PP_SYSINFO_OS_SHORT_EMOJI=""
+typeset -g _AI_CANDY_PP_SYSINFO_KERNEL_LONG=""
+typeset -g _AI_CANDY_PP_SYSINFO_KERNEL_SHORT=""
+typeset -g _AI_CANDY_PP_SYSINFO_KERNEL_LONG_EMOJI=""
+typeset -g _AI_CANDY_PP_SYSINFO_KERNEL_SHORT_EMOJI=""
 
 # Nerd Font icons for OS/distro (using hex byte escapes for portability)
 # macOS U+F0036 (nf-md-apple_finder), Darwin U+F179, Red Hat U+EF5D, Ubuntu U+EF72
 # CentOS U+EF3D, Fedora U+F30A, AlmaLinux U+F31D, Linux U+F17C
-typeset -g _NF_MACOS=$'\xf3\xb0\x80\xb6'  # U+F0036 nf-md-apple_finder
-typeset -g _NF_APPLE=$'\xef\x85\xb9'      # U+F179 nf-fa-apple (for Darwin kernel)
-typeset -g _NF_REDHAT=$'\xee\xbd\x9d'     # U+EF5D
-typeset -g _NF_UBUNTU=$'\xee\xbd\xb2'     # U+EF72
-typeset -g _NF_CENTOS=$'\xee\xbc\xbd'     # U+EF3D
-typeset -g _NF_FEDORA=$'\xef\x8c\x8a'     # U+F30A
-typeset -g _NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
-typeset -g _NF_LINUX=$'\xef\x85\xbc'      # U+F17C
+typeset -g _AI_CANDY_NF_MACOS=$'\xf3\xb0\x80\xb6'  # U+F0036 nf-md-apple_finder
+typeset -g _AI_CANDY_NF_APPLE=$'\xef\x85\xb9'      # U+F179 nf-fa-apple (for Darwin kernel)
+typeset -g _AI_CANDY_NF_REDHAT=$'\xee\xbd\x9d'     # U+EF5D
+typeset -g _AI_CANDY_NF_UBUNTU=$'\xee\xbd\xb2'     # U+EF72
+typeset -g _AI_CANDY_NF_CENTOS=$'\xee\xbc\xbd'     # U+EF3D
+typeset -g _AI_CANDY_NF_FEDORA=$'\xef\x8c\x8a'     # U+F30A
+typeset -g _AI_CANDY_NF_ALMA=$'\xef\x8c\x9d'       # U+F31D
+typeset -g _AI_CANDY_NF_LINUX=$'\xef\x85\xbc'      # U+F17C
 
 # Optional tool icons use byte escapes for source portability.
-typeset -g _NF_CLAUDE=$'\xef\x81\xa9 '    # U+F069 nf-fa-asterisk (+ space for 2-char width)
-typeset -g _NF_GEMINI=$'\xef\x86\xa0 '    # U+F1A0 nf-fa-google (+ space for 2-char width)
-typeset -g _NF_CODEX=$'\xee\x89\xbf '     # U+E27F nf-fae-atom (+ space for 2-char width)
-typeset -g _NF_KIMI=$'\xef\x86\x86 '      # U+F186 nf-fa-moon_o (+ space for 2-char width)
-typeset -g _NF_CONTAINER=$'\xef\x88\x9f'  # U+F21F nf-fa-docker
-typeset -g _NF_SSH=$'\xf3\xb0\xa3\x80 '   # U+F08C0 nf-md-ssh (+ space for 2-char width)
-typeset -g _NF_GITHUB=$'\xef\x82\x9b '    # U+F09B nf-fa-github (+ space for 2-char width)
-typeset -g _NF_TTY=$'\xef\x87\xa4'        # U+F1E4 nf-fa-tty
-typeset -g _NF_GNOME=$'\xef\x8d\xa1 '     # U+F361 nf-linux-gnome (+ space for 2-char width)
-typeset -g _NF_KDE=$'\xef\x8c\xb2'        # U+F332 nf-linux-kde_plasma
-typeset -g _NF_XFCE=$'\xef\x8d\xa8'       # U+F368 nf-linux-xfce
-typeset -g _NF_XORG=$'\xef\x8d\xa9'       # U+F369 nf-linux-xorg
+typeset -g _AI_CANDY_NF_CLAUDE=$'\xef\x81\xa9 '    # U+F069 nf-fa-asterisk (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_GEMINI=$'\xef\x86\xa0 '    # U+F1A0 nf-fa-google (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_CODEX=$'\xee\x89\xbf '     # U+E27F nf-fae-atom (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_KIMI=$'\xef\x86\x86 '      # U+F186 nf-fa-moon_o (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_CONTAINER=$'\xef\x88\x9f'  # U+F21F nf-fa-docker
+typeset -g _AI_CANDY_NF_SSH=$'\xf3\xb0\xa3\x80 '   # U+F08C0 nf-md-ssh (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_GITHUB=$'\xef\x82\x9b '    # U+F09B nf-fa-github (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_TTY=$'\xef\x87\xa4'        # U+F1E4 nf-fa-tty
+typeset -g _AI_CANDY_NF_GNOME=$'\xef\x8d\xa1 '     # U+F361 nf-linux-gnome (+ space for 2-char width)
+typeset -g _AI_CANDY_NF_KDE=$'\xef\x8c\xb2'        # U+F332 nf-linux-kde_plasma
+typeset -g _AI_CANDY_NF_XFCE=$'\xef\x8d\xa8'       # U+F368 nf-linux-xfce
+typeset -g _AI_CANDY_NF_XORG=$'\xef\x8d\xa9'       # U+F369 nf-linux-xorg
 
 # Helper: Apply OS/distro icon replacements for emoji mode
 _ai_candy_sysinfo_apply_os_icons() {
   local input="$1"
   # Distro replacements (order matters - more specific first)
-  input="${input//macOS/${_NF_MACOS}}"
-  input="${input//Red Hat Enterprise Linux/${_NF_REDHAT}}"
-  input="${input//Rhel/${_NF_REDHAT}}"
-  input="${input//Ubuntu/${_NF_UBUNTU}}"
-  input="${input//CentOS/${_NF_CENTOS}}"
-  input="${input//Centos/${_NF_CENTOS}}"
-  input="${input//Fedora/${_NF_FEDORA}}"
-  input="${input//AlmaLinux/${_NF_ALMA}}"
-  input="${input//Almalinux/${_NF_ALMA}}"
+  input="${input//macOS/${_AI_CANDY_NF_MACOS}}"
+  input="${input//Red Hat Enterprise Linux/${_AI_CANDY_NF_REDHAT}}"
+  input="${input//Rhel/${_AI_CANDY_NF_REDHAT}}"
+  input="${input//Ubuntu/${_AI_CANDY_NF_UBUNTU}}"
+  input="${input//CentOS/${_AI_CANDY_NF_CENTOS}}"
+  input="${input//Centos/${_AI_CANDY_NF_CENTOS}}"
+  input="${input//Fedora/${_AI_CANDY_NF_FEDORA}}"
+  input="${input//AlmaLinux/${_AI_CANDY_NF_ALMA}}"
+  input="${input//Almalinux/${_AI_CANDY_NF_ALMA}}"
   REPLY="$input"
 }
 
 # Kernel icons
 _ai_candy_sysinfo_apply_kernel_icons() {
   local input="$1"
-  input="${input//Darwin/${_NF_APPLE}}"
-  input="${input//Linux/${_NF_LINUX}}"
+  input="${input//Darwin/${_AI_CANDY_NF_APPLE}}"
+  input="${input//Linux/${_AI_CANDY_NF_LINUX}}"
   REPLY="$input"
 }
 
 function _ai_candy_sysinfo_set_emoji_variants() {
-  _ai_candy_sysinfo_apply_os_icons "$_PP_SYSINFO_OS_LONG"
-  _PP_SYSINFO_OS_LONG_EMOJI="$REPLY"
-  _ai_candy_sysinfo_apply_os_icons "$_PP_SYSINFO_OS_SHORT"
-  _PP_SYSINFO_OS_SHORT_EMOJI="$REPLY"
-  _ai_candy_sysinfo_apply_kernel_icons "$_PP_SYSINFO_KERNEL_LONG"
-  _PP_SYSINFO_KERNEL_LONG_EMOJI="$REPLY"
-  _ai_candy_sysinfo_apply_kernel_icons "$_PP_SYSINFO_KERNEL_SHORT"
-  _PP_SYSINFO_KERNEL_SHORT_EMOJI="$REPLY"
+  _ai_candy_sysinfo_apply_os_icons "$_AI_CANDY_PP_SYSINFO_OS_LONG"
+  _AI_CANDY_PP_SYSINFO_OS_LONG_EMOJI="$REPLY"
+  _ai_candy_sysinfo_apply_os_icons "$_AI_CANDY_PP_SYSINFO_OS_SHORT"
+  _AI_CANDY_PP_SYSINFO_OS_SHORT_EMOJI="$REPLY"
+  _ai_candy_sysinfo_apply_kernel_icons "$_AI_CANDY_PP_SYSINFO_KERNEL_LONG"
+  _AI_CANDY_PP_SYSINFO_KERNEL_LONG_EMOJI="$REPLY"
+  _ai_candy_sysinfo_apply_kernel_icons "$_AI_CANDY_PP_SYSINFO_KERNEL_SHORT"
+  _AI_CANDY_PP_SYSINFO_KERNEL_SHORT_EMOJI="$REPLY"
 }
 
-typeset -g _SYSINFO_SESSION_READY=0
+typeset -g _AI_CANDY_SYSINFO_SESSION_READY=0
 
-# Direct-assignment version: writes result to _PP_SYSINFO_* global variables
+# Direct-assignment version: writes result to _AI_CANDY_PP_SYSINFO_* global variables
 # PERFORMANCE: Avoids 1 subshell by parsing cache directly into variables
 function _ai_candy_compute_sysinfo_direct() {
-  (( _PROMPT_OS_MODE )) || return 0
-  (( _SYSINFO_SESSION_READY )) && return 0
+  (( _AI_CANDY_PROMPT_OS_MODE )) || return 0
+  (( _AI_CANDY_SYSINFO_SESSION_READY )) && return 0
   local current_time=${EPOCHSECONDS}
 
   # Check file cache (use zsh native file reading)
-  if _ai_candy_cache_read_small_file "$_SYSINFO_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_SYSINFO_CACHE_FILE"; then
     local cache_lines=("${(@f)REPLY}")
     local cache_time="${cache_lines[1]-}"
-    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_LOW" "$current_time"; then
+    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_LOW" "$current_time"; then
       local payload="${cache_lines[2]-}"
       local -a encoded_fields decoded_fields
       encoded_fields=("${(@s:|:)payload}")
@@ -4737,15 +4901,15 @@ function _ai_candy_compute_sysinfo_direct() {
         done
         if (( cache_valid )); then
           _ai_candy_prompt_escape_text "${decoded_fields[1]}"
-          _PP_SYSINFO_OS_LONG="$REPLY"
+          _AI_CANDY_PP_SYSINFO_OS_LONG="$REPLY"
           _ai_candy_prompt_escape_text "${decoded_fields[2]}"
-          _PP_SYSINFO_OS_SHORT="$REPLY"
+          _AI_CANDY_PP_SYSINFO_OS_SHORT="$REPLY"
           _ai_candy_prompt_escape_text "${decoded_fields[3]}"
-          _PP_SYSINFO_KERNEL_LONG="$REPLY"
+          _AI_CANDY_PP_SYSINFO_KERNEL_LONG="$REPLY"
           _ai_candy_prompt_escape_text "${decoded_fields[4]}"
-          _PP_SYSINFO_KERNEL_SHORT="$REPLY"
+          _AI_CANDY_PP_SYSINFO_KERNEL_SHORT="$REPLY"
           _ai_candy_sysinfo_set_emoji_variants
-          _SYSINFO_SESSION_READY=1
+          _AI_CANDY_SYSINFO_SESSION_READY=1
           return
         fi
       fi
@@ -4822,7 +4986,7 @@ function _ai_candy_compute_sysinfo_direct() {
     encoded_fields+=("$REPLY")
   done
   local result="v2|${(j:|:)encoded_fields}"
-  _ai_candy_cache_write "$_SYSINFO_CACHE_FILE" "${current_time}"$'\n'"${result}" 0 || true
+  _ai_candy_cache_write "$_AI_CANDY_SYSINFO_CACHE_FILE" "${current_time}"$'\n'"${result}" 0 || true
 
   _ai_candy_prompt_escape_text "$os_long"
   os_long="$REPLY"
@@ -4834,25 +4998,31 @@ function _ai_candy_compute_sysinfo_direct() {
   kernel_short="$REPLY"
 
   # Assign to global variables
-  _PP_SYSINFO_OS_LONG="$os_long"
-  _PP_SYSINFO_OS_SHORT="$os_short"
-  _PP_SYSINFO_KERNEL_LONG="$kernel_long"
-  _PP_SYSINFO_KERNEL_SHORT="$kernel_short"
+  _AI_CANDY_PP_SYSINFO_OS_LONG="$os_long"
+  _AI_CANDY_PP_SYSINFO_OS_SHORT="$os_short"
+  _AI_CANDY_PP_SYSINFO_KERNEL_LONG="$kernel_long"
+  _AI_CANDY_PP_SYSINFO_KERNEL_SHORT="$kernel_short"
   # Generate emoji versions with OS/distro and kernel icons
   _ai_candy_sysinfo_set_emoji_variants
-  _SYSINFO_SESSION_READY=1
+  _AI_CANDY_SYSINFO_SESSION_READY=1
 }
 typeset -g _AI_CANDY_USE_OMZ_ASYNC=0
-typeset -g _GIT_TOPOLOGY_GENERATION=0
-typeset -g _GIT_TOPOLOGY_GENERATION_VALID=1
-typeset -g _GIT_TOPOLOGY_GENERATION_FILE="${_CACHE_DIR}/git_topology_generation"
-typeset -g _GIT_METADATA_MAX_BYTES=$((16 * 1024))
+typeset -g _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
+typeset -g _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
+typeset -g _AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE="${_AI_CANDY_CACHE_DIR}/git_topology_generation"
+typeset -g _AI_CANDY_GIT_METADATA_MAX_BYTES=$((16 * 1024))
+typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
+typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
+typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND=-1
+typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE
+typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
+typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
 
 function _ai_candy_read_git_metadata_file() {
   emulate -L zsh
   local LC_ALL=C
   local metadata_file="$1"
-  local configured_limit="${_GIT_METADATA_MAX_BYTES:-16384}"
+  local configured_limit="${_AI_CANDY_GIT_METADATA_MAX_BYTES:-16384}"
   local content=""
   REPLY=""
 
@@ -4861,14 +5031,14 @@ function _ai_candy_read_git_metadata_file() {
     configured_limit=16384
   fi
   [[ -f "$metadata_file" && ! -L "$metadata_file" ]] || return 1
-  if (( _HAS_ZSH_STAT_BUILTIN )); then
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     local -a metadata
     builtin zstat -A metadata +size -- "$metadata_file" 2>/dev/null || return 1
     [[ "${metadata[1]-}" == <-> ]] || return 1
     (( metadata[1] <= configured_limit )) || return 1
     content="$(<"$metadata_file")"
   else
-    local _TIMEOUT_OUTPUT_MAX_BYTES="$configured_limit"
+    local _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES="$configured_limit"
     content=$(_ai_candy_run_local_probe \
       /bin/cat "$metadata_file" 2>/dev/null) || return 1
   fi
@@ -4878,13 +5048,13 @@ function _ai_candy_read_git_metadata_file() {
 
 function _ai_candy_read_git_topology_generation() {
   REPLY=0
-  if [[ ! -e "$_GIT_TOPOLOGY_GENERATION_FILE" && \
-        ! -L "$_GIT_TOPOLOGY_GENERATION_FILE" ]]; then
+  if [[ ! -e "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" && \
+        ! -L "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" ]]; then
     return 0
   fi
-  [[ -f "$_GIT_TOPOLOGY_GENERATION_FILE" && \
-     ! -L "$_GIT_TOPOLOGY_GENERATION_FILE" ]] || return 1
-  _ai_candy_cache_read_small_file "$_GIT_TOPOLOGY_GENERATION_FILE" || return 1
+  [[ -f "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" && \
+     ! -L "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" ]] || return 1
+  _ai_candy_cache_read_small_file "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" || return 1
   local generation="$REPLY"
   _ai_candy_cache_generation_token_is_valid "$generation" || return 1
   REPLY="$generation"
@@ -4893,60 +5063,60 @@ function _ai_candy_read_git_topology_generation() {
 function _ai_candy_apply_git_topology_generation() {
   local generation="$1"
   _ai_candy_cache_generation_token_is_valid "$generation" || return 1
-  [[ "$generation" == "$_GIT_TOPOLOGY_GENERATION" ]] && return 0
+  [[ "$generation" == "$_AI_CANDY_GIT_TOPOLOGY_GENERATION" ]] && return 0
 
-  _GIT_TOPOLOGY_GENERATION="$generation"
-  _MEM_CACHE_GIT_ROOT=()
-  _MEM_CACHE_GIT_ROOT_GENERATION=()
-  _MEM_CACHE_GIT_HIERARCHY=()
-  _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT=()
-  _PP_CACHED_GIT_ROOT=""
-  _SMART_PATH_CONTEXT_KEY=""
-  _SMART_PATH_CONTEXT_TIMESTAMP=0
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION="$generation"
+  _AI_CANDY_MEM_CACHE_GIT_ROOT=()
+  _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION=()
+  _AI_CANDY_MEM_CACHE_GIT_HIERARCHY=()
+  _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
+  _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
 
 function _ai_candy_publish_git_topology_generation() {
   local generation="$1"
 
-  (( _CACHE_READY )) || return 1
+  (( _AI_CANDY_CACHE_READY )) || return 1
   _ai_candy_cache_generation_token_is_valid "$generation" || return 1
-  if [[ -e "$_GIT_TOPOLOGY_GENERATION_FILE" || \
-        -L "$_GIT_TOPOLOGY_GENERATION_FILE" ]]; then
-    [[ -f "$_GIT_TOPOLOGY_GENERATION_FILE" && \
-       ! -L "$_GIT_TOPOLOGY_GENERATION_FILE" ]] || return 1
+  if [[ -e "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" || \
+        -L "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" ]]; then
+    [[ -f "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" && \
+       ! -L "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" ]] || return 1
   fi
-  _ai_candy_cache_atomic_write_unlocked "$_GIT_TOPOLOGY_GENERATION_FILE" \
+  _ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE" \
     "$generation"
 }
 
 function _ai_candy_sync_git_topology_generation() {
-  (( _CACHE_READY )) || return 1
-  if (( ! _GIT_TOPOLOGY_GENERATION_VALID )); then
+  (( _AI_CANDY_CACHE_READY )) || return 1
+  if (( ! _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID )); then
     _ai_candy_cache_new_generation_token || return 1
     _ai_candy_apply_git_topology_generation "$REPLY"
-    if _ai_candy_publish_git_topology_generation "$_GIT_TOPOLOGY_GENERATION"; then
-      _GIT_TOPOLOGY_GENERATION_VALID=1
+    if _ai_candy_publish_git_topology_generation "$_AI_CANDY_GIT_TOPOLOGY_GENERATION"; then
+      _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
       return 0
     fi
     return 1
   fi
   if _ai_candy_read_git_topology_generation; then
-    _GIT_TOPOLOGY_GENERATION_VALID=1
+    _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
     _ai_candy_apply_git_topology_generation "$REPLY"
     return 0
   fi
   _ai_candy_cache_new_generation_token || return 1
   _ai_candy_apply_git_topology_generation "$REPLY"
-  _GIT_TOPOLOGY_GENERATION_VALID=0
-  if _ai_candy_publish_git_topology_generation "$_GIT_TOPOLOGY_GENERATION"; then
-    _GIT_TOPOLOGY_GENERATION_VALID=1
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=0
+  if _ai_candy_publish_git_topology_generation "$_AI_CANDY_GIT_TOPOLOGY_GENERATION"; then
+    _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
     return 0
   fi
   return 1
 }
 
 function _ai_candy_git_topology_generation_for_path() {
-  REPLY="$_GIT_TOPOLOGY_GENERATION"
+  REPLY="$_AI_CANDY_GIT_TOPOLOGY_GENERATION"
 }
 
 function _ai_candy_record_git_topology_invalidation() {
@@ -4957,26 +5127,402 @@ function _ai_candy_record_git_topology_invalidation() {
   local next_generation="$REPLY"
   _ai_candy_apply_git_topology_generation "$next_generation"
   if _ai_candy_publish_git_topology_generation "$next_generation"; then
-    _GIT_TOPOLOGY_GENERATION_VALID=1
+    _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
   else
-    _GIT_TOPOLOGY_GENERATION_VALID=0
+    _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=0
   fi
   return 0
 }
 
-function _ai_candy_git_root_cache_requires_refresh() {
+function _ai_candy_git_config_override_context_key() {
+  emulate -L zsh
+  local LC_ALL=C
+  local resolution_base="${1:-${_AI_CANDY_PHYSICAL_PWD:-$PWD}}"
+  local parameter_name="" parameter_value="" resolved_path=""
+  local count_value="${GIT_CONFIG_COUNT-}"
+  local key_name="" value_name="" key_value="" config_value=""
+  local -a fixed_parameters=(
+    GIT_CONFIG
+    GIT_CONFIG_GLOBAL
+    GIT_CONFIG_SYSTEM
+    GIT_CONFIG_NOSYSTEM
+    GIT_CONFIG_PARAMETERS
+  )
+  integer index=0 entry_count=0 max_entries=128
+  resolution_base="${resolution_base:A}"
+  REPLY=""
+
+  for parameter_name in "${fixed_parameters[@]}"; do
+    (( ${+parameters[$parameter_name]} )) || continue
+    parameter_value="${(P)parameter_name}"
+    REPLY+="n${#parameter_name}:${parameter_name}"
+    REPLY+="v${#parameter_value}:${parameter_value}"
+    case "$parameter_name" in
+      GIT_CONFIG|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM)
+        resolved_path="$parameter_value"
+        if [[ -n "$resolved_path" ]]; then
+          [[ "$resolved_path" == /* ]] || \
+            resolved_path="${resolution_base}/${resolved_path}"
+          resolved_path="${resolved_path:A}"
+        fi
+        REPLY+="p${#resolved_path}:${resolved_path}"
+        ;;
+    esac
+  done
+
+  if (( ${+GIT_CONFIG_COUNT} )); then
+    REPLY+="n16:GIT_CONFIG_COUNTv${#count_value}:${count_value}"
+    if [[ "$count_value" == <-> && ${#count_value} -le 3 ]] && \
+       (( 10#$count_value <= max_entries )); then
+      entry_count=$(( 10#$count_value ))
+      for (( index=0; index<entry_count; index++ )); do
+        key_name="GIT_CONFIG_KEY_${index}"
+        value_name="GIT_CONFIG_VALUE_${index}"
+        key_value=""
+        config_value=""
+        if (( ${+parameters[$key_name]} )); then
+          key_value="${(P)key_name}"
+          REPLY+="k1:${#key_value}:${key_value}"
+        else
+          REPLY+="k0:0:"
+        fi
+        if (( ${+parameters[$value_name]} )); then
+          config_value="${(P)value_name}"
+          REPLY+="v1:${#config_value}:${config_value}"
+        else
+          REPLY+="v0:0:"
+        fi
+      done
+    else
+      REPLY+="x${_AI_CANDY_PROMPT_RENDER_ID:-0}"
+    fi
+  fi
+}
+
+function _ai_candy_git_discovery_context_key() {
+  emulate -L zsh
+  local LC_ALL=C
+  local git_dir="${GIT_DIR-}"
+  local git_work_tree="${GIT_WORK_TREE-}"
+  local git_common_dir="${GIT_COMMON_DIR-}"
+  local git_ceiling="${GIT_CEILING_DIRECTORIES-}"
+  local git_across_filesystems="${GIT_DISCOVERY_ACROSS_FILESYSTEM-}"
+  local relative_base=""
+  local resolved_git_dir=""
+  local resolved_git_work_tree=""
+  local resolved_git_common_dir=""
+  integer has_config_override=$((
+    ${+GIT_CONFIG} || ${+GIT_CONFIG_GLOBAL} || ${+GIT_CONFIG_SYSTEM} ||
+    ${+GIT_CONFIG_NOSYSTEM} || ${+GIT_CONFIG_PARAMETERS} ||
+    ${+GIT_CONFIG_COUNT}
+  ))
+
+  if (( ! ${+GIT_DIR} && ! ${+GIT_WORK_TREE} && ! ${+GIT_COMMON_DIR} && \
+        ! ${+GIT_CEILING_DIRECTORIES} && \
+        ! ${+GIT_DISCOVERY_ACROSS_FILESYSTEM} && ! has_config_override )); then
+    REPLY=""
+    return 0
+  fi
+
+  if [[ ( -n "$git_dir" && "$git_dir" != /* ) || \
+        ( -n "$git_work_tree" && "$git_work_tree" != /* ) || \
+        ( -n "$git_common_dir" && "$git_common_dir" != /* ) ]]; then
+    relative_base="${_AI_CANDY_PHYSICAL_PWD:-${PWD:A}}"
+  fi
+
+  if [[ -n "$git_dir" ]]; then
+    resolved_git_dir="$git_dir"
+    if [[ "$resolved_git_dir" != /* ]]; then
+      resolved_git_dir="${relative_base}/${resolved_git_dir}"
+    fi
+    resolved_git_dir="${resolved_git_dir:A}"
+  fi
+  if [[ -n "$git_work_tree" ]]; then
+    resolved_git_work_tree="$git_work_tree"
+    if [[ "$resolved_git_work_tree" != /* ]]; then
+      resolved_git_work_tree="${relative_base}/${resolved_git_work_tree}"
+    fi
+    resolved_git_work_tree="${resolved_git_work_tree:A}"
+  fi
+  if [[ -n "$git_common_dir" ]]; then
+    resolved_git_common_dir="$git_common_dir"
+    if [[ "$resolved_git_common_dir" != /* ]]; then
+      resolved_git_common_dir="${relative_base}/${resolved_git_common_dir}"
+    fi
+    resolved_git_common_dir="${resolved_git_common_dir:A}"
+  fi
+
+  REPLY="g${has_config_override}d${+GIT_DIR}:${#git_dir}:${git_dir}"
+  REPLY+="w${+GIT_WORK_TREE}:${#git_work_tree}:${git_work_tree}"
+  REPLY+="c${+GIT_COMMON_DIR}:${#git_common_dir}:${git_common_dir}"
+  REPLY+="l${+GIT_CEILING_DIRECTORIES}:${#git_ceiling}:${git_ceiling}"
+  REPLY+="a${+GIT_DISCOVERY_ACROSS_FILESYSTEM}:"
+  REPLY+="${#git_across_filesystems}:${git_across_filesystems}"
+  REPLY+="p${#relative_base}:${relative_base}"
+  REPLY+="D${#resolved_git_dir}:${resolved_git_dir}"
+  REPLY+="W${#resolved_git_work_tree}:${resolved_git_work_tree}"
+  REPLY+="C${#resolved_git_common_dir}:${resolved_git_common_dir}"
+  if (( has_config_override )); then
+    local discovery_context="$REPLY"
+    _ai_candy_git_config_override_context_key
+    local config_override_context="$REPLY"
+    REPLY="$discovery_context"
+    REPLY+="g${#config_override_context}:${config_override_context}"
+  fi
+}
+
+function _ai_candy_git_context_cache_key() {
+  local git_root="$1"
+  local home_value="${HOME-}"
+  local xdg_config_home="${XDG_CONFIG_HOME-}"
+  local discovery_context=""
+  local root_config_context=""
+  local resolved_git_dir=""
+  local resolved_git_common_dir=""
+
+  if (( $# >= 2 )); then
+    discovery_context="$2"
+  else
+    _ai_candy_git_discovery_context_key
+    discovery_context="$REPLY"
+  fi
+  if [[ "$discovery_context" == g1* && -n "$git_root" && \
+        "$git_root" != "NOT_GIT" ]]; then
+    _ai_candy_git_config_override_context_key "$git_root"
+    root_config_context="$REPLY"
+  fi
+  if [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] && \
+     _ai_candy_resolve_git_dir "$git_root"; then
+    resolved_git_dir="$REPLY"
+    if _ai_candy_resolve_git_common_dir "$git_root" "$resolved_git_dir"; then
+      resolved_git_common_dir="$REPLY"
+    fi
+  fi
+
+  REPLY="c${#discovery_context}:${discovery_context}"
+  REPLY+="r${#git_root}:${git_root}"
+  REPLY+="d${#resolved_git_dir}:${resolved_git_dir}"
+  REPLY+="m${#resolved_git_common_dir}:${resolved_git_common_dir}"
+  REPLY+="h${+HOME}:${#home_value}:${home_value}"
+  REPLY+="x${+XDG_CONFIG_HOME}:${#xdg_config_home}:${xdg_config_home}"
+  REPLY+="g${#root_config_context}:${root_config_context}"
+}
+
+function _ai_candy_run_git_probe_at_root() {
+  emulate -L zsh
+  local git_root="$1"
+  shift
+  local context_pwd="${_AI_CANDY_PHYSICAL_PWD:-${PWD:A}}"
+  local resolved_context_path=""
+
+  if (( ${+GIT_DIR} )) && [[ -n "$GIT_DIR" && "$GIT_DIR" != /* ]]; then
+    resolved_context_path="${context_pwd}/${GIT_DIR}"
+    local -x GIT_DIR="${resolved_context_path:A}"
+  fi
+  if (( ${+GIT_WORK_TREE} )) && \
+     [[ -n "$GIT_WORK_TREE" && "$GIT_WORK_TREE" != /* ]]; then
+    resolved_context_path="${context_pwd}/${GIT_WORK_TREE}"
+    local -x GIT_WORK_TREE="${resolved_context_path:A}"
+  fi
+  if (( ${+GIT_COMMON_DIR} )) && \
+     [[ -n "$GIT_COMMON_DIR" && "$GIT_COMMON_DIR" != /* ]]; then
+    resolved_context_path="${context_pwd}/${GIT_COMMON_DIR}"
+    local -x GIT_COMMON_DIR="${resolved_context_path:A}"
+  fi
+
+  _ai_candy_run_local_probe git -C "$git_root" "$@"
+}
+
+function _ai_candy_git_current_directory_context_key() {
+  emulate -L zsh
+  local -A metadata
+  REPLY=""
+
+  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 1
+  builtin zstat -H metadata -- . 2>/dev/null || return 1
+  [[ "${metadata[device]-}" == <-> && \
+     "${metadata[inode]-}" == <-> ]] || return 1
+  REPLY="d${#metadata[device]}:${metadata[device]}"
+  REPLY+="i${#metadata[inode]}:${metadata[inode]}"
+}
+
+function _ai_candy_git_config_file_context_key() {
+  emulate -L zsh
+  local config_file="$1"
+  local physical_config_file="$config_file"
+  local config_context=""
+  local volatile_content=""
+  local volatile_generation=""
+  local -A metadata
+  integer current_time=$EPOCHSECONDS
+
+  if [[ ! -e "$config_file" && ! -L "$config_file" ]]; then
+    REPLY="p${#physical_config_file}:${physical_config_file}e0l0"
+    return 0
+  fi
+  [[ -L "$config_file" ]] && physical_config_file="${config_file:A}"
+  config_context="p${#physical_config_file}:${physical_config_file}"
+
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) && \
+     builtin zstat -H metadata -- "$config_file" 2>/dev/null; then
+    config_context+="d${#metadata[device]}:${metadata[device]}"
+    config_context+="i${#metadata[inode]}:${metadata[inode]}"
+    config_context+="s${#metadata[size]}:${metadata[size]}"
+    config_context+="m${#metadata[mtime]}:${metadata[mtime]}"
+    config_context+="c${#metadata[ctime]}:${metadata[ctime]}"
+    # Whole-second stat fields need a session-only discriminator. Config
+    # contents never enter a persistent key or backend.
+    if (( metadata[mtime] >= current_time || \
+          metadata[ctime] >= current_time )); then
+      _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
+      if _ai_candy_read_git_metadata_file "$physical_config_file"; then
+        volatile_content="x${REPLY}"
+        if [[ "${_AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]-}" != \
+              "$volatile_content" || \
+              -z "${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}" ]]; then
+          if (( ${#_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH} >= \
+                _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
+             [[ -z "${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}" ]]; then
+            _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH=()
+            _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH=()
+          fi
+          (( ++_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE ))
+          _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH[$physical_config_file]="${volatile_content}"
+          _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]="$_AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE"
+        fi
+        volatile_generation="${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]}"
+        config_context+="v${#volatile_generation}:${volatile_generation}"
+      else
+        _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
+      fi
+    else
+      volatile_generation="${_AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH[$physical_config_file]-}"
+      if [[ -n "$volatile_generation" ]]; then
+        _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
+        config_context+="v${#volatile_generation}:${volatile_generation}"
+      fi
+    fi
+    REPLY="$config_context"
+    return 0
+  fi
+  _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=0
+  _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=0
+  [[ -e "$config_file" ]] && config_context+="e1" || config_context+="e0"
+  [[ -L "$config_file" ]] && config_context+="l1" || config_context+="l0"
+  REPLY="$config_context"
+}
+
+function _ai_candy_git_metadata_context_key() {
+  emulate -L zsh
   local path_value="$1"
+  local physical_path="${path_value:A}"
+  local candidate_dir="$physical_path"
+  local git_marker=""
+  local marker_detail=""
+  local resolved_git_dir=""
+  local resolved_git_common_dir=""
+  local common_config_context=""
+  local worktree_config_context=""
+  local ceiling_entry=""
+  local -a ceiling_entries ceiling_paths
+  integer candidate_is_start=1
+  _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
+  _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
+  if (( _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND != EPOCHSECONDS )); then
+    _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH=()
+    _AI_CANDY_GIT_VOLATILE_CONFIG_SECOND=$EPOCHSECONDS
+  fi
+  REPLY=""
+
+  if (( ${+GIT_DIR} )); then
+    if ! _ai_candy_resolve_git_dir "$physical_path"; then
+      REPLY="e0:"
+      return 0
+    fi
+    resolved_git_dir="$REPLY"
+    if ! _ai_candy_resolve_git_common_dir \
+         "$physical_path" "$resolved_git_dir"; then
+      REPLY="e${#resolved_git_dir}:${resolved_git_dir}"
+      return 0
+    fi
+    resolved_git_common_dir="$REPLY"
+    _ai_candy_git_config_file_context_key \
+      "${resolved_git_common_dir}/config"
+    common_config_context="$REPLY"
+    _ai_candy_git_config_file_context_key \
+      "${resolved_git_dir}/config.worktree"
+    worktree_config_context="$REPLY"
+    REPLY="d${#resolved_git_dir}:${resolved_git_dir}"
+    REPLY+="m${#resolved_git_common_dir}:${resolved_git_common_dir}"
+    REPLY+="c${#common_config_context}:${common_config_context}"
+    REPLY+="w${#worktree_config_context}:${worktree_config_context}"
+    return 0
+  fi
+  if (( ${+GIT_CEILING_DIRECTORIES} )); then
+    ceiling_entries=("${(@s.:.)GIT_CEILING_DIRECTORIES}")
+    for ceiling_entry in "${ceiling_entries[@]}"; do
+      [[ "$ceiling_entry" == /* ]] || continue
+      ceiling_paths+=("${ceiling_entry:A}")
+    done
+  fi
+
+  while true; do
+    if (( ! candidate_is_start && \
+          ${ceiling_paths[(Ie)$candidate_dir]} )); then
+      return 0
+    fi
+    git_marker="${candidate_dir%/}/.git"
+    [[ "$candidate_dir" == "/" ]] && git_marker="/.git"
+    if [[ -e "$git_marker" || -L "$git_marker" ]]; then
+      if _ai_candy_resolve_git_dir "$candidate_dir"; then
+        resolved_git_dir="$REPLY"
+        if _ai_candy_resolve_git_common_dir \
+             "$candidate_dir" "$resolved_git_dir"; then
+          resolved_git_common_dir="$REPLY"
+          _ai_candy_git_config_file_context_key \
+            "${resolved_git_common_dir}/config"
+          common_config_context="$REPLY"
+          _ai_candy_git_config_file_context_key \
+            "${resolved_git_dir}/config.worktree"
+          worktree_config_context="$REPLY"
+          REPLY="r${#candidate_dir}:${candidate_dir}"
+          REPLY+="d${#resolved_git_dir}:${resolved_git_dir}"
+          REPLY+="m${#resolved_git_common_dir}:${resolved_git_common_dir}"
+          REPLY+="c${#common_config_context}:${common_config_context}"
+          REPLY+="w${#worktree_config_context}:${worktree_config_context}"
+          return 0
+        fi
+      fi
+      marker_detail="${git_marker:A}"
+      if [[ -f "$git_marker" && ! -L "$git_marker" ]] && \
+         _ai_candy_read_git_metadata_file "$git_marker"; then
+        marker_detail="$REPLY"
+      fi
+      REPLY="i${#candidate_dir}:${candidate_dir}"
+      REPLY+="v${#marker_detail}:${marker_detail}"
+      return 0
+    fi
+    [[ "$candidate_dir" == "/" ]] && return 0
+    candidate_dir="${candidate_dir:h}"
+    candidate_is_start=0
+  done
+}
+
+function _ai_candy_git_root_cache_requires_refresh() {
+  emulate -L zsh
   local cached_root="$2"
   local validated_generation="${3:-0}"
+  local metadata_context="${5:-}"
 
   _ai_candy_cache_generation_token_is_valid "$validated_generation" || \
     validated_generation=0
-  [[ "$_GIT_TOPOLOGY_GENERATION" != "$validated_generation" ]] && return 0
+  [[ "$_AI_CANDY_GIT_TOPOLOGY_GENERATION" != "$validated_generation" ]] && return 0
   if [[ "$cached_root" == "NOT_GIT" ]]; then
-    [[ -e "${path_value}/.git" ]]
-    return $?
+    [[ -n "$metadata_context" ]] && return 0
+    return 1
   fi
-  [[ ! -e "${cached_root}/.git" ]]
+  [[ -n "$metadata_context" ]] || return 0
+  return 1
 }
 
 function _ai_candy_path_has_git_metadata_context() {
@@ -5002,19 +5548,46 @@ function _ai_candy_get_cached_git_root() {
   integer topology_persistence=1
   _ai_candy_sync_git_topology_generation || topology_persistence=0
   local current_dir="$PWD"
+  integer physical_pwd_is_current=1
+  _ai_candy_capture_physical_pwd || physical_pwd_is_current=0
+  local current_physical_dir="${_AI_CANDY_PHYSICAL_PWD:-${current_dir:A}}"
+  integer current_directory_is_identified=1
+  _ai_candy_git_current_directory_context_key || \
+    current_directory_is_identified=0
+  local current_directory_context="$REPLY"
+  _ai_candy_git_discovery_context_key
+  local discovery_context="$REPLY"
+  _ai_candy_git_metadata_context_key "$current_physical_dir"
+  local metadata_context="$REPLY"
+  integer metadata_context_cacheable=$_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE
+  integer metadata_context_persistable=$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE
+  if (( ! physical_pwd_is_current || ! current_directory_is_identified )); then
+    metadata_context_cacheable=0
+    metadata_context_persistable=0
+  fi
+  local root_cache_key="$current_dir"
+  [[ -n "$discovery_context" ]] && topology_persistence=0
+  if [[ -n "$discovery_context" || -n "$metadata_context" || \
+        -n "$current_directory_context" ]]; then
+    root_cache_key="c${#discovery_context}:${discovery_context}"
+    root_cache_key+="m${#metadata_context}:${metadata_context}"
+    root_cache_key+="i${#current_directory_context}:${current_directory_context}"
+    root_cache_key+="p${#current_dir}:${current_dir}"
+  fi
   local current_time=${EPOCHSECONDS}
   REPLY=""
 
   # Check memory cache first (fastest, no I/O)
-  if [[ -n "${_MEM_CACHE_GIT_ROOT[$current_dir]-}" ]]; then
-    local cached="${_MEM_CACHE_GIT_ROOT[$current_dir]}"
+  if (( metadata_context_cacheable )) && \
+     [[ -n "${_AI_CANDY_MEM_CACHE_GIT_ROOT[$root_cache_key]-}" ]]; then
+    local cached="${_AI_CANDY_MEM_CACHE_GIT_ROOT[$root_cache_key]}"
     local cached_root="${cached%|*}"
     local cache_time="${cached##*|}"
-    local validated_generation="${_MEM_CACHE_GIT_ROOT_GENERATION[$current_dir]-0}"
+    local validated_generation="${_AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION[$root_cache_key]-0}"
     if _ai_candy_git_root_cache_requires_refresh "$current_dir" "$cached_root" \
-         "$validated_generation"; then
-      _ai_candy_mem_cache_remove_key git_root "$current_dir"
-    elif _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+         "$validated_generation" "$discovery_context" "$metadata_context"; then
+      _ai_candy_mem_cache_remove_key git_root "$root_cache_key"
+    elif _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       REPLY="$cached_root"
       return 0
     fi
@@ -5022,20 +5595,23 @@ function _ai_candy_get_cached_git_root() {
 
   # Check persistent cache (SQLite or file)
   local cached_line=""
-  local persistent_key="${_GIT_TOPOLOGY_GENERATION}:${current_dir}"
-  if (( topology_persistence )) && _ai_candy_cache_get "git_root" "$persistent_key"; then
+  local persistent_key="${_AI_CANDY_GIT_TOPOLOGY_GENERATION}:${root_cache_key}"
+  if (( metadata_context_cacheable && metadata_context_persistable && \
+        topology_persistence )) && \
+     _ai_candy_cache_get "git_root" "$persistent_key"; then
     cached_line="$REPLY"
     # Format: value|timestamp (from _ai_candy_cache_get)
     local cache_time="${cached_line##*|}"
     local cached_root="${cached_line%|*}"
 
     if _ai_candy_git_root_cache_requires_refresh "$current_dir" "$cached_root" \
-         "$_GIT_TOPOLOGY_GENERATION"; then
+         "$_AI_CANDY_GIT_TOPOLOGY_GENERATION" "$discovery_context" \
+         "$metadata_context"; then
       _ai_candy_cache_delete_key "git_root" "$persistent_key" >/dev/null 2>&1
-    elif _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    elif _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       # Update memory cache from persistent cache
-      _MEM_CACHE_GIT_ROOT[$current_dir]="${cached_root}|${cache_time}"
-      _MEM_CACHE_GIT_ROOT_GENERATION[$current_dir]="$_GIT_TOPOLOGY_GENERATION"
+      _AI_CANDY_MEM_CACHE_GIT_ROOT[$root_cache_key]="${cached_root}|${cache_time}"
+      _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION[$root_cache_key]="$_AI_CANDY_GIT_TOPOLOGY_GENERATION"
       REPLY="$cached_root"
       return 0
     fi
@@ -5052,7 +5628,9 @@ function _ai_candy_get_cached_git_root() {
     return 0
   fi
   if (( git_status == 128 )); then
-    if _ai_candy_path_has_git_metadata_context "$current_dir"; then
+    if [[ -z "$discovery_context" || \
+          -n "${GIT_DIR:-}${GIT_WORK_TREE:-}${GIT_COMMON_DIR:-}" ]] && \
+       _ai_candy_path_has_git_metadata_context "$current_physical_dir"; then
       REPLY="NOT_GIT"
       return 0
     fi
@@ -5060,15 +5638,17 @@ function _ai_candy_get_cached_git_root() {
   fi
 
   # Update both caches
-  _MEM_CACHE_GIT_ROOT[$current_dir]="${git_root}|${current_time}"
-  _MEM_CACHE_GIT_ROOT_GENERATION[$current_dir]="$_GIT_TOPOLOGY_GENERATION"
-  if (( topology_persistence )); then
-    _ai_candy_cache_set "git_root" "$persistent_key" "$git_root" "$current_time" \
-      "$current_dir"
+  if (( metadata_context_cacheable )); then
+    _AI_CANDY_MEM_CACHE_GIT_ROOT[$root_cache_key]="${git_root}|${current_time}"
+    _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION[$root_cache_key]="$_AI_CANDY_GIT_TOPOLOGY_GENERATION"
+    if (( metadata_context_persistable && topology_persistence )); then
+      _ai_candy_cache_set "git_root" "$persistent_key" "$git_root" "$current_time" \
+        "$root_cache_key"
+    fi
   fi
 
   # Cleanup memory cache if it grows too large
-  (( ${#_MEM_CACHE_GIT_ROOT} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "git_root"
+  (( ${#_AI_CANDY_MEM_CACHE_GIT_ROOT} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "git_root"
 
   REPLY="$git_root"
 }
@@ -5078,7 +5658,7 @@ function _ai_candy_get_cached_git_root() {
 function _ai_candy_logicalize_path_from_pwd() {
   local physical_path="$1"
   local logical_pwd="${2:-$PWD}"
-  local physical_pwd="${3:-$(builtin pwd -P 2>/dev/null)}"
+  local physical_pwd="${3:-${_AI_CANDY_PHYSICAL_PWD:-${PWD:A}}}"
 
   if [[ -z "$physical_path" || -z "$logical_pwd" || -z "$physical_pwd" ]]; then
     builtin print -r -- "$physical_path"
@@ -5115,20 +5695,29 @@ function _ai_candy_logicalize_path_from_pwd() {
 # Where repo1 is outermost, repoN is innermost git root
 # current_subdir is the path within the innermost repo (may be empty)
 function _ai_candy_get_git_hierarchy() {
+  local LC_ALL=C
   integer topology_persistence=1
   _ai_candy_sync_git_topology_generation || topology_persistence=0
+  _ai_candy_git_discovery_context_key
+  local discovery_context="$REPLY"
+  [[ -n "$discovery_context" ]] && topology_persistence=0
   local current_time=${EPOCHSECONDS}
-  local cache_key="${_GIT_HIERARCHY_CACHE_VERSION:-1}:${_GIT_TOPOLOGY_GENERATION}:$PWD"
+  local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-}"
+  _ai_candy_git_context_cache_key "$git_root" "$discovery_context"
+  local git_context="$REPLY"
+  local cache_key="${_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION:-1}:"
+  cache_key+="${_AI_CANDY_GIT_TOPOLOGY_GENERATION}:"
+  cache_key+="c${#git_context}:${git_context}p${#PWD}:${PWD}"
   local logical_pwd="$PWD"
-  local physical_pwd="$(builtin pwd -P 2>/dev/null)"
+  local physical_pwd="${_AI_CANDY_PHYSICAL_PWD:-${PWD:A}}"
   REPLY=""
 
   # Check memory cache first (fastest, no I/O)
-  if [[ -n "${_MEM_CACHE_GIT_HIERARCHY[$cache_key]-}" ]]; then
-    local cached="${_MEM_CACHE_GIT_HIERARCHY[$cache_key]}"
+  if [[ -n "${_AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]-}" ]]; then
+    local cached="${_AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]}"
     local cache_time="${cached##*|}"
     local cached_result="${cached%|*}"
-    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       REPLY="$cached_result"
       return 0
     fi
@@ -5143,9 +5732,9 @@ function _ai_candy_get_git_hierarchy() {
     local cache_time="${cached_line##*|}"
     local cached_result="${cached_line%|*}"
 
-    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       # Update memory cache from persistent cache
-      _MEM_CACHE_GIT_HIERARCHY[$cache_key]="${cached_result}|${cache_time}"
+      _AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]="${cached_result}|${cache_time}"
       REPLY="$cached_result"
       return 0
     fi
@@ -5154,8 +5743,7 @@ function _ai_candy_get_git_hierarchy() {
   # Build hierarchy from innermost to outermost
   local hierarchy=()
   local depth=0
-  local max_depth=${_GIT_HIERARCHY_MAX_DEPTH:-20}
-  local git_root="${_PP_CACHED_GIT_ROOT:-}"
+  local max_depth=${_AI_CANDY_GIT_HIERARCHY_MAX_DEPTH:-20}
   if [[ -z "$git_root" || "$git_root" == "NOT_GIT" ]]; then
     git_root=$(builtin cd "$PWD" 2>/dev/null && _ai_candy_run_local_probe git rev-parse --show-toplevel 2>/dev/null)
   fi
@@ -5168,7 +5756,8 @@ function _ai_candy_get_git_hierarchy() {
     hierarchy=("$display_git_root" "${hierarchy[@]}")  # prepend (outermost first)
 
     # Check for superproject
-    local superproject=$(builtin cd "$git_root" 2>/dev/null && _ai_candy_run_local_probe git rev-parse --show-superproject-working-tree 2>/dev/null)
+    local superproject=$(_ai_candy_run_git_probe_at_root "$git_root" \
+      rev-parse --show-superproject-working-tree 2>/dev/null)
     [[ -z "$superproject" || "$superproject" == "$git_root" ]] && break
 
     git_root="$superproject"
@@ -5176,8 +5765,7 @@ function _ai_candy_get_git_hierarchy() {
 
   # Build result: repo1<sep>repo2<sep>...<sep>subdir
   local result=""
-  local sep="${_GIT_HIERARCHY_SEP:-:}"
-  local IFS="$sep"
+  local sep="${_AI_CANDY_GIT_HIERARCHY_SEP:-:}"
   if (( ${#hierarchy[@]} > 0 )); then
     local innermost="${hierarchy[-1]}"
     local current_subdir=""
@@ -5185,22 +5773,23 @@ function _ai_candy_get_git_hierarchy() {
 
     # The internal separator is a control byte that POSIX filenames can still
     # contain. Neutralize it before serializing display-only path components.
-    local component
-    local -a serialized_hierarchy=()
+    local component serialized_component
     for component in "${hierarchy[@]}"; do
-      serialized_hierarchy+=("${component//${_GIT_HIERARCHY_SEP}/?}")
+      serialized_component="${component//${_AI_CANDY_GIT_HIERARCHY_SEP}/?}"
+      [[ -n "$result" ]] && result+="$sep"
+      result+="$serialized_component"
     done
-    current_subdir="${current_subdir//${_GIT_HIERARCHY_SEP}/?}"
-    result="${serialized_hierarchy[*]}${sep}${current_subdir}"
+    current_subdir="${current_subdir//${_AI_CANDY_GIT_HIERARCHY_SEP}/?}"
+    result+="${sep}${current_subdir}"
   fi
 
   # Cache result in both memory and persistent cache
-  _MEM_CACHE_GIT_HIERARCHY[$cache_key]="${result}|${current_time}"
+  _AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]="${result}|${current_time}"
   (( topology_persistence )) && \
     _ai_candy_cache_set "git_hierarchy" "$cache_key" "$result" "$current_time"
 
   # Cleanup memory cache if it grows too large
-  (( ${#_MEM_CACHE_GIT_HIERARCHY} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "git_hierarchy"
+  (( ${#_AI_CANDY_MEM_CACHE_GIT_HIERARCHY} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "git_hierarchy"
 
   REPLY="$result"
 }
@@ -5210,36 +5799,37 @@ function _ai_candy_get_git_hierarchy() {
 # ============================================================================
 
 # A single porcelain-v2 snapshot owns all frequently changing Git facts.
-typeset -g _GIT_SNAPSHOT_RENDER_ID=-1
-typeset -g _GIT_SNAPSHOT_ROOT=""
-typeset -g _GIT_SNAPSHOT_VALID=0
-typeset -g _GIT_SNAPSHOT_STATUS_COMPLETE=0
-typeset -g _GIT_SNAPSHOT_BRANCH=""
-typeset -g _GIT_SNAPSHOT_UPSTREAM=""
-typeset -g _GIT_SNAPSHOT_OID=""
-typeset -g _GIT_SNAPSHOT_TAG=""
-typeset -g _GIT_SNAPSHOT_DIRTY=0
-typeset -g _GIT_SNAPSHOT_AHEAD=0
-typeset -g _GIT_SNAPSHOT_BEHIND=0
-typeset -g _GIT_SNAPSHOT_STASH=0
-typeset -g _GIT_HIDE_INFO=0
-typeset -g _GIT_HIDE_DIRTY=0
-typeset -g _GIT_CONFIG_CACHE_TTL=5
-typeset -gA _GIT_OMZ_OPTIONS_BY_ROOT
-typeset -g _GIT_SNAPSHOT_FAILURE_RETRY_TTL=3
-typeset -gA _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT
+typeset -g _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+typeset -g _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""
+typeset -g _AI_CANDY_GIT_SNAPSHOT_VALID=0
+typeset -g _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE=0
+typeset -g _AI_CANDY_GIT_SNAPSHOT_BRANCH=""
+typeset -g _AI_CANDY_GIT_SNAPSHOT_UPSTREAM=""
+typeset -g _AI_CANDY_GIT_SNAPSHOT_OID=""
+typeset -g _AI_CANDY_GIT_SNAPSHOT_TAG=""
+typeset -g _AI_CANDY_GIT_SNAPSHOT_DIRTY=0
+typeset -g _AI_CANDY_GIT_SNAPSHOT_AHEAD=0
+typeset -g _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
+typeset -g _AI_CANDY_GIT_SNAPSHOT_STASH=0
+typeset -gA _AI_CANDY_GIT_STASH_COUNT_BY_LOG
+typeset -g _AI_CANDY_GIT_HIDE_INFO=0
+typeset -g _AI_CANDY_GIT_HIDE_DIRTY=0
+typeset -g _AI_CANDY_GIT_CONFIG_CACHE_TTL=5
+typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
+typeset -g _AI_CANDY_GIT_SNAPSHOT_FAILURE_RETRY_TTL=3
+typeset -gA _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT
 
 function _ai_candy_reset_git_snapshot() {
-  _GIT_SNAPSHOT_VALID=0
-  _GIT_SNAPSHOT_STATUS_COMPLETE=0
-  _GIT_SNAPSHOT_BRANCH=""
-  _GIT_SNAPSHOT_UPSTREAM=""
-  _GIT_SNAPSHOT_OID=""
-  _GIT_SNAPSHOT_TAG=""
-  _GIT_SNAPSHOT_DIRTY=0
-  _GIT_SNAPSHOT_AHEAD=0
-  _GIT_SNAPSHOT_BEHIND=0
-  _GIT_SNAPSHOT_STASH=0
+  _AI_CANDY_GIT_SNAPSHOT_VALID=0
+  _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE=0
+  _AI_CANDY_GIT_SNAPSHOT_BRANCH=""
+  _AI_CANDY_GIT_SNAPSHOT_UPSTREAM=""
+  _AI_CANDY_GIT_SNAPSHOT_OID=""
+  _AI_CANDY_GIT_SNAPSHOT_TAG=""
+  _AI_CANDY_GIT_SNAPSHOT_DIRTY=0
+  _AI_CANDY_GIT_SNAPSHOT_AHEAD=0
+  _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
+  _AI_CANDY_GIT_SNAPSHOT_STASH=0
 }
 
 function _ai_candy_load_git_head_snapshot() {
@@ -5251,21 +5841,62 @@ function _ai_candy_load_git_head_snapshot() {
   _ai_candy_read_git_metadata_file "${git_dir}/HEAD" || return 1
   head_contents="$REPLY"
   if [[ "$head_contents" == "ref: refs/heads/"* ]]; then
-    _GIT_SNAPSHOT_BRANCH="${head_contents#ref: refs/heads/}"
-    [[ -n "$_GIT_SNAPSHOT_BRANCH" ]] || return 1
+    _AI_CANDY_GIT_SNAPSHOT_BRANCH="${head_contents#ref: refs/heads/}"
+    [[ -n "$_AI_CANDY_GIT_SNAPSHOT_BRANCH" ]] || return 1
   elif (( ${#head_contents} == 40 || ${#head_contents} == 64 )) && \
        [[ -z "${head_contents//[0-9A-Fa-f]/}" ]]; then
-    _GIT_SNAPSHOT_BRANCH="(detached)"
-    _GIT_SNAPSHOT_OID="$head_contents"
+    _AI_CANDY_GIT_SNAPSHOT_BRANCH="(detached)"
+    _AI_CANDY_GIT_SNAPSHOT_OID="$head_contents"
   else
     return 1
   fi
-  _GIT_SNAPSHOT_VALID=1
+  _AI_CANDY_GIT_SNAPSHOT_VALID=1
+}
+
+function _ai_candy_load_git_stash_fallback() {
+  emulate -L zsh
+  local git_root="$1"
+  local common_dir="" stash_log="" signature="" cached=""
+  local cached_signature="" cached_fields="" cached_count="" count=""
+  local -a mtime_data size_data
+
+  _ai_candy_resolve_git_common_dir "$git_root" || return 0
+  common_dir="$REPLY"
+  stash_log="${common_dir}/logs/refs/stash"
+  [[ -f "$stash_log" && ! -L "$stash_log" ]] || return 0
+
+  if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) && \
+     builtin zstat -A mtime_data +mtime -- "$stash_log" 2>/dev/null && \
+     builtin zstat -A size_data +size -- "$stash_log" 2>/dev/null && \
+     [[ "${mtime_data[1]-}" == <-> && "${size_data[1]-}" == <-> ]]; then
+    signature="${mtime_data[1]}:${size_data[1]}"
+    cached="${_AI_CANDY_GIT_STASH_COUNT_BY_LOG[$stash_log]-}"
+    cached_signature="${cached%%|*}"
+    cached_fields="${cached#*|}"
+    cached_count="${cached_fields%%|*}"
+    if [[ "$cached_signature" == "$signature" && "$cached_count" == <-> ]]; then
+      _AI_CANDY_GIT_SNAPSHOT_STASH="$cached_count"
+      return 0
+    fi
+  fi
+
+  count=$(_ai_candy_run_git_probe_at_root "$git_root" \
+    rev-list --walk-reflogs --count refs/stash 2>/dev/null) || count=""
+  [[ "$count" == <-> && ${#count} -le 9 ]] || return 0
+  _AI_CANDY_GIT_SNAPSHOT_STASH="$count"
+  if [[ -n "$signature" ]]; then
+    _AI_CANDY_GIT_STASH_COUNT_BY_LOG[$stash_log]="${signature}|${count}|${EPOCHSECONDS}"
+    (( ${#_AI_CANDY_GIT_STASH_COUNT_BY_LOG} > \
+       _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
+      _ai_candy_mem_cache_cleanup git_stash
+  fi
 }
 
 function _ai_candy_load_git_display_options() {
   local git_root="$1"
-  local cached="${_GIT_OMZ_OPTIONS_BY_ROOT[$git_root]-}"
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
+  local cached="${_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$context_key]-}"
   local current_time="${EPOCHSECONDS}"
   local hide_info=0 hide_dirty=0
   integer cache_is_fresh=0
@@ -5274,7 +5905,7 @@ function _ai_candy_load_git_display_options() {
     local cache_time="${cached##*|}"
     local cached_options="${cached%|*}"
     if _ai_candy_cache_timestamp_is_fresh "$cache_time" \
-         "$_GIT_CONFIG_CACHE_TTL" "$current_time"; then
+         "$_AI_CANDY_GIT_CONFIG_CACHE_TTL" "$current_time"; then
       hide_info="${cached_options%%|*}"
       hide_dirty="${cached_options##*|}"
       cache_is_fresh=1
@@ -5283,37 +5914,48 @@ function _ai_candy_load_git_display_options() {
 
   if (( ! cache_is_fresh )); then
     local config_output="" line
-    config_output=$(_ai_candy_run_local_probe git -C "$git_root" config --get-regexp \
+    config_output=$(_ai_candy_run_git_probe_at_root "$git_root" \
+      config --get-regexp \
       '^oh-my-zsh\.(hide-info|hide-dirty)$' 2>/dev/null) || config_output=""
     for line in "${(@f)config_output}"; do
-      [[ "$line" == 'oh-my-zsh.hide-info 1' ]] && hide_info=1
-      [[ "$line" == 'oh-my-zsh.hide-dirty 1' ]] && hide_dirty=1
+      case "$line" in
+        'oh-my-zsh.hide-info '*)
+          hide_info=0
+          [[ "$line" == 'oh-my-zsh.hide-info 1' ]] && hide_info=1
+          ;;
+        'oh-my-zsh.hide-dirty '*)
+          hide_dirty=0
+          [[ "$line" == 'oh-my-zsh.hide-dirty 1' ]] && hide_dirty=1
+          ;;
+      esac
     done
-    _GIT_OMZ_OPTIONS_BY_ROOT[$git_root]="${hide_info}|${hide_dirty}|${current_time}"
-    (( ${#_GIT_OMZ_OPTIONS_BY_ROOT} > _MEM_CACHE_CLEANUP_THRESHOLD )) && \
+    _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$context_key]="${hide_info}|${hide_dirty}|${current_time}"
+    (( ${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
       _ai_candy_mem_cache_cleanup git_options
   fi
 
-  _GIT_HIDE_INFO="$hide_info"
-  _GIT_HIDE_DIRTY="$hide_dirty"
+  _AI_CANDY_GIT_HIDE_INFO="$hide_info"
+  _AI_CANDY_GIT_HIDE_DIRTY="$hide_dirty"
 }
 
 function _ai_candy_collect_git_snapshot() {
-  local current_id="${_PROMPT_RENDER_ID:-0}"
-  local git_root="${_PP_CACHED_GIT_ROOT:-NOT_GIT}"
-  if [[ "$_GIT_SNAPSHOT_RENDER_ID" == "$current_id" && \
-        "$_GIT_SNAPSHOT_ROOT" == "$git_root" ]]; then
+  local current_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
+  local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-NOT_GIT}"
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
+  if [[ "$_AI_CANDY_GIT_SNAPSHOT_RENDER_ID" == "$current_id" && \
+        "$_AI_CANDY_GIT_SNAPSHOT_CONTEXT" == "$context_key" ]]; then
     return 0
   fi
 
-  _GIT_SNAPSHOT_RENDER_ID="$current_id"
-  _GIT_SNAPSHOT_ROOT="$git_root"
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID="$current_id"
+  _AI_CANDY_GIT_SNAPSHOT_CONTEXT="$context_key"
   _ai_candy_reset_git_snapshot
   [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return 0
   _ai_candy_load_git_display_options "$git_root"
 
   local current_time="${EPOCHSECONDS}"
-  local retry_after="${_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT[$git_root]-0}"
+  local retry_after="${_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT[$context_key]-0}"
   if [[ "$retry_after" == <-> ]] && (( current_time < retry_after )); then
     _ai_candy_load_git_head_snapshot "$git_root"
     return $?
@@ -5330,109 +5972,111 @@ function _ai_candy_collect_git_snapshot() {
   local command_status=0
   snapshot=$(GIT_OPTIONAL_LOCKS=0 _ai_candy_run_local_probe git "${status_args[@]}" 2>/dev/null) || command_status=$?
   if (( command_status != 0 )); then
-    local retry_ttl="${_GIT_SNAPSHOT_FAILURE_RETRY_TTL:-3}"
+    local retry_ttl="${_AI_CANDY_GIT_SNAPSHOT_FAILURE_RETRY_TTL:-3}"
     if [[ "$retry_ttl" != <-> ]] || (( retry_ttl < 1 || retry_ttl > 30 )); then
       retry_ttl=3
     fi
-    _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT[$git_root]=$(( current_time + retry_ttl ))
-    (( ${#_GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT} > \
-       _MEM_CACHE_CLEANUP_THRESHOLD )) && \
+    _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT[$context_key]=$(( current_time + retry_ttl ))
+    (( ${#_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT} > \
+       _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
       _ai_candy_mem_cache_cleanup git_snapshot_retry
     _ai_candy_load_git_head_snapshot "$git_root"
     return $?
   fi
-  _ai_candy_mem_cache_remove_key git_snapshot_retry "$git_root"
+  _ai_candy_mem_cache_remove_key git_snapshot_retry "$context_key"
 
   local line prefix rest
   for line in "${(@f)snapshot}"; do
     case "$line" in
       '# branch.oid '*)
         prefix='# branch.oid '
-        _GIT_SNAPSHOT_OID="${line#$prefix}"
+        _AI_CANDY_GIT_SNAPSHOT_OID="${line#$prefix}"
         ;;
       '# branch.head '*)
         prefix='# branch.head '
-        _GIT_SNAPSHOT_BRANCH="${line#$prefix}"
+        _AI_CANDY_GIT_SNAPSHOT_BRANCH="${line#$prefix}"
         ;;
       '# branch.upstream '*)
         prefix='# branch.upstream '
-        _GIT_SNAPSHOT_UPSTREAM="${line#$prefix}"
+        _AI_CANDY_GIT_SNAPSHOT_UPSTREAM="${line#$prefix}"
         ;;
       '# branch.ab +'*)
         prefix='# branch.ab +'
         rest="${line#$prefix}"
-        _GIT_SNAPSHOT_AHEAD="${rest%% *}"
-        _GIT_SNAPSHOT_BEHIND="${rest##* -}"
+        _AI_CANDY_GIT_SNAPSHOT_AHEAD="${rest%% *}"
+        _AI_CANDY_GIT_SNAPSHOT_BEHIND="${rest##* -}"
         ;;
       '# stash '*)
         prefix='# stash '
-        _GIT_SNAPSHOT_STASH="${line#$prefix}"
+        _AI_CANDY_GIT_SNAPSHOT_STASH="${line#$prefix}"
         ;;
       '# '*) ;;
-      ?*) _GIT_SNAPSHOT_DIRTY=1 ;;
+      ?*) _AI_CANDY_GIT_SNAPSHOT_DIRTY=1 ;;
     esac
   done
 
-  [[ "$_GIT_SNAPSHOT_AHEAD" == <-> ]] || _GIT_SNAPSHOT_AHEAD=0
-  [[ "$_GIT_SNAPSHOT_BEHIND" == <-> ]] || _GIT_SNAPSHOT_BEHIND=0
-  [[ "$_GIT_SNAPSHOT_STASH" == <-> ]] || _GIT_SNAPSHOT_STASH=0
-  if [[ "$_GIT_SNAPSHOT_BRANCH" == "(detached)" ]]; then
-    _GIT_SNAPSHOT_TAG=$(_ai_candy_run_local_probe git describe --tags --exact-match HEAD 2>/dev/null) || \
-      _GIT_SNAPSHOT_TAG=""
+  [[ "$_AI_CANDY_GIT_SNAPSHOT_AHEAD" == <-> ]] || _AI_CANDY_GIT_SNAPSHOT_AHEAD=0
+  [[ "$_AI_CANDY_GIT_SNAPSHOT_BEHIND" == <-> ]] || _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
+  [[ "$_AI_CANDY_GIT_SNAPSHOT_STASH" == <-> ]] || _AI_CANDY_GIT_SNAPSHOT_STASH=0
+  (( _AI_CANDY_GIT_SNAPSHOT_STASH == 0 )) && \
+    _ai_candy_load_git_stash_fallback "$git_root"
+  if [[ "$_AI_CANDY_GIT_SNAPSHOT_BRANCH" == "(detached)" ]]; then
+    _AI_CANDY_GIT_SNAPSHOT_TAG=$(_ai_candy_run_local_probe git describe --tags --exact-match HEAD 2>/dev/null) || \
+      _AI_CANDY_GIT_SNAPSHOT_TAG=""
   fi
-  _GIT_SNAPSHOT_STATUS_COMPLETE=1
-  _GIT_SNAPSHOT_VALID=1
+  _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE=1
+  _AI_CANDY_GIT_SNAPSHOT_VALID=1
 }
 
-typeset -g _GIT_FORMATTED_INFO=""
-typeset -g _GIT_FORMATTED_EXT=""
+typeset -g _AI_CANDY_GIT_FORMATTED_INFO=""
+typeset -g _AI_CANDY_GIT_FORMATTED_EXT=""
 
 function _ai_candy_format_git_snapshot() {
-  _GIT_FORMATTED_INFO=""
-  _GIT_FORMATTED_EXT=""
-  (( _GIT_SNAPSHOT_VALID )) || return 0
+  _AI_CANDY_GIT_FORMATTED_INFO=""
+  _AI_CANDY_GIT_FORMATTED_EXT=""
+  (( _AI_CANDY_GIT_SNAPSHOT_VALID )) || return 0
 
-  local branch="$_GIT_SNAPSHOT_BRANCH"
+  local branch="$_AI_CANDY_GIT_SNAPSHOT_BRANCH"
   if [[ "$branch" == "(detached)" ]]; then
-    branch="${_GIT_SNAPSHOT_TAG:-${_GIT_SNAPSHOT_OID[1,7]}}"
+    branch="${_AI_CANDY_GIT_SNAPSHOT_TAG:-${_AI_CANDY_GIT_SNAPSHOT_OID[1,7]}}"
   fi
   _ai_candy_prompt_escape_text "$branch"
   branch="$REPLY"
 
   local upstream=""
-  if (( ${+ZSH_THEME_GIT_SHOW_UPSTREAM} )) && [[ -n "$_GIT_SNAPSHOT_UPSTREAM" ]]; then
-    _ai_candy_prompt_escape_text "$_GIT_SNAPSHOT_UPSTREAM"
+  if (( ${+ZSH_THEME_GIT_SHOW_UPSTREAM} )) && [[ -n "$_AI_CANDY_GIT_SNAPSHOT_UPSTREAM" ]]; then
+    _ai_candy_prompt_escape_text "$_AI_CANDY_GIT_SNAPSHOT_UPSTREAM"
     upstream=" -> ${REPLY}"
   fi
   local dirty=""
-  if (( _GIT_SNAPSHOT_STATUS_COMPLETE )); then
+  if (( _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE )); then
     dirty="${ZSH_THEME_GIT_PROMPT_CLEAN:-}"
-    (( _GIT_SNAPSHOT_DIRTY && ! _GIT_HIDE_DIRTY )) && \
+    (( _AI_CANDY_GIT_SNAPSHOT_DIRTY && ! _AI_CANDY_GIT_HIDE_DIRTY )) && \
       dirty="${ZSH_THEME_GIT_PROMPT_DIRTY:-}"
   fi
-  if (( ! _GIT_HIDE_INFO )); then
-    _GIT_FORMATTED_INFO="${ZSH_THEME_GIT_PROMPT_PREFIX:-}${branch}${upstream}${dirty}${ZSH_THEME_GIT_PROMPT_SUFFIX:-}"
+  if (( ! _AI_CANDY_GIT_HIDE_INFO )); then
+    _AI_CANDY_GIT_FORMATTED_INFO="${ZSH_THEME_GIT_PROMPT_PREFIX:-}${branch}${upstream}${dirty}${ZSH_THEME_GIT_PROMPT_SUFFIX:-}"
   fi
 
-  if (( _GIT_SNAPSHOT_AHEAD > 0 )); then
-    if (( _PROMPT_EMOJI_MODE )); then
-      _GIT_FORMATTED_EXT+="%{$fg[green]%}${_SYM_UP}${_GIT_SNAPSHOT_AHEAD}%{$reset_color%}"
+  if (( _AI_CANDY_GIT_SNAPSHOT_AHEAD > 0 )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[green]%}${_AI_CANDY_SYM_UP}${_AI_CANDY_GIT_SNAPSHOT_AHEAD}%{$reset_color%}"
     else
-      _GIT_FORMATTED_EXT+="%{$fg[green]%}+${_GIT_SNAPSHOT_AHEAD}%{$reset_color%}"
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[green]%}+${_AI_CANDY_GIT_SNAPSHOT_AHEAD}%{$reset_color%}"
     fi
   fi
-  if (( _GIT_SNAPSHOT_BEHIND > 0 )); then
-    if (( _PROMPT_EMOJI_MODE )); then
-      _GIT_FORMATTED_EXT+="%{$fg[red]%}${_SYM_DOWN}${_GIT_SNAPSHOT_BEHIND}%{$reset_color%}"
+  if (( _AI_CANDY_GIT_SNAPSHOT_BEHIND > 0 )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[red]%}${_AI_CANDY_SYM_DOWN}${_AI_CANDY_GIT_SNAPSHOT_BEHIND}%{$reset_color%}"
     else
-      _GIT_FORMATTED_EXT+="%{$fg[red]%}-${_GIT_SNAPSHOT_BEHIND}%{$reset_color%}"
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[red]%}-${_AI_CANDY_GIT_SNAPSHOT_BEHIND}%{$reset_color%}"
     fi
   fi
-  if (( _GIT_SNAPSHOT_STASH > 0 )); then
-    if (( _PROMPT_EMOJI_MODE )); then
-      _GIT_FORMATTED_EXT+="%{$fg[yellow]%}${_SYM_STASH}${_GIT_SNAPSHOT_STASH}%{$reset_color%}"
+  if (( _AI_CANDY_GIT_SNAPSHOT_STASH > 0 )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[yellow]%}${_AI_CANDY_SYM_STASH}${_AI_CANDY_GIT_SNAPSHOT_STASH}%{$reset_color%}"
     else
-      _GIT_FORMATTED_EXT+="%{$fg[yellow]%}S${_GIT_SNAPSHOT_STASH}%{$reset_color%}"
+      _AI_CANDY_GIT_FORMATTED_EXT+="%{$fg[yellow]%}S${_AI_CANDY_GIT_SNAPSHOT_STASH}%{$reset_color%}"
     fi
   fi
 }
@@ -5440,37 +6084,46 @@ function _ai_candy_format_git_snapshot() {
 function _ai_candy_compute_git_info_direct() {
   if (( _AI_CANDY_USE_OMZ_ASYNC )); then
     local async_output="${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-}"
-    _PP_GIT_INFO="${async_output# }"
-    _PP_GIT_EXT=""
+    _AI_CANDY_PP_GIT_INFO="${async_output# }"
+    _AI_CANDY_PP_GIT_EXT=""
     return 0
   fi
 
   _ai_candy_collect_git_snapshot
   _ai_candy_format_git_snapshot
-  _PP_GIT_INFO="$_GIT_FORMATTED_INFO"
+  _AI_CANDY_PP_GIT_INFO="$_AI_CANDY_GIT_FORMATTED_INFO"
 }
 
 function _ai_candy_compute_git_extended_direct() {
   (( _AI_CANDY_USE_OMZ_ASYNC )) && return 0
   _ai_candy_collect_git_snapshot
   _ai_candy_format_git_snapshot
-  _PP_GIT_EXT="$_GIT_FORMATTED_EXT"
+  _AI_CANDY_PP_GIT_EXT="$_AI_CANDY_GIT_FORMATTED_EXT"
 }
 
 function _ai_candy_resolve_git_dir() {
   local git_root="$1"
-  local git_dir="${git_root}/.git"
+  local git_dir=""
   REPLY=""
 
-  if [[ -f "$git_dir" ]]; then
-    _ai_candy_read_git_metadata_file "$git_dir" || return 1
-    local git_link="$REPLY"
-    [[ "$git_link" == "gitdir: "* ]] || return 1
-    git_link="${git_link#gitdir: }"
-    if [[ "$git_link" == /* ]]; then
-      git_dir="$git_link"
-    else
-      git_dir="${git_root}/${git_link}"
+  if (( ${+GIT_DIR} )); then
+    git_dir="${GIT_DIR-}"
+    [[ -n "$git_dir" && "$git_dir" != *$'\n'* ]] || return 1
+    [[ "$git_dir" == /* ]] || \
+      git_dir="${_AI_CANDY_PHYSICAL_PWD:-$PWD}/${git_dir}"
+    git_dir="${git_dir:A}"
+  else
+    git_dir="${git_root}/.git"
+    if [[ -f "$git_dir" ]]; then
+      _ai_candy_read_git_metadata_file "$git_dir" || return 1
+      local git_link="$REPLY"
+      [[ "$git_link" == "gitdir: "* ]] || return 1
+      git_link="${git_link#gitdir: }"
+      if [[ "$git_link" == /* ]]; then
+        git_dir="$git_link"
+      else
+        git_dir="${git_root}/${git_link}"
+      fi
     fi
     git_dir="${git_dir:A}"
   fi
@@ -5479,20 +6132,66 @@ function _ai_candy_resolve_git_dir() {
   REPLY="$git_dir"
 }
 
+function _ai_candy_resolve_git_common_dir() {
+  local git_root="$1"
+  local git_dir="" common_dir="" common_link=""
+  local common_file=""
+  REPLY=""
+
+  if (( $# >= 2 )); then
+    git_dir="$2"
+    [[ -d "$git_dir" ]] || return 1
+  else
+    _ai_candy_resolve_git_dir "$git_root" || return 1
+    git_dir="$REPLY"
+  fi
+  common_dir="$git_dir"
+  if (( ${+GIT_COMMON_DIR} )); then
+    common_link="${GIT_COMMON_DIR-}"
+    [[ -n "$common_link" && "$common_link" != *$'\n'* ]] || return 1
+    if [[ "$common_link" == /* ]]; then
+      common_dir="${common_link:A}"
+    else
+      common_dir="${_AI_CANDY_PHYSICAL_PWD:-$PWD}/${common_link}"
+      common_dir="${common_dir:A}"
+    fi
+  else
+    common_file="${git_dir}/commondir"
+    if [[ -e "$common_file" || -L "$common_file" ]]; then
+      [[ -f "$common_file" && ! -L "$common_file" ]] || return 1
+      _ai_candy_read_git_metadata_file "$common_file" || return 1
+      common_link="$REPLY"
+      [[ -n "$common_link" && "$common_link" != *$'\n'* ]] || return 1
+      if [[ "$common_link" == /* ]]; then
+        common_dir="${common_link:A}"
+      else
+        common_dir="${git_dir}/${common_link}"
+        common_dir="${common_dir:A}"
+      fi
+    fi
+  fi
+  [[ -d "$common_dir" ]] || return 1
+  REPLY="$common_dir"
+}
+
 # Direct-assignment version of _git_special_state_cached
-# PERFORMANCE: Sets _PP_GIT_SPECIAL directly (0 subshells)
-# Uses _PP_CACHED_GIT_ROOT set in _ai_candy_precmd_compute_prompt
+# PERFORMANCE: Sets _AI_CANDY_PP_GIT_SPECIAL directly (0 subshells)
+# Uses _AI_CANDY_PP_CACHED_GIT_ROOT set in _ai_candy_precmd_compute_prompt
 function _ai_candy_compute_git_special_direct() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_PROMPT_GIT_SPECIAL_CACHE_ID" == "$current_id" ]]; then
-    _PP_GIT_SPECIAL="$_PROMPT_GIT_SPECIAL_CACHE"
+  local current_id="$_AI_CANDY_PROMPT_RENDER_ID"
+  local git_root="$_AI_CANDY_PP_CACHED_GIT_ROOT"
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
+  if [[ "$_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_ID" == "$current_id" && \
+        "$_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_CONTEXT" == "$context_key" ]]; then
+    _AI_CANDY_PP_GIT_SPECIAL="$_AI_CANDY_PROMPT_GIT_SPECIAL_CACHE"
     return
   fi
 
-  _PP_GIT_SPECIAL=""
-  [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]] && return
+  _AI_CANDY_PP_GIT_SPECIAL=""
+  [[ "$git_root" == "NOT_GIT" ]] && return
 
-  _ai_candy_resolve_git_dir "$_PP_CACHED_GIT_ROOT" || return 0
+  _ai_candy_resolve_git_dir "$git_root" || return 0
   local git_dir="$REPLY"
 
   local state="" step="" total=""
@@ -5536,14 +6235,14 @@ function _ai_candy_compute_git_special_direct() {
   if [[ -n "$state" ]]; then
     local icon="" color="%{$fg[magenta]%}"
 
-    if (( _PROMPT_EMOJI_MODE )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
       case "$state" in
-        rebase*|am*) icon="$_SYM_BRANCH"; color="%{$fg[yellow]%}" ;;
-        merge)       icon="$_SYM_BRANCH"; color="%{$fg[cyan]%}" ;;
-        cherry)      icon="$_SYM_CHERRY"; color="%{$fg[red]%}" ;;
-        revert)      icon="$_SYM_REWIND"; color="%{$fg[magenta]%}" ;;
-        bisect)      icon="$_SYM_SEARCH"; color="%{$fg[blue]%}" ;;
-        detached)    icon="$_SYM_PLUG"; color="%{$fg[red]%}" ;;
+        rebase*|am*) icon="$_AI_CANDY_SYM_BRANCH"; color="%{$fg[yellow]%}" ;;
+        merge)       icon="$_AI_CANDY_SYM_BRANCH"; color="%{$fg[cyan]%}" ;;
+        cherry)      icon="$_AI_CANDY_SYM_CHERRY"; color="%{$fg[red]%}" ;;
+        revert)      icon="$_AI_CANDY_SYM_REWIND"; color="%{$fg[magenta]%}" ;;
+        bisect)      icon="$_AI_CANDY_SYM_SEARCH"; color="%{$fg[blue]%}" ;;
+        detached)    icon="$_AI_CANDY_SYM_PLUG"; color="%{$fg[red]%}" ;;
       esac
     else
       case "$state" in
@@ -5558,36 +6257,37 @@ function _ai_candy_compute_git_special_direct() {
     fi
 
     if [[ -n "$step" && -n "$total" ]]; then
-      _PP_GIT_SPECIAL="${color}${icon}${step}/${total}%{$reset_color%}"
+      _AI_CANDY_PP_GIT_SPECIAL="${color}${icon}${step}/${total}%{$reset_color%}"
     else
-      _PP_GIT_SPECIAL="${color}${icon}%{$reset_color%}"
+      _AI_CANDY_PP_GIT_SPECIAL="${color}${icon}%{$reset_color%}"
     fi
   fi
 
-  _PROMPT_GIT_SPECIAL_CACHE="$_PP_GIT_SPECIAL"
-  _PROMPT_GIT_SPECIAL_CACHE_ID="$current_id"
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE="$_AI_CANDY_PP_GIT_SPECIAL"
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_ID="$current_id"
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_CONTEXT="$context_key"
 }
 
 # Direct-assignment version of _gh_pr_status_cached
-# PERFORMANCE: Sets _PP_PR directly (0 subshells)
+# PERFORMANCE: Sets _AI_CANDY_PP_PR directly (0 subshells)
 # Uses three-tier caching: per-prompt -> memory -> persistent (SQLite/file)
 function _ai_candy_compute_pr_status_direct() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_PROMPT_GH_PR_CACHE_ID" == "$current_id" ]]; then
-    _PP_PR="$_PROMPT_GH_PR_CACHE"
+  local current_id="$_AI_CANDY_PROMPT_RENDER_ID"
+  if [[ "$_AI_CANDY_PROMPT_GH_PR_CACHE_ID" == "$current_id" ]]; then
+    _AI_CANDY_PP_PR="$_AI_CANDY_PROMPT_GH_PR_CACHE"
     return
   fi
 
-  _PP_PR=""
+  _AI_CANDY_PP_PR=""
 
   # Skip if network mode is disabled
-  (( _PROMPT_NETWORK_MODE )) || return
+  (( _AI_CANDY_PROMPT_NETWORK_MODE )) || return
 
   # Skip if no hash command available (needed for cache key generation)
-  (( _HAS_HASH_CMD )) || return
+  (( _AI_CANDY_HAS_HASH_CMD )) || return
 
   # Check if gh command exists
-  (( _HAS_GH )) || return
+  (( _AI_CANDY_HAS_GH )) || return
 
   # Check if gh is authenticated
   _ai_candy_gh_is_authenticated || return
@@ -5605,13 +6305,13 @@ function _ai_candy_compute_pr_status_direct() {
 
   # The session cache owns the hot PR lookup path.
   # Memory cache format: "pr_number|ci_status|timestamp"
-  if [[ -n "${_MEM_CACHE_GH_PR[$cache_key]-}" ]]; then
-    local cached="${_MEM_CACHE_GH_PR[$cache_key]}"
+  if [[ -n "${_AI_CANDY_MEM_CACHE_GH_PR[$cache_key]-}" ]]; then
+    local cached="${_AI_CANDY_MEM_CACHE_GH_PR[$cache_key]}"
     cache_time="${cached##*|}"
     local rest="${cached%|*}"
     ci_status="${rest##*|}"
     pr_number="${rest%|*}"
-    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_HIGH" "$current_time"; then
+    if _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_HIGH" "$current_time"; then
       # Valid memory cache, skip persistent cache lookup
       :  # Fall through to display logic
     else
@@ -5633,9 +6333,9 @@ function _ai_candy_compute_pr_status_direct() {
 
       # Update memory cache from persistent cache
       if [[ -n "$pr_number" ]]; then
-        _MEM_CACHE_GH_PR[$cache_key]="${pr_number}|${ci_status}|${cache_time}"
+        _AI_CANDY_MEM_CACHE_GH_PR[$cache_key]="${pr_number}|${ci_status}|${cache_time}"
         # Cleanup memory cache if it grows too large
-        (( ${#_MEM_CACHE_GH_PR} > _MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "gh_pr"
+        (( ${#_AI_CANDY_MEM_CACHE_GH_PR} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && _ai_candy_mem_cache_cleanup "gh_pr"
       fi
     fi
   fi
@@ -5652,7 +6352,7 @@ function _ai_candy_compute_pr_status_direct() {
   esac
 
   # Refresh if expired
-  _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_HIGH" "$current_time" || \
+  _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_HIGH" "$current_time" || \
     _ai_candy_gh_pr_update_cache "$remote_key" "$branch"
 
   # Display PR if valid
@@ -5660,37 +6360,37 @@ function _ai_candy_compute_pr_status_direct() {
     local ci_indicator=""
     case "$ci_status" in
       pass)
-        (( _PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[green]%}${_SYM_CHECK}" || ci_indicator="%{$fg[green]%}OK"
+        (( _AI_CANDY_PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[green]%}${_AI_CANDY_SYM_CHECK}" || ci_indicator="%{$fg[green]%}OK"
         ;;
       fail)
-        (( _PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[red]%}${_SYM_CROSS}" || ci_indicator="%{$fg[red]%}X"
+        (( _AI_CANDY_PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[red]%}${_AI_CANDY_SYM_CROSS}" || ci_indicator="%{$fg[red]%}X"
         ;;
       pending)
-        (( _PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[yellow]%}${_SYM_PENDING}" || ci_indicator="%{$fg[yellow]%}..."
+        (( _AI_CANDY_PROMPT_EMOJI_MODE )) && ci_indicator="%{$fg[yellow]%}${_AI_CANDY_SYM_PENDING}" || ci_indicator="%{$fg[yellow]%}..."
         ;;
     esac
 
     if [[ -n "$ci_indicator" ]]; then
-      _PP_PR="%{$FG[$_CLR_PR]%}#${pr_number}${ci_indicator}%{$reset_color%}"
+      _AI_CANDY_PP_PR="%{$FG[$_AI_CANDY_CLR_PR]%}#${pr_number}${ci_indicator}%{$reset_color%}"
     else
-      _PP_PR="%{$FG[$_CLR_PR]%}#${pr_number}%{$reset_color%}"
+      _AI_CANDY_PP_PR="%{$FG[$_AI_CANDY_CLR_PR]%}#${pr_number}%{$reset_color%}"
     fi
   fi
 
-  _PROMPT_GH_PR_CACHE="$_PP_PR"
-  _PROMPT_GH_PR_CACHE_ID="$current_id"
+  _AI_CANDY_PROMPT_GH_PR_CACHE="$_AI_CANDY_PP_PR"
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID="$current_id"
 }
 
-typeset -g _SMART_PATH_CONTEXT_KEY=""
-typeset -g _SMART_PATH_CONTEXT_TIMESTAMP=0
-typeset -g _SMART_PATH_FALLBACK=""
-typeset -g _SMART_PATH_NUM_REPOS=0
-typeset -g _SMART_PATH_TOTAL_LENGTH=0
-typeset -g _SMART_PATH_SEPARATOR="/"
-typeset -ga _SMART_PATH_SEGMENTS
-typeset -ga _SMART_PATH_SEGMENT_LENGTHS
-typeset -g _SMART_PATH_RENDER_KEY=""
-typeset -g _SMART_PATH_RENDER_VALUE=""
+typeset -g _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+typeset -g _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
+typeset -g _AI_CANDY_SMART_PATH_FALLBACK=""
+typeset -g _AI_CANDY_SMART_PATH_NUM_REPOS=0
+typeset -g _AI_CANDY_SMART_PATH_TOTAL_LENGTH=0
+typeset -g _AI_CANDY_SMART_PATH_SEPARATOR="/"
+typeset -ga _AI_CANDY_SMART_PATH_SEGMENTS
+typeset -ga _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS
+typeset -g _AI_CANDY_SMART_PATH_RENDER_KEY=""
+typeset -g _AI_CANDY_SMART_PATH_RENDER_VALUE=""
 
 function _ai_candy_abbreviate_home_path() {
   local candidate_path="$1"
@@ -5712,47 +6412,56 @@ function _ai_candy_abbreviate_home_path() {
   fi
 }
 
+function _ai_candy_smart_path_context_key() {
+  local home_value="${HOME:-}"
+  local git_root_value="${_AI_CANDY_PP_CACHED_GIT_ROOT:-NOT_GIT}"
+  _ai_candy_git_context_cache_key "$git_root_value"
+  local git_context="$REPLY"
+  REPLY="${#PWD}:${PWD}|${#home_value}:${home_value}|"
+  REPLY+="${#git_context}:${git_context}|${_AI_CANDY_PROMPT_PATH_SEP_MODE}|"
+  REPLY+="${_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION}"
+}
+
 function _ai_candy_prepare_smart_path_context() {
   local current_time="$EPOCHSECONDS"
-  local home_value="${HOME:-}"
-  local git_root_value="${_PP_CACHED_GIT_ROOT:-NOT_GIT}"
-  local context_key="${#PWD}:${PWD}|${#home_value}:${home_value}|${#git_root_value}:${git_root_value}|${_PROMPT_PATH_SEP_MODE}|${_GIT_HIERARCHY_CACHE_VERSION}"
-  if [[ "$_SMART_PATH_CONTEXT_KEY" == "$context_key" ]] && \
-     _ai_candy_cache_timestamp_is_fresh "$_SMART_PATH_CONTEXT_TIMESTAMP" \
-       "$_CACHE_TTL_MEDIUM" "$current_time"; then
+  _ai_candy_smart_path_context_key
+  local context_key="$REPLY"
+  if [[ "$_AI_CANDY_SMART_PATH_CONTEXT_KEY" == "$context_key" ]] && \
+     _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP" \
+       "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
     return 0
   fi
 
-  _SMART_PATH_RENDER_KEY=""
-  _SMART_PATH_RENDER_VALUE=""
-  _SMART_PATH_CONTEXT_KEY="$context_key"
-  _SMART_PATH_CONTEXT_TIMESTAMP="$current_time"
-  _SMART_PATH_FALLBACK=""
-  _SMART_PATH_NUM_REPOS=0
-  _SMART_PATH_TOTAL_LENGTH=0
-  _SMART_PATH_SEPARATOR="/"
-  _SMART_PATH_SEGMENTS=()
-  _SMART_PATH_SEGMENT_LENGTHS=()
+  _AI_CANDY_SMART_PATH_RENDER_KEY=""
+  _AI_CANDY_SMART_PATH_RENDER_VALUE=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY="$context_key"
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP="$current_time"
+  _AI_CANDY_SMART_PATH_FALLBACK=""
+  _AI_CANDY_SMART_PATH_NUM_REPOS=0
+  _AI_CANDY_SMART_PATH_TOTAL_LENGTH=0
+  _AI_CANDY_SMART_PATH_SEPARATOR="/"
+  _AI_CANDY_SMART_PATH_SEGMENTS=()
+  _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS=()
 
   _ai_candy_abbreviate_home_path "$PWD"
   local full_path="$REPLY"
-  if [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
-    _SMART_PATH_FALLBACK="$full_path"
+  if [[ "$_AI_CANDY_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
+    _AI_CANDY_SMART_PATH_FALLBACK="$full_path"
     _ai_candy_prompt_text_width "$full_path"
-    _SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
+    _AI_CANDY_SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
     return 0
   fi
 
   _ai_candy_get_git_hierarchy
   local hierarchy_str="$REPLY"
   if [[ -z "$hierarchy_str" ]]; then
-    _SMART_PATH_FALLBACK="$full_path"
+    _AI_CANDY_SMART_PATH_FALLBACK="$full_path"
     _ai_candy_prompt_text_width "$full_path"
-    _SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
+    _AI_CANDY_SMART_PATH_TOTAL_LENGTH=$(( REPLY + 2 ))
     return 0
   fi
 
-  local hierarchy_separator="${_GIT_HIERARCHY_SEP:-:}"
+  local hierarchy_separator="${_AI_CANDY_GIT_HIERARCHY_SEP:-:}"
   local -a parts repos
   parts=("${(@ps.$hierarchy_separator.)hierarchy_str}")
   local subdir=""
@@ -5762,10 +6471,10 @@ function _ai_candy_prepare_smart_path_context() {
     repos=("${parts[@]:0:$(( num_parts - 1 ))}")
   fi
 
-  _SMART_PATH_NUM_REPOS=${#repos}
+  _AI_CANDY_SMART_PATH_NUM_REPOS=${#repos}
   local repo parent display_path segment
   integer index total_length=2 has_space=0
-  for (( index=1; index<=_SMART_PATH_NUM_REPOS; index++ )); do
+  for (( index=1; index<=_AI_CANDY_SMART_PATH_NUM_REPOS; index++ )); do
     repo="${repos[index]}"
     if (( index == 1 )); then
       _ai_candy_abbreviate_home_path "$repo"
@@ -5774,32 +6483,32 @@ function _ai_candy_prepare_smart_path_context() {
       parent="${repos[index-1]}"
       display_path="${repo#$parent/}"
     fi
-    _SMART_PATH_SEGMENTS+=("$display_path")
+    _AI_CANDY_SMART_PATH_SEGMENTS+=("$display_path")
     _ai_candy_prompt_text_width "$display_path"
-    _SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
+    _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
   done
   if [[ -n "$subdir" ]]; then
-    _SMART_PATH_SEGMENTS+=("$subdir")
+    _AI_CANDY_SMART_PATH_SEGMENTS+=("$subdir")
     _ai_candy_prompt_text_width "$subdir"
-    _SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
+    _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS+=("$REPLY")
   fi
 
-  for index in "${_SMART_PATH_SEGMENT_LENGTHS[@]}"; do
+  for index in "${_AI_CANDY_SMART_PATH_SEGMENT_LENGTHS[@]}"; do
     (( total_length += index ))
   done
-  (( ${#_SMART_PATH_SEGMENTS} > 1 )) && (( total_length += ${#_SMART_PATH_SEGMENTS} - 1 ))
-  _SMART_PATH_TOTAL_LENGTH="$total_length"
+  (( ${#_AI_CANDY_SMART_PATH_SEGMENTS} > 1 )) && (( total_length += ${#_AI_CANDY_SMART_PATH_SEGMENTS} - 1 ))
+  _AI_CANDY_SMART_PATH_TOTAL_LENGTH="$total_length"
 
   [[ "$PWD" == *" "* ]] && has_space=1
   if (( ! has_space )); then
-    for segment in "${_SMART_PATH_SEGMENTS[@]}"; do
+    for segment in "${_AI_CANDY_SMART_PATH_SEGMENTS[@]}"; do
       if [[ "$segment" == *" "* ]]; then
         has_space=1
         break
       fi
     done
   fi
-  (( _PROMPT_PATH_SEP_MODE && ! has_space )) && _SMART_PATH_SEPARATOR=" "
+  (( _AI_CANDY_PROMPT_PATH_SEP_MODE && ! has_space )) && _AI_CANDY_SMART_PATH_SEPARATOR=" "
 }
 
 function _ai_candy_render_plain_smart_path() {
@@ -5823,7 +6532,7 @@ function _ai_candy_render_plain_smart_path() {
   fi
 
   _ai_candy_prompt_escape_text "$display_path"
-  _PP_PATH="%{$fg[white]%}[${REPLY}]%{$reset_color%}"
+  _AI_CANDY_PP_PATH="%{$fg[white]%}[${REPLY}]%{$reset_color%}"
 }
 
 function _ai_candy_compute_smart_path_direct() {
@@ -5832,33 +6541,33 @@ function _ai_candy_compute_smart_path_direct() {
   _ai_candy_prepare_smart_path_context
 
   local prompt_bang="${options[promptbang]}"
-  local render_key="${#use_short}:${use_short}|${requested_width}|${prompt_bang}|${_SMART_PATH_CONTEXT_TIMESTAMP}|${#_SMART_PATH_CONTEXT_KEY}:${_SMART_PATH_CONTEXT_KEY}"
-  if [[ "$_SMART_PATH_RENDER_KEY" == "$render_key" ]]; then
-    _PP_PATH="$_SMART_PATH_RENDER_VALUE"
+  local render_key="${#use_short}:${use_short}|${requested_width}|${prompt_bang}|${_AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP}|${#_AI_CANDY_SMART_PATH_CONTEXT_KEY}:${_AI_CANDY_SMART_PATH_CONTEXT_KEY}"
+  if [[ "$_AI_CANDY_SMART_PATH_RENDER_KEY" == "$render_key" ]]; then
+    _AI_CANDY_PP_PATH="$_AI_CANDY_SMART_PATH_RENDER_VALUE"
     return 0
   fi
 
-  integer total_length=$_SMART_PATH_TOTAL_LENGTH
+  integer total_length=$_AI_CANDY_SMART_PATH_TOTAL_LENGTH
   integer target_width=0
   if [[ "$use_short" == "short" ]]; then
     if (( requested_width > 0 )); then
       target_width=$requested_width
     else
-      target_width=${_PATH_TARGET_WIDTH_SHORT:-40}
+      target_width=${_AI_CANDY_PATH_TARGET_WIDTH_SHORT:-40}
     fi
   elif (( requested_width > 0 && total_length > requested_width )); then
     target_width=$requested_width
   fi
 
-  if [[ -n "$_SMART_PATH_FALLBACK" ]]; then
-    _ai_candy_render_plain_smart_path "$_SMART_PATH_FALLBACK" "$target_width"
-    _SMART_PATH_RENDER_KEY="$render_key"
-    _SMART_PATH_RENDER_VALUE="$_PP_PATH"
+  if [[ -n "$_AI_CANDY_SMART_PATH_FALLBACK" ]]; then
+    _ai_candy_render_plain_smart_path "$_AI_CANDY_SMART_PATH_FALLBACK" "$target_width"
+    _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
+    _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
     return 0
   fi
 
-  local -a segments=("${_SMART_PATH_SEGMENTS[@]}")
-  local -a segment_lengths=("${_SMART_PATH_SEGMENT_LENGTHS[@]}")
+  local -a segments=("${_AI_CANDY_SMART_PATH_SEGMENTS[@]}")
+  local -a segment_lengths=("${_AI_CANDY_SMART_PATH_SEGMENT_LENGTHS[@]}")
   integer total_segments=${#segments}
   integer start_index=1
 
@@ -5873,8 +6582,8 @@ function _ai_candy_compute_smart_path_direct() {
   if (( target_width > 0 && total_length > target_width )); then
     _ai_candy_abbreviate_home_path "$PWD"
     _ai_candy_render_plain_smart_path "$REPLY" "$target_width"
-    _SMART_PATH_RENDER_KEY="$render_key"
-    _SMART_PATH_RENDER_VALUE="$_PP_PATH"
+    _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
+    _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
     return 0
   fi
 
@@ -5884,61 +6593,62 @@ function _ai_candy_compute_smart_path_direct() {
   local segment bg_num
   integer index level
   if (( start_index > 1 )); then
-    result+="%{$FG[$_CLR_TRUNCATED]%}..%{$reset_color%}${_SMART_PATH_SEPARATOR}"
+    result+="%{$FG[$_AI_CANDY_CLR_TRUNCATED]%}..%{$reset_color%}${_AI_CANDY_SMART_PATH_SEPARATOR}"
   fi
 
   for (( index=start_index; index<=total_segments; index++ )); do
     _ai_candy_prompt_escape_text "${segments[index]}"
     segment="$REPLY"
-    if (( index <= _SMART_PATH_NUM_REPOS )); then
+    if (( index <= _AI_CANDY_SMART_PATH_NUM_REPOS )); then
       level=$(( index - start_index ))
-      (( level >= ${#_PATH_BG_COLORS} )) && level=$(( ${#_PATH_BG_COLORS} - 1 ))
-      bg_num="${_PATH_BG_COLORS[level+1]}"
+      (( level >= ${#_AI_CANDY_PATH_BG_COLORS} )) && level=$(( ${#_AI_CANDY_PATH_BG_COLORS} - 1 ))
+      bg_num="${_AI_CANDY_PATH_BG_COLORS[level+1]}"
       result+="${output_separator}%{${ESC}[48;5;${bg_num}m${ESC}[38;5;16m%}${segment}%{$reset_color%}"
     else
       result+="${output_separator}%{$fg[white]%}${segment}%{$reset_color%}"
     fi
-    output_separator="$_SMART_PATH_SEPARATOR"
+    output_separator="$_AI_CANDY_SMART_PATH_SEPARATOR"
   done
 
-  _PP_PATH="${result}]"
-  _SMART_PATH_RENDER_KEY="$render_key"
-  _SMART_PATH_RENDER_VALUE="$_PP_PATH"
+  _AI_CANDY_PP_PATH="${result}]"
+  _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
+  _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
 }
 
 # Optional-tool version status for the prompt
 # Uses cache to avoid network requests on every prompt
-# Shared across all terminals for better efficiency (uses _CACHE_TTL_LOW)
+# Shared across all terminals for better efficiency (uses _AI_CANDY_CACHE_TTL_LOW)
 # (Cache file paths defined in CACHE FILE PATHS section)
 
 # Git remote hashes are stable for a repository and remain in session memory.
-typeset -gA _GIT_REMOTE_KEY_BY_ROOT
-typeset -g _GIT_REMOTE_BRANCH_CACHE=""
-typeset -g _GIT_REMOTE_BRANCH_CACHE_ID=-1
+typeset -gA _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT
+typeset -g _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+typeset -g _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+typeset -g _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
 
 # Hash sensitive strings (e.g., remote URLs) for cache keys.
 # Args: $1=input string
 # Returns: hash string
-# PERFORMANCE: Uses _HASH_CMD detected at load time (no repeated command -v calls)
-# NOTE: Caller must check _HAS_HASH_CMD before calling this function
+# PERFORMANCE: Uses _AI_CANDY_HASH_CMD detected at load time (no repeated command -v calls)
+# NOTE: Caller must check _AI_CANDY_HAS_HASH_CMD before calling this function
 function _ai_candy_hash_string() {
   local input="$1"
   local hash=""
 
-  case "${_HASH_CMD:t}" in
+  case "${_AI_CANDY_HASH_CMD:t}" in
     sha256sum)
       hash=$(builtin print -rn -- "$input" | \
-        _ai_candy_run_local_probe "$_HASH_CMD" 2>/dev/null) || hash=""
+        _ai_candy_run_local_probe "$_AI_CANDY_HASH_CMD" 2>/dev/null) || hash=""
       hash="${hash%% *}"
       ;;
     shasum)
       hash=$(builtin print -rn -- "$input" | \
-        _ai_candy_run_local_probe "$_HASH_CMD" -a 256 2>/dev/null) || hash=""
+        _ai_candy_run_local_probe "$_AI_CANDY_HASH_CMD" -a 256 2>/dev/null) || hash=""
       hash="${hash%% *}"
       ;;
     openssl)
       hash=$(builtin print -rn -- "$input" | \
-        _ai_candy_run_local_probe "$_HASH_CMD" dgst -sha256 2>/dev/null) || hash=""
+        _ai_candy_run_local_probe "$_AI_CANDY_HASH_CMD" dgst -sha256 2>/dev/null) || hash=""
       hash="${hash##* }"
       ;;
   esac
@@ -5950,31 +6660,35 @@ function _ai_candy_hash_string() {
 
 # Get cached git remote key and branch (per-prompt cache)
 # Returns: remote_key|branch or empty if not in git repo
-# Uses _PP_CACHED_GIT_ROOT set in _ai_candy_precmd_compute_prompt
+# Uses _AI_CANDY_PP_CACHED_GIT_ROOT set in _ai_candy_precmd_compute_prompt
 function _ai_candy_get_cached_git_remote_branch() {
-  local current_id="$_PROMPT_RENDER_ID"
-  if [[ "$_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" ]]; then
-    REPLY="$_GIT_REMOTE_BRANCH_CACHE"
+  local current_id="$_AI_CANDY_PROMPT_RENDER_ID"
+  local git_root="$_AI_CANDY_PP_CACHED_GIT_ROOT"
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
+  if [[ "$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" && \
+        "$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT" == "$context_key" ]]; then
+    REPLY="$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE"
     return 0
   fi
 
-  if [[ "$_PP_CACHED_GIT_ROOT" == "NOT_GIT" ]]; then
-    _GIT_REMOTE_BRANCH_CACHE=""
-    _GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
+  if [[ "$git_root" == "NOT_GIT" ]]; then
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="$context_key"
     REPLY=""
     return 0
   fi
 
-  local git_root="$_PP_CACHED_GIT_ROOT"
   local remote_key=""
   local current_time="${EPOCHSECONDS}"
-  local cached_remote="${_GIT_REMOTE_KEY_BY_ROOT[$git_root]-}"
+  local cached_remote="${_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$context_key]-}"
   integer cache_is_fresh=0
   if [[ -n "$cached_remote" ]]; then
     local cache_time="${cached_remote##*|}"
     local cached_key="${cached_remote%|*}"
     if _ai_candy_cache_timestamp_is_fresh "$cache_time" \
-         "$_GIT_CONFIG_CACHE_TTL" "$current_time"; then
+         "$_AI_CANDY_GIT_CONFIG_CACHE_TTL" "$current_time"; then
       remote_key="$cached_key"
       cache_is_fresh=1
     fi
@@ -5985,8 +6699,8 @@ function _ai_candy_get_cached_git_remote_branch() {
       _ai_candy_hash_string "$remote_url"
       remote_key="$REPLY"
     fi
-    _GIT_REMOTE_KEY_BY_ROOT[$git_root]="${remote_key:--}|${current_time}"
-    (( ${#_GIT_REMOTE_KEY_BY_ROOT} > _MEM_CACHE_CLEANUP_THRESHOLD )) && \
+    _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$context_key]="${remote_key:--}|${current_time}"
+    (( ${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
       _ai_candy_mem_cache_cleanup git_remote
   fi
   [[ "$remote_key" == "-" ]] && remote_key=""
@@ -6001,26 +6715,27 @@ function _ai_candy_get_cached_git_remote_branch() {
   fi
 
   if [[ -n "$remote_key" && -n "$branch" ]]; then
-    _GIT_REMOTE_BRANCH_CACHE="${remote_key}|${branch}"
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE="${remote_key}|${branch}"
   else
-    _GIT_REMOTE_BRANCH_CACHE=""
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
   fi
-  _GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
-  REPLY="$_GIT_REMOTE_BRANCH_CACHE"
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="$context_key"
+  REPLY="$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE"
 }
 
 function _ai_candy_git_prompt_async() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
-  local _CACHE_SCHEDULE_PERSISTENCE=0
+  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
 
   _ai_candy_get_cached_git_root
-  _PP_CACHED_GIT_ROOT="$REPLY"
-  _GIT_SNAPSHOT_RENDER_ID=-1
+  _AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
   _ai_candy_collect_git_snapshot || return 0
   _ai_candy_format_git_snapshot
-  if [[ -n "${_GIT_FORMATTED_INFO}${_GIT_FORMATTED_EXT}" ]]; then
-    builtin print -rn -- " ${_GIT_FORMATTED_INFO}${_GIT_FORMATTED_EXT}"
+  if [[ -n "${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}" ]]; then
+    builtin print -rn -- " ${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}"
   fi
 }
 
@@ -6093,7 +6808,7 @@ function _ai_candy_ai_tool_update_cache_worker() {
     version_output=$(_ai_candy_run_background_probe "$cmd" --version 2>/dev/null)
     [[ "$version_output" =~ $version_pattern ]] && installed_version="$MATCH"
 
-    if [[ -n "$installed_version" && $_HAS_CURL -eq 1 && \
+    if [[ -n "$installed_version" && $_AI_CANDY_HAS_CURL -eq 1 && \
           "$allow_network" == 1 ]]; then
       remote_payload=$(_ai_candy_run_with_timeout "$net_timeout" curl -sL \
         --max-time "$net_timeout" "$version_url" 2>/dev/null)
@@ -6105,7 +6820,7 @@ function _ai_candy_ai_tool_update_cache_worker() {
       local sep=$'\x1f'
       _ai_candy_cache_write "$cache_file" \
         "${installed_version}${sep}${remote_version}${sep}${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     fi
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
@@ -6120,9 +6835,9 @@ _ai_candy_ai_tool_update_cache() {
   local cache_file="$1"
   local cmd="$2"
   local version_url="$3"
-  local allow_network="${4:-${_PROMPT_NETWORK_MODE:-0}}"
+  local allow_network="${4:-${_AI_CANDY_PROMPT_NETWORK_MODE:-0}}"
   local lock_file="${cache_file}.updating"
-  local net_timeout="${_NETWORK_TIMEOUT:-5}"
+  local net_timeout="${_AI_CANDY_NETWORK_TIMEOUT:-5}"
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
@@ -6158,12 +6873,32 @@ function _ai_candy_ai_tools_update_caches() {
   persistence_epoch="$REPLY"
 
   _ai_candy_start_registered_background_worker _ai_candy_ai_tools_update_caches_worker \
-    "$allow_network" "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch" "$@"
+    "$allow_network" "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch" "$@"
 }
 
-# GitHub CLI authentication status cache (uses _CACHE_TTL_LOW)
-# GitHub username cache files (uses _CACHE_TTL_MEDIUM)
+# GitHub CLI authentication status cache (uses _AI_CANDY_CACHE_TTL_LOW)
+# GitHub username cache files (uses _AI_CANDY_CACHE_TTL_MEDIUM)
 # (All cache file paths defined in CACHE FILE PATHS section)
+
+typeset -gA _AI_CANDY_REFRESH_REQUESTED
+typeset -g _AI_CANDY_NETWORK_REFRESH_RETRY_DELAY=5
+typeset -g _AI_CANDY_TOOL_REFRESH_RETRY_DELAY=30
+
+function _ai_candy_request_background_refresh() {
+  local refresh_key="$1"
+  local retry_delay="$2"
+  local current_time="${3:-$EPOCHSECONDS}"
+  local request_time="${_AI_CANDY_REFRESH_REQUESTED[$refresh_key]-0}"
+
+  if _ai_candy_cache_timestamp_is_fresh \
+       "$request_time" "$retry_delay" "$current_time"; then
+    return 1
+  fi
+  _AI_CANDY_REFRESH_REQUESTED[$refresh_key]="$current_time"
+  (( ${#_AI_CANDY_REFRESH_REQUESTED} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
+    _ai_candy_mem_cache_cleanup refresh
+  return 0
+}
 
 # Get GitHub username via gh auth status.
 function _ai_candy_gh_username_update_gh_worker() {
@@ -6192,7 +6927,7 @@ function _ai_candy_gh_username_update_gh_worker() {
     [[ -n "$username" ]] || username="$first_candidate"
     _ai_candy_valid_github_username "$username" || username=""
     _ai_candy_cache_write "$cache_file" "${username}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -6200,14 +6935,16 @@ function _ai_candy_gh_username_update_gh_worker() {
 
 function _ai_candy_gh_username_update_gh() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    gh-username-gh "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_username_update_gh_worker \
-    "$_GH_USERNAME_UPDATING_GH" "$_GH_USERNAME_GH_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_USERNAME_UPDATING_GH" "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Get GitHub username via ssh -T git@github.com.
@@ -6226,7 +6963,7 @@ function _ai_candy_gh_username_update_ssh_worker() {
     [[ "$ssh_output" =~ $greeting_pattern ]] && username="${match[1]}"
     _ai_candy_valid_github_username "$username" || username=""
     _ai_candy_cache_write "$cache_file" "${username}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -6234,22 +6971,24 @@ function _ai_candy_gh_username_update_ssh_worker() {
 
 function _ai_candy_gh_username_update_ssh() {
   setopt localoptions noerrexit
-  (( _HAS_SSH )) || return
+  (( _AI_CANDY_HAS_SSH )) || return
+  _ai_candy_request_background_refresh \
+    gh-username-ssh "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_username_update_ssh_worker \
-    "$_GH_USERNAME_UPDATING_SSH" "$_GH_USERNAME_SSH_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_USERNAME_UPDATING_SSH" "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
-# Direct-assignment version: writes result to _PP_GH_USER global variable
+# Direct-assignment version: writes result to _AI_CANDY_PP_GH_USER global variable
 # PERFORMANCE: Avoids 3 subshells by reading cache files directly
 function _ai_candy_compute_gh_username_direct() {
   # Skip if network mode is disabled
-  if (( ! _PROMPT_NETWORK_MODE )); then
-    _PP_GH_USER=""
+  if (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PP_GH_USER=""
     return
   fi
 
@@ -6257,27 +6996,27 @@ function _ai_candy_compute_gh_username_direct() {
   local current_time=${EPOCHSECONDS}
 
   # Read gh username from cache file directly (no function call)
-  if _ai_candy_cache_read_small_file "$_GH_USERNAME_GH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"; then
     local cache_gh_data="$REPLY"
     gh_user="${cache_gh_data%%|*}"
     local cache_gh_time="${cache_gh_data#*|}"
     # Trigger background refresh if expired
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_gh_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
-      (( _HAS_GH )) && _ai_candy_gh_username_update_gh
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_gh_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
+      (( _AI_CANDY_HAS_GH )) && _ai_candy_gh_username_update_gh
     fi
   else
     # No cache, trigger background refresh
-    (( _HAS_GH )) && _ai_candy_gh_username_update_gh
+    (( _AI_CANDY_HAS_GH )) && _ai_candy_gh_username_update_gh
   fi
   _ai_candy_valid_github_username "$gh_user" || gh_user=""
 
   # Read ssh username from cache file directly (no function call)
-  if _ai_candy_cache_read_small_file "$_GH_USERNAME_SSH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"; then
     local cache_ssh_data="$REPLY"
     ssh_user="${cache_ssh_data%%|*}"
     local cache_ssh_time="${cache_ssh_data#*|}"
     # Trigger background refresh if expired
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_ssh_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_ssh_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       _ai_candy_gh_username_update_ssh
     fi
   else
@@ -6286,13 +7025,13 @@ function _ai_candy_compute_gh_username_direct() {
   fi
   _ai_candy_valid_github_username "$ssh_user" || ssh_user=""
 
-  # Build badge and assign directly to _PP_GH_USER
+  # Build badge and assign directly to _AI_CANDY_PP_GH_USER
   # Use $'\e' for an escape byte in direct assignment.
   # Emoji mode:  Username (icon, no brackets), Plaintext mode: [Username] (brackets, no icon)
   local ESC=$'\e'
   local badge_content=""
   if [[ -z "$gh_user" && -z "$ssh_user" ]]; then
-    _PP_GH_USER=""
+    _AI_CANDY_PP_GH_USER=""
     return
   elif [[ -z "$gh_user" ]]; then
     badge_content="${ssh_user}"
@@ -6302,19 +7041,19 @@ function _ai_candy_compute_gh_username_direct() {
     badge_content="${gh_user}"
   else
     # Mismatch case - use red background
-    if (( _PROMPT_EMOJI_MODE )); then
-      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${_NF_GITHUB}${gh_user}|${ssh_user}%{$reset_color%}"
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${_AI_CANDY_NF_GITHUB}${gh_user}|${ssh_user}%{$reset_color%}"
     else
-      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
+      _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
     fi
     return
   fi
 
   # Normal case - white background
-  if (( _PROMPT_EMOJI_MODE )); then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}${_NF_GITHUB}${badge_content}%{$reset_color%}"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_BG}m${ESC}[38;5;${_AI_CANDY_CLR_GH_USER_FG}m%}${_AI_CANDY_NF_GITHUB}${badge_content}%{$reset_color%}"
   else
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
+    _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_BG}m${ESC}[38;5;${_AI_CANDY_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
   fi
 }
 
@@ -6322,7 +7061,7 @@ function _ai_candy_compute_gh_username_direct() {
 # PUBLIC IP ADDRESS - Cached detection with fallback providers
 # ============================================================================
 # Uses curl to fetch public IP from multiple providers with failover.
-# Cache refreshes every 5 minutes (_CACHE_TTL_MEDIUM).
+# Cache refreshes every 5 minutes (_AI_CANDY_CACHE_TTL_MEDIUM).
 # Shows green (IP) if successful, red (offline) if all providers fail.
 # Hidden if curl is not available.
 
@@ -6355,7 +7094,7 @@ function _ai_candy_public_ip_update_worker() {
       ip=""
     done
     _ai_candy_cache_write "$cache_file" "${ip}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -6363,28 +7102,30 @@ function _ai_candy_public_ip_update_worker() {
 
 function _ai_candy_public_ip_update_background() {
   setopt localoptions noerrexit
-  (( _HAS_CURL && _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_CURL && _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    public-ip "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_public_ip_update_worker \
-    "$_PUBLIC_IP_UPDATING" "$_PUBLIC_IP_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_PUBLIC_IP_UPDATING" "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
-# Direct-assignment version: writes result to _PP_PUBLIC_IP global variable
+# Direct-assignment version: writes result to _AI_CANDY_PP_PUBLIC_IP global variable
 # PERFORMANCE: Reads cache file directly without subshells
 function _ai_candy_compute_public_ip_direct() {
   # Skip if network mode is disabled
-  if (( ! _PROMPT_NETWORK_MODE )); then
-    _PP_PUBLIC_IP=""
+  if (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PP_PUBLIC_IP=""
     return
   fi
 
   # Skip if curl is not available
-  if (( ! _HAS_CURL )); then
-    _PP_PUBLIC_IP=""
+  if (( ! _AI_CANDY_HAS_CURL )); then
+    _AI_CANDY_PP_PUBLIC_IP=""
     return
   fi
 
@@ -6393,7 +7134,7 @@ function _ai_candy_compute_public_ip_direct() {
   integer cache_was_read=0
 
   # Read from cache file directly
-  if _ai_candy_cache_read_small_file "$_PUBLIC_IP_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"; then
     cache_was_read=1
     local cache_data="$REPLY"
     ip="${cache_data%%|*}"
@@ -6404,7 +7145,7 @@ function _ai_candy_compute_public_ip_direct() {
     fi
 
     # Trigger background refresh if expired (every 5 minutes)
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       _ai_candy_public_ip_update_background
     fi
   else
@@ -6415,27 +7156,27 @@ function _ai_candy_compute_public_ip_direct() {
   # Build display string
   if [[ -n "$ip" ]]; then
     # Valid IP - show in green
-    _PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
+    _AI_CANDY_PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
   elif (( cache_was_read )); then
     # Cache exists but IP is empty - no internet, show in red
-    _PP_PUBLIC_IP="%{$fg[red]%}(offline)%{$reset_color%}"
+    _AI_CANDY_PP_PUBLIC_IP="%{$fg[red]%}(offline)%{$reset_color%}"
   else
     # No cache yet - still loading
-    _PP_PUBLIC_IP=""
+    _AI_CANDY_PP_PUBLIC_IP=""
   fi
 }
 
 # Memory cache for gh authentication status (fastest, no I/O)
-typeset -g _GH_AUTH_MEM_CACHE=""
-typeset -g _GH_AUTH_MEM_CACHE_TIME=0
-typeset -g _GH_AUTH_REFRESH_RETRY_DELAY=4
-# (_GH_AUTH_UPDATING defined in CACHE FILE PATHS section)
+typeset -g _AI_CANDY_GH_AUTH_MEM_CACHE=""
+typeset -g _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=0
+typeset -g _AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY=4
+# (_AI_CANDY_GH_AUTH_UPDATING defined in CACHE FILE PATHS section)
 
 function _ai_candy_gh_auth_cache_ttl() {
   if [[ "$1" == "1" ]]; then
-    REPLY="$_CACHE_TTL_LOW"
+    REPLY="$_AI_CANDY_CACHE_TTL_LOW"
   else
-    REPLY="$_GH_AUTH_REFRESH_RETRY_DELAY"
+    REPLY="$_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY"
   fi
 }
 
@@ -6448,11 +7189,11 @@ function _ai_candy_gh_auth_update_worker() {
   _ai_candy_acquire_background_lock "$lock_file" || return
   {
     if _ai_candy_run_with_timeout "$net_timeout" gh auth status &>/dev/null; then
-      _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}" \
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     else
-      _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}" \
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     fi
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
@@ -6461,13 +7202,15 @@ function _ai_candy_gh_auth_update_worker() {
 
 function _ai_candy_gh_auth_update_background() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    gh-auth "$_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_auth_update_worker \
-    "$_GH_AUTH_UPDATING" "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_AUTH_UPDATING" "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Check if gh is authenticated (cached with memory + file layers)
@@ -6478,16 +7221,16 @@ function _ai_candy_gh_is_authenticated() {
   local cache_ttl=""
 
   # Memory cache first (fastest, no I/O)
-  _ai_candy_gh_auth_cache_ttl "$_GH_AUTH_MEM_CACHE"
+  _ai_candy_gh_auth_cache_ttl "$_AI_CANDY_GH_AUTH_MEM_CACHE"
   cache_ttl="$REPLY"
-  if [[ -n "$_GH_AUTH_MEM_CACHE" ]] && \
+  if [[ -n "$_AI_CANDY_GH_AUTH_MEM_CACHE" ]] && \
      _ai_candy_cache_timestamp_is_fresh \
-       "$_GH_AUTH_MEM_CACHE_TIME" "$cache_ttl" "$current_time"; then
-    [[ "$_GH_AUTH_MEM_CACHE" == "1" ]] && return 0 || return 1
+       "$_AI_CANDY_GH_AUTH_MEM_CACHE_TIME" "$cache_ttl" "$current_time"; then
+    [[ "$_AI_CANDY_GH_AUTH_MEM_CACHE" == "1" ]] && return 0 || return 1
   fi
 
   # Check file cache
-  if _ai_candy_cache_read_small_file "$_GH_AUTH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_AUTH_CACHE_FILE"; then
     local cache_data="$REPLY"
     local cached_status="${cache_data%%|*}"
     local cache_time="${cache_data#*|}"
@@ -6497,15 +7240,15 @@ function _ai_candy_gh_is_authenticated() {
     if _ai_candy_cache_timestamp_is_fresh \
          "$cache_time" "$cache_ttl" "$current_time"; then
       # Update memory cache from file cache
-      _GH_AUTH_MEM_CACHE="$cached_status"
-      _GH_AUTH_MEM_CACHE_TIME="$cache_time"
+      _AI_CANDY_GH_AUTH_MEM_CACHE="$cached_status"
+      _AI_CANDY_GH_AUTH_MEM_CACHE_TIME="$cache_time"
       [[ "$cached_status" == "1" ]] && return 0 || return 1
     fi
 
     # Cache expired, use stale value but trigger background refresh
     [[ "$cached_status" == "0" || "$cached_status" == "1" ]] || cached_status="?"
-    _GH_AUTH_MEM_CACHE="$cached_status"
-    _GH_AUTH_MEM_CACHE_TIME=$(( current_time - _CACHE_TTL_LOW + _GH_AUTH_REFRESH_RETRY_DELAY ))
+    _AI_CANDY_GH_AUTH_MEM_CACHE="$cached_status"
+    _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$(( current_time - _AI_CANDY_CACHE_TTL_LOW + _AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY ))
     _ai_candy_gh_auth_update_background
     [[ "$cached_status" == "1" ]] && return 0 || return 1
   fi
@@ -6575,43 +7318,43 @@ function _ai_candy_gh_pr_update_cache_worker() {
 # Cache format: pr_number|ci_status.
 _ai_candy_gh_pr_update_cache() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
 
   local remote_key="$1"
   local branch="$2"
+  _ai_candy_request_background_refresh \
+    "gh-pr:${remote_key}|${branch}" \
+    "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_pr_update_cache_worker \
-    "$remote_key" "$branch" "${_CACHE_DIR}/gh_pr_updating.lock" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$remote_key" "$branch" "${_AI_CANDY_CACHE_DIR}/gh_pr_updating.lock" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Combined optional-tool status uses compact or delimited display formats.
-# Direct-assignment version: writes result to _PP_AI_STATUS global variable
-# Plaintext mode also generates _PP_AI_STATUS_LONG with full names.
+# Direct-assignment version: writes result to _AI_CANDY_PP_AI_STATUS global variable
+# Plaintext mode also generates _AI_CANDY_PP_AI_STATUS_LONG with full names.
 # PERFORMANCE: Avoids subshells by using direct variable assignment
-typeset -g _PP_AI_STATUS=""
-typeset -g _PP_AI_STATUS_LONG=""
-typeset -gA _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-typeset -g _AI_PROCESS_SNAPSHOT_TIME=0
-typeset -g _AI_PROCESS_SNAPSHOT_TTL=30
-typeset -g _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
-typeset -g _AI_PROCESS_SNAPSHOT_RETRY_TTL=5
-typeset -g _AI_TOOL_REFRESH_RETRY_DELAY=30
-typeset -gA _AI_TOOL_REFRESH_REQUESTED
-
+typeset -g _AI_CANDY_PP_AI_STATUS=""
+typeset -g _AI_CANDY_PP_AI_STATUS_LONG=""
+typeset -gA _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TTL=30
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL=5
 function _ai_candy_refresh_ai_process_counts() {
   local current_time=$EPOCHSECONDS
-  if _ai_candy_cache_timestamp_is_fresh "$_AI_PROCESS_SNAPSHOT_TIME" \
-       "$_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
+  if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME" \
+       "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
     return 0
   fi
-  if _ai_candy_cache_timestamp_is_fresh "$_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME" \
-       "$_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time"; then
+  if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME" \
+       "$_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time"; then
     return 0
   fi
-  _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME="$current_time"
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME="$current_time"
 
   local process_table=""
   if [[ "$OSTYPE" == darwin* ]]; then
@@ -6620,8 +7363,8 @@ function _ai_candy_refresh_ai_process_counts() {
     process_table=$(_ai_candy_run_process_count_probe ps -u "$UID" -o comm= -o args= 2>/dev/null) || return 0
   fi
 
-  _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-  _AI_PROCESS_SNAPSHOT_TIME="$current_time"
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME="$current_time"
 
   local line process_name
   for line in "${(@f)process_table}"; do
@@ -6631,14 +7374,14 @@ function _ai_candy_refresh_ai_process_counts() {
     process_name="${process_name:t}"
     case "$process_name" in
       claude|codex|kimi)
-        _AI_PROCESS_COUNTS[$process_name]=$(( ${_AI_PROCESS_COUNTS[$process_name]:-0} + 1 ))
+        _AI_CANDY_AI_PROCESS_COUNTS[$process_name]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[$process_name]:-0} + 1 ))
         ;;
       gemini)
-        _AI_PROCESS_COUNTS[gemini]=$(( ${_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
+        _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
         ;;
       node)
         if [[ "$line" == *'/bin/gemini'* ]]; then
-          _AI_PROCESS_COUNTS[gemini]=$(( ${_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
+          _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
         fi
         ;;
     esac
@@ -6647,7 +7390,7 @@ function _ai_candy_refresh_ai_process_counts() {
 
 function _ai_candy_count_ai_instances() {
   local process_name="$1"
-  REPLY="${_AI_PROCESS_COUNTS[$process_name]:-0}"
+  REPLY="${_AI_CANDY_AI_PROCESS_COUNTS[$process_name]:-0}"
 }
 
 # Generic optional-tool status computation
@@ -6665,7 +7408,7 @@ function _ai_candy_compute_ai_tool_status() {
 
   (( has_flag )) || return
 
-  local installed_version="" remote_version="" cache_time=0 request_time=0
+  local installed_version="" remote_version="" cache_time=0
   local current_time=${EPOCHSECONDS}
   integer refresh_needed=0
 
@@ -6678,18 +7421,17 @@ function _ai_candy_compute_ai_tool_status() {
     _ai_candy_cache_timestamp_is_valid "$cache_time" "$current_time" || cache_time=0
     _ai_candy_valid_ai_version "$installed_version" || installed_version=""
     _ai_candy_valid_ai_version "$remote_version" || remote_version=""
-    (( _PROMPT_NETWORK_MODE )) || remote_version=""
-    _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_LOW" \
+    (( _AI_CANDY_PROMPT_NETWORK_MODE )) || remote_version=""
+    _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_LOW" \
       "$current_time" || refresh_needed=1
   else
     refresh_needed=1
   fi
 
   if (( refresh_needed )); then
-    request_time="${_AI_TOOL_REFRESH_REQUESTED[$cache_file]-0}"
-    if ! _ai_candy_cache_timestamp_is_fresh "$request_time" \
-         "$_AI_TOOL_REFRESH_RETRY_DELAY" "$current_time"; then
-      _AI_TOOL_REFRESH_REQUESTED[$cache_file]="$current_time"
+    if _ai_candy_request_background_refresh \
+         "tool:${cache_file}" "$_AI_CANDY_TOOL_REFRESH_RETRY_DELAY" \
+         "$current_time"; then
       refresh_jobs+=("$cache_file" "$cmd_name" "$version_url")
     fi
   fi
@@ -6706,7 +7448,7 @@ function _ai_candy_compute_ai_tool_status() {
     local count_str=""
     (( instance_count > 0 )) && count_str="(x${instance_count})"
 
-    if (( _PROMPT_EMOJI_MODE )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
       # Emoji mode: icon version*(xN)
       tool_result="%{$FG[$color_code]%}%B${short_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
       tool_result_long="%{$FG[$color_code]%}%B${long_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
@@ -6722,18 +7464,18 @@ function _ai_candy_compute_ai_tool_status() {
 
 function _ai_candy_compute_ai_tools_direct() {
   # Skip if optional-tool display is disabled.
-  if (( ! _PROMPT_AI_MODE )); then
-    _PP_AI_STATUS=""
-    _PP_AI_STATUS_LONG=""
+  if (( ! _AI_CANDY_PROMPT_AI_MODE )); then
+    _AI_CANDY_PP_AI_STATUS=""
+    _AI_CANDY_PP_AI_STATUS_LONG=""
     return
   fi
 
   # Detect optional tools on the first render, after shell managers load.
-  if (( ! _AI_TOOLS_DETECTED )); then
+  if (( ! _AI_CANDY_AI_TOOLS_DETECTED )); then
     _ai_candy_detect_optional_commands
   fi
 
-  if (( _HAS_CLAUDE || _HAS_CODEX || _HAS_GEMINI || _HAS_KIMI )); then
+  if (( _AI_CANDY_HAS_CLAUDE || _AI_CANDY_HAS_CODEX || _AI_CANDY_HAS_GEMINI || _AI_CANDY_HAS_KIMI )); then
     _ai_candy_refresh_ai_process_counts
   fi
 
@@ -6742,34 +7484,34 @@ function _ai_candy_compute_ai_tools_direct() {
   local tool_result tool_result_long  # Set by _ai_candy_compute_ai_tool_status
 
   local icon_s icon_l
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CLAUDE" icon_l="$_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_CLAUDE" "$_CLAUDE_CACHE_FILE" "claude" \
-    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_CLAUDE" icon_l="$_AI_CANDY_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_CLAUDE" "$_AI_CANDY_CLAUDE_CACHE_FILE" "claude" \
+    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_CLAUDE" \
     "Claude" "claude"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CODEX" icon_l="$_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_CODEX" "$_CODEX_CACHE_FILE" "codex" \
-    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_CODEX" icon_l="$_AI_CANDY_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_CODEX" "$_AI_CANDY_CODEX_CACHE_FILE" "codex" \
+    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_CODEX" \
     "Codex" "codex"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_GEMINI" icon_l="$_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
-    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_GEMINI" icon_l="$_AI_CANDY_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_GEMINI" "$_AI_CANDY_GEMINI_CACHE_FILE" "gemini" \
+    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_GEMINI" \
     "Gemini" "gemini"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_KIMI" icon_l="$_NF_KIMI" || { icon_s="Km:"; icon_l="Kimi:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_KIMI" "$_KIMI_CACHE_FILE" "kimi" \
-    "https://code.kimi.com/kimi-code/latest.json" "$icon_s" "$icon_l" "$_CLR_KIMI" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_KIMI" icon_l="$_AI_CANDY_NF_KIMI" || { icon_s="Km:"; icon_l="Kimi:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_KIMI" "$_AI_CANDY_KIMI_CACHE_FILE" "kimi" \
+    "https://code.kimi.com/kimi-code/latest.json" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_KIMI" \
     "Kimi" "kimi"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
   (( ${#refresh_jobs} )) && \
-    _ai_candy_ai_tools_update_caches "$_PROMPT_NETWORK_MODE" "${refresh_jobs[@]}"
+    _ai_candy_ai_tools_update_caches "$_AI_CANDY_PROMPT_NETWORK_MODE" "${refresh_jobs[@]}"
 
-  if (( _PROMPT_EMOJI_MODE )); then
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
     ai_status="${(j::)short_results}"
     ai_status_long="${(j::)long_results}"
   else
@@ -6779,11 +7521,11 @@ function _ai_candy_compute_ai_tools_direct() {
 
   # Wrap in brackets if any tools are present
   if [[ -n "$ai_status" ]]; then
-    _PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
-    _PP_AI_STATUS_LONG="%{$fg[white]%}[${ai_status_long}%{$fg[white]%}]%{$reset_color%}"
+    _AI_CANDY_PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
+    _AI_CANDY_PP_AI_STATUS_LONG="%{$fg[white]%}[${ai_status_long}%{$fg[white]%}]%{$reset_color%}"
   else
-    _PP_AI_STATUS=""
-    _PP_AI_STATUS_LONG=""
+    _AI_CANDY_PP_AI_STATUS=""
+    _AI_CANDY_PP_AI_STATUS_LONG=""
   fi
 }
 # Enhanced PROMPT with all new features:
@@ -6803,14 +7545,14 @@ function _ai_candy_compute_ai_tools_direct() {
 # Order: status, identity, session, time, path, Git, PR, system, tools, jobs
 # Second line: -> %#
 #
-# PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
+# PERFORMANCE: Uses precomputed variables (_AI_CANDY_PP_*) from precmd to avoid subshells
 # All segments are computed once in _ai_candy_precmd_compute_prompt before prompt display
-PROMPT='${_PP_VENV}${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${${_AI_CANDY_USE_OMZ_ASYNC:#1}:+${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}}${${_AI_CANDY_USE_OMZ_ASYNC:#0}:+${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-}}${_PP_GIT_SPECIAL}${_PP_PR:+ }${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_AI_CANDY_PP_VENV}${_AI_CANDY_PP_EXIT}${_AI_CANDY_PP_SSH}${_AI_CANDY_PP_USER_HOST}${_AI_CANDY_PP_PUBLIC_IP}${_AI_CANDY_PP_GH_USER}${_AI_CANDY_PP_BADGE} %B${_AI_CANDY_PP_TIME}%b ${_AI_CANDY_PP_PATH}${${_AI_CANDY_USE_OMZ_ASYNC:#1}:+${_AI_CANDY_PP_GIT_INFO:+ }${_AI_CANDY_PP_GIT_INFO}${_AI_CANDY_PP_GIT_EXT}}${${_AI_CANDY_USE_OMZ_ASYNC:#0}:+${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-}}${_AI_CANDY_PP_GIT_SPECIAL}${_AI_CANDY_PP_PR:+ }${_AI_CANDY_PP_PR}${_AI_CANDY_PP_SYSINFO_LEFT}${_AI_CANDY_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_AI_CANDY_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and optional tools in short/minimal modes
 # Auto-hides when command line is long
-RPROMPT='${_PP_RPROMPT}'
+RPROMPT='${_AI_CANDY_PP_RPROMPT}'
 
 ZSH_THEME_GIT_PROMPT_PREFIX='%F{green}'
 ZSH_THEME_GIT_PROMPT_SUFFIX='%f'

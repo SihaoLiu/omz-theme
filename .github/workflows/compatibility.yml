@@ -68,6 +68,8 @@ jobs:
     name: macOS ${{ matrix.release }}
     runs-on: macos-${{ matrix.release }}
     timeout-minutes: 20
+    env:
+      TMPDIR: /private/tmp
     strategy:
       fail-fast: false
       matrix:
@@ -98,38 +100,5 @@ jobs:
           persist-credentials: false
       - name: Validate minimum Zsh version
         run: |
-          docker run --rm --network none -v "$PWD:/work:ro" -w /work "$ZSH_54_IMAGE" zsh -fc '
-            setopt errexit nounset pipefail
-            [[ "$ZSH_VERSION" == 5.4.2 ]]
-            zsh scripts/build-theme.zsh --check
-            zsh -n ai-candy.zsh-theme
-            export XDG_CACHE_HOME=/tmp/ai-candy-cache
-            export LC_ALL=C
-            export LANG=C
-            autoload -Uz colors
-            colors
-            source ./ai-candy.zsh-theme
-            _TIMEOUT_CMD=zsh-native
-            [[ "$(_ai_candy_run_with_timeout 0.2 print -r -- ready)" == ready ]]
-            _ai_candy_prompt_text_width $'a\xE4\xB8\xAD'
-            [[ "$REPLY" == 3 ]]
-            _CACHE_BACKEND_STATE=1
-            _CACHE_BACKEND=file
-            cache_time=$EPOCHSECONDS
-            _ai_candy_cache_reserve_operation set probe key "$cache_time"
-            reservation=("${reply[@]}")
-            [[ "${reservation[2]}" == v3:* ]]
-            _ai_candy_cache_commit_operation set probe key value "$cache_time" \
-              "${reservation[@]}"
-            _ai_candy_cache_persist_read probe key
-            [[ "$REPLY" == value\|* ]]
-            (zselect -t 300) &!
-            background_pid=$!
-            _ai_candy_register_background_pid "$background_pid"
-            _ai_candy_stop_registered_background_jobs
-            for attempt in {1..20}; do
-              ! kill -0 "$background_pid" 2>/dev/null && break
-              _ai_candy_sleep_ticks 1
-            done
-            ! kill -0 "$background_pid" 2>/dev/null
-          '
+          docker run --rm --network none -v "$PWD:/work:ro" -w /work \
+            "$ZSH_54_IMAGE" zsh tests/zsh54-smoke.zsh

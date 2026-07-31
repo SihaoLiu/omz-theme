@@ -54,7 +54,12 @@ class InstallerTest(unittest.TestCase):
             "  shift\n"
             "done\n"
             '[ "$secure_protocol$secure_redirect$connect_timeout$total_timeout$max_filesize" = 11111 ] || exit 64\n'
-            '[ "$(ulimit -f)" -le 2048 ] || exit 64\n'
+            'file_limit=$(ulimit -f)\n'
+            'if [ -n "${BASH_VERSION:-}" ]; then\n'
+            '  [ "$file_limit" -le 1024 ] || exit 64\n'
+            'else\n'
+            '  [ "$file_limit" -le 2048 ] || exit 64\n'
+            'fi\n'
             'printf \'%s\\n\' "$url" > "$CURL_LOG"\n'
             'if [ "${FAIL_DOWNLOAD:-0}" = 1 ]; then\n'
             '  printf partial > "$output"\n'
@@ -232,7 +237,10 @@ class InstallerTest(unittest.TestCase):
             target = theme_dir / THEME.name
 
             self.assertNotEqual(0, result.returncode)
-            self.assertIn("theme download failed", result.stderr)
+            self.assertRegex(
+                result.stderr,
+                r"ai-candy: (?:theme download failed|downloaded theme exceeds size limit)\n",
+            )
             self.assertEqual(previous_theme, target.read_bytes())
             self.assertEqual([], list(theme_dir.glob(f"{THEME.name}.backup.*")))
             self.assertEqual([], list(theme_dir.glob(".ai-candy.*")))
@@ -440,6 +448,47 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(1, len(backups), backups)
             self.assertEqual(previous_theme, backups[0].read_bytes())
             self.assertIn(str(backups[0]), result.stdout)
+
+    def test_signal_after_publish_preserves_the_previous_theme_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home, omz, fake_bin, curl_log = self.prepare_installation(root)
+            previous_theme = b"previous ai-candy theme\n"
+            theme_dir = omz / "custom" / "themes"
+            theme_dir.mkdir(parents=True)
+            target = theme_dir / THEME.name
+            target.write_bytes(previous_theme)
+            fake_mv = fake_bin / "mv"
+            fake_mv.write_text(
+                "#!/bin/sh\n"
+                "/bin/mv \"$@\" || exit $?\n"
+                "kill -TERM \"$PPID\"\n",
+                encoding="ascii",
+            )
+            fake_mv.chmod(0o755)
+
+            result = subprocess.run(
+                ["sh", str(INSTALLER), "--no-modify-zshrc"],
+                cwd=root,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "ZSH": str(omz),
+                    "PATH": f"{fake_bin}:/usr/bin:/bin",
+                    "CURL_LOG": str(curl_log),
+                    "DOWNLOAD_SOURCE": str(THEME),
+                },
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            backups = list(theme_dir.glob(f"{THEME.name}.backup.*"))
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertEqual(THEME.read_bytes(), target.read_bytes())
+            self.assertEqual(1, len(backups), backups)
+            self.assertEqual(previous_theme, backups[0].read_bytes())
 
     def test_confirm_option_can_cancel_an_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

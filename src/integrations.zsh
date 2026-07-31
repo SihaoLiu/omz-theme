@@ -56,7 +56,7 @@ function _ai_candy_ai_tool_update_cache_worker() {
     version_output=$(_ai_candy_run_background_probe "$cmd" --version 2>/dev/null)
     [[ "$version_output" =~ $version_pattern ]] && installed_version="$MATCH"
 
-    if [[ -n "$installed_version" && $_HAS_CURL -eq 1 && \
+    if [[ -n "$installed_version" && $_AI_CANDY_HAS_CURL -eq 1 && \
           "$allow_network" == 1 ]]; then
       remote_payload=$(_ai_candy_run_with_timeout "$net_timeout" curl -sL \
         --max-time "$net_timeout" "$version_url" 2>/dev/null)
@@ -68,7 +68,7 @@ function _ai_candy_ai_tool_update_cache_worker() {
       local sep=$'\x1f'
       _ai_candy_cache_write "$cache_file" \
         "${installed_version}${sep}${remote_version}${sep}${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     fi
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
@@ -83,9 +83,9 @@ _ai_candy_ai_tool_update_cache() {
   local cache_file="$1"
   local cmd="$2"
   local version_url="$3"
-  local allow_network="${4:-${_PROMPT_NETWORK_MODE:-0}}"
+  local allow_network="${4:-${_AI_CANDY_PROMPT_NETWORK_MODE:-0}}"
   local lock_file="${cache_file}.updating"
-  local net_timeout="${_NETWORK_TIMEOUT:-5}"
+  local net_timeout="${_AI_CANDY_NETWORK_TIMEOUT:-5}"
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
@@ -121,12 +121,32 @@ function _ai_candy_ai_tools_update_caches() {
   persistence_epoch="$REPLY"
 
   _ai_candy_start_registered_background_worker _ai_candy_ai_tools_update_caches_worker \
-    "$allow_network" "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch" "$@"
+    "$allow_network" "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch" "$@"
 }
 
-# GitHub CLI authentication status cache (uses _CACHE_TTL_LOW)
-# GitHub username cache files (uses _CACHE_TTL_MEDIUM)
+# GitHub CLI authentication status cache (uses _AI_CANDY_CACHE_TTL_LOW)
+# GitHub username cache files (uses _AI_CANDY_CACHE_TTL_MEDIUM)
 # (All cache file paths defined in CACHE FILE PATHS section)
+
+typeset -gA _AI_CANDY_REFRESH_REQUESTED
+typeset -g _AI_CANDY_NETWORK_REFRESH_RETRY_DELAY=5
+typeset -g _AI_CANDY_TOOL_REFRESH_RETRY_DELAY=30
+
+function _ai_candy_request_background_refresh() {
+  local refresh_key="$1"
+  local retry_delay="$2"
+  local current_time="${3:-$EPOCHSECONDS}"
+  local request_time="${_AI_CANDY_REFRESH_REQUESTED[$refresh_key]-0}"
+
+  if _ai_candy_cache_timestamp_is_fresh \
+       "$request_time" "$retry_delay" "$current_time"; then
+    return 1
+  fi
+  _AI_CANDY_REFRESH_REQUESTED[$refresh_key]="$current_time"
+  (( ${#_AI_CANDY_REFRESH_REQUESTED} > _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
+    _ai_candy_mem_cache_cleanup refresh
+  return 0
+}
 
 # Get GitHub username via gh auth status.
 function _ai_candy_gh_username_update_gh_worker() {
@@ -155,7 +175,7 @@ function _ai_candy_gh_username_update_gh_worker() {
     [[ -n "$username" ]] || username="$first_candidate"
     _ai_candy_valid_github_username "$username" || username=""
     _ai_candy_cache_write "$cache_file" "${username}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -163,14 +183,16 @@ function _ai_candy_gh_username_update_gh_worker() {
 
 function _ai_candy_gh_username_update_gh() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    gh-username-gh "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_username_update_gh_worker \
-    "$_GH_USERNAME_UPDATING_GH" "$_GH_USERNAME_GH_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_USERNAME_UPDATING_GH" "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Get GitHub username via ssh -T git@github.com.
@@ -189,7 +211,7 @@ function _ai_candy_gh_username_update_ssh_worker() {
     [[ "$ssh_output" =~ $greeting_pattern ]] && username="${match[1]}"
     _ai_candy_valid_github_username "$username" || username=""
     _ai_candy_cache_write "$cache_file" "${username}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -197,22 +219,24 @@ function _ai_candy_gh_username_update_ssh_worker() {
 
 function _ai_candy_gh_username_update_ssh() {
   setopt localoptions noerrexit
-  (( _HAS_SSH )) || return
+  (( _AI_CANDY_HAS_SSH )) || return
+  _ai_candy_request_background_refresh \
+    gh-username-ssh "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_username_update_ssh_worker \
-    "$_GH_USERNAME_UPDATING_SSH" "$_GH_USERNAME_SSH_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_USERNAME_UPDATING_SSH" "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
-# Direct-assignment version: writes result to _PP_GH_USER global variable
+# Direct-assignment version: writes result to _AI_CANDY_PP_GH_USER global variable
 # PERFORMANCE: Avoids 3 subshells by reading cache files directly
 function _ai_candy_compute_gh_username_direct() {
   # Skip if network mode is disabled
-  if (( ! _PROMPT_NETWORK_MODE )); then
-    _PP_GH_USER=""
+  if (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PP_GH_USER=""
     return
   fi
 
@@ -220,27 +244,27 @@ function _ai_candy_compute_gh_username_direct() {
   local current_time=${EPOCHSECONDS}
 
   # Read gh username from cache file directly (no function call)
-  if _ai_candy_cache_read_small_file "$_GH_USERNAME_GH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"; then
     local cache_gh_data="$REPLY"
     gh_user="${cache_gh_data%%|*}"
     local cache_gh_time="${cache_gh_data#*|}"
     # Trigger background refresh if expired
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_gh_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
-      (( _HAS_GH )) && _ai_candy_gh_username_update_gh
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_gh_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
+      (( _AI_CANDY_HAS_GH )) && _ai_candy_gh_username_update_gh
     fi
   else
     # No cache, trigger background refresh
-    (( _HAS_GH )) && _ai_candy_gh_username_update_gh
+    (( _AI_CANDY_HAS_GH )) && _ai_candy_gh_username_update_gh
   fi
   _ai_candy_valid_github_username "$gh_user" || gh_user=""
 
   # Read ssh username from cache file directly (no function call)
-  if _ai_candy_cache_read_small_file "$_GH_USERNAME_SSH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"; then
     local cache_ssh_data="$REPLY"
     ssh_user="${cache_ssh_data%%|*}"
     local cache_ssh_time="${cache_ssh_data#*|}"
     # Trigger background refresh if expired
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_ssh_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_ssh_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       _ai_candy_gh_username_update_ssh
     fi
   else
@@ -249,13 +273,13 @@ function _ai_candy_compute_gh_username_direct() {
   fi
   _ai_candy_valid_github_username "$ssh_user" || ssh_user=""
 
-  # Build badge and assign directly to _PP_GH_USER
+  # Build badge and assign directly to _AI_CANDY_PP_GH_USER
   # Use $'\e' for an escape byte in direct assignment.
   # Emoji mode:  Username (icon, no brackets), Plaintext mode: [Username] (brackets, no icon)
   local ESC=$'\e'
   local badge_content=""
   if [[ -z "$gh_user" && -z "$ssh_user" ]]; then
-    _PP_GH_USER=""
+    _AI_CANDY_PP_GH_USER=""
     return
   elif [[ -z "$gh_user" ]]; then
     badge_content="${ssh_user}"
@@ -265,19 +289,19 @@ function _ai_candy_compute_gh_username_direct() {
     badge_content="${gh_user}"
   else
     # Mismatch case - use red background
-    if (( _PROMPT_EMOJI_MODE )); then
-      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${_NF_GITHUB}${gh_user}|${ssh_user}%{$reset_color%}"
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+      _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}${_AI_CANDY_NF_GITHUB}${gh_user}|${ssh_user}%{$reset_color%}"
     else
-      _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
+      _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_MISMATCH}m${ESC}[38;5;255m%}[${gh_user}|${ssh_user}]%{$reset_color%}"
     fi
     return
   fi
 
   # Normal case - white background
-  if (( _PROMPT_EMOJI_MODE )); then
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}${_NF_GITHUB}${badge_content}%{$reset_color%}"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_BG}m${ESC}[38;5;${_AI_CANDY_CLR_GH_USER_FG}m%}${_AI_CANDY_NF_GITHUB}${badge_content}%{$reset_color%}"
   else
-    _PP_GH_USER="%{${ESC}[48;5;${_CLR_GH_USER_BG}m${ESC}[38;5;${_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
+    _AI_CANDY_PP_GH_USER="%{${ESC}[48;5;${_AI_CANDY_CLR_GH_USER_BG}m${ESC}[38;5;${_AI_CANDY_CLR_GH_USER_FG}m%}[${badge_content}]%{$reset_color%}"
   fi
 }
 
@@ -285,7 +309,7 @@ function _ai_candy_compute_gh_username_direct() {
 # PUBLIC IP ADDRESS - Cached detection with fallback providers
 # ============================================================================
 # Uses curl to fetch public IP from multiple providers with failover.
-# Cache refreshes every 5 minutes (_CACHE_TTL_MEDIUM).
+# Cache refreshes every 5 minutes (_AI_CANDY_CACHE_TTL_MEDIUM).
 # Shows green (IP) if successful, red (offline) if all providers fail.
 # Hidden if curl is not available.
 
@@ -318,7 +342,7 @@ function _ai_candy_public_ip_update_worker() {
       ip=""
     done
     _ai_candy_cache_write "$cache_file" "${ip}|${EPOCHSECONDS}" \
-      "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
   }
@@ -326,28 +350,30 @@ function _ai_candy_public_ip_update_worker() {
 
 function _ai_candy_public_ip_update_background() {
   setopt localoptions noerrexit
-  (( _HAS_CURL && _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_CURL && _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    public-ip "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_public_ip_update_worker \
-    "$_PUBLIC_IP_UPDATING" "$_PUBLIC_IP_CACHE_FILE" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_PUBLIC_IP_UPDATING" "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
-# Direct-assignment version: writes result to _PP_PUBLIC_IP global variable
+# Direct-assignment version: writes result to _AI_CANDY_PP_PUBLIC_IP global variable
 # PERFORMANCE: Reads cache file directly without subshells
 function _ai_candy_compute_public_ip_direct() {
   # Skip if network mode is disabled
-  if (( ! _PROMPT_NETWORK_MODE )); then
-    _PP_PUBLIC_IP=""
+  if (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PP_PUBLIC_IP=""
     return
   fi
 
   # Skip if curl is not available
-  if (( ! _HAS_CURL )); then
-    _PP_PUBLIC_IP=""
+  if (( ! _AI_CANDY_HAS_CURL )); then
+    _AI_CANDY_PP_PUBLIC_IP=""
     return
   fi
 
@@ -356,7 +382,7 @@ function _ai_candy_compute_public_ip_direct() {
   integer cache_was_read=0
 
   # Read from cache file directly
-  if _ai_candy_cache_read_small_file "$_PUBLIC_IP_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"; then
     cache_was_read=1
     local cache_data="$REPLY"
     ip="${cache_data%%|*}"
@@ -367,7 +393,7 @@ function _ai_candy_compute_public_ip_direct() {
     fi
 
     # Trigger background refresh if expired (every 5 minutes)
-    if ! _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_MEDIUM" "$current_time"; then
+    if ! _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_MEDIUM" "$current_time"; then
       _ai_candy_public_ip_update_background
     fi
   else
@@ -378,27 +404,27 @@ function _ai_candy_compute_public_ip_direct() {
   # Build display string
   if [[ -n "$ip" ]]; then
     # Valid IP - show in green
-    _PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
+    _AI_CANDY_PP_PUBLIC_IP="%{$fg[green]%}(${ip})%{$reset_color%}"
   elif (( cache_was_read )); then
     # Cache exists but IP is empty - no internet, show in red
-    _PP_PUBLIC_IP="%{$fg[red]%}(offline)%{$reset_color%}"
+    _AI_CANDY_PP_PUBLIC_IP="%{$fg[red]%}(offline)%{$reset_color%}"
   else
     # No cache yet - still loading
-    _PP_PUBLIC_IP=""
+    _AI_CANDY_PP_PUBLIC_IP=""
   fi
 }
 
 # Memory cache for gh authentication status (fastest, no I/O)
-typeset -g _GH_AUTH_MEM_CACHE=""
-typeset -g _GH_AUTH_MEM_CACHE_TIME=0
-typeset -g _GH_AUTH_REFRESH_RETRY_DELAY=4
-# (_GH_AUTH_UPDATING defined in CACHE FILE PATHS section)
+typeset -g _AI_CANDY_GH_AUTH_MEM_CACHE=""
+typeset -g _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=0
+typeset -g _AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY=4
+# (_AI_CANDY_GH_AUTH_UPDATING defined in CACHE FILE PATHS section)
 
 function _ai_candy_gh_auth_cache_ttl() {
   if [[ "$1" == "1" ]]; then
-    REPLY="$_CACHE_TTL_LOW"
+    REPLY="$_AI_CANDY_CACHE_TTL_LOW"
   else
-    REPLY="$_GH_AUTH_REFRESH_RETRY_DELAY"
+    REPLY="$_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY"
   fi
 }
 
@@ -411,11 +437,11 @@ function _ai_candy_gh_auth_update_worker() {
   _ai_candy_acquire_background_lock "$lock_file" || return
   {
     if _ai_candy_run_with_timeout "$net_timeout" gh auth status &>/dev/null; then
-      _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "1|${EPOCHSECONDS}" \
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     else
-      _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}" \
-        "$_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+      _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "?|${EPOCHSECONDS}" \
+        "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
     fi
   } always {
     _ai_candy_cache_lock_release "${lock_file}.d"
@@ -424,13 +450,15 @@ function _ai_candy_gh_auth_update_worker() {
 
 function _ai_candy_gh_auth_update_background() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
+  _ai_candy_request_background_refresh \
+    gh-auth "$_AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY" || return
 
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_auth_update_worker \
-    "$_GH_AUTH_UPDATING" "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$_AI_CANDY_GH_AUTH_UPDATING" "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Check if gh is authenticated (cached with memory + file layers)
@@ -441,16 +469,16 @@ function _ai_candy_gh_is_authenticated() {
   local cache_ttl=""
 
   # Memory cache first (fastest, no I/O)
-  _ai_candy_gh_auth_cache_ttl "$_GH_AUTH_MEM_CACHE"
+  _ai_candy_gh_auth_cache_ttl "$_AI_CANDY_GH_AUTH_MEM_CACHE"
   cache_ttl="$REPLY"
-  if [[ -n "$_GH_AUTH_MEM_CACHE" ]] && \
+  if [[ -n "$_AI_CANDY_GH_AUTH_MEM_CACHE" ]] && \
      _ai_candy_cache_timestamp_is_fresh \
-       "$_GH_AUTH_MEM_CACHE_TIME" "$cache_ttl" "$current_time"; then
-    [[ "$_GH_AUTH_MEM_CACHE" == "1" ]] && return 0 || return 1
+       "$_AI_CANDY_GH_AUTH_MEM_CACHE_TIME" "$cache_ttl" "$current_time"; then
+    [[ "$_AI_CANDY_GH_AUTH_MEM_CACHE" == "1" ]] && return 0 || return 1
   fi
 
   # Check file cache
-  if _ai_candy_cache_read_small_file "$_GH_AUTH_CACHE_FILE"; then
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_AUTH_CACHE_FILE"; then
     local cache_data="$REPLY"
     local cached_status="${cache_data%%|*}"
     local cache_time="${cache_data#*|}"
@@ -460,15 +488,15 @@ function _ai_candy_gh_is_authenticated() {
     if _ai_candy_cache_timestamp_is_fresh \
          "$cache_time" "$cache_ttl" "$current_time"; then
       # Update memory cache from file cache
-      _GH_AUTH_MEM_CACHE="$cached_status"
-      _GH_AUTH_MEM_CACHE_TIME="$cache_time"
+      _AI_CANDY_GH_AUTH_MEM_CACHE="$cached_status"
+      _AI_CANDY_GH_AUTH_MEM_CACHE_TIME="$cache_time"
       [[ "$cached_status" == "1" ]] && return 0 || return 1
     fi
 
     # Cache expired, use stale value but trigger background refresh
     [[ "$cached_status" == "0" || "$cached_status" == "1" ]] || cached_status="?"
-    _GH_AUTH_MEM_CACHE="$cached_status"
-    _GH_AUTH_MEM_CACHE_TIME=$(( current_time - _CACHE_TTL_LOW + _GH_AUTH_REFRESH_RETRY_DELAY ))
+    _AI_CANDY_GH_AUTH_MEM_CACHE="$cached_status"
+    _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$(( current_time - _AI_CANDY_CACHE_TTL_LOW + _AI_CANDY_GH_AUTH_REFRESH_RETRY_DELAY ))
     _ai_candy_gh_auth_update_background
     [[ "$cached_status" == "1" ]] && return 0 || return 1
   fi
@@ -538,43 +566,43 @@ function _ai_candy_gh_pr_update_cache_worker() {
 # Cache format: pr_number|ci_status.
 _ai_candy_gh_pr_update_cache() {
   setopt localoptions noerrexit
-  (( _HAS_TIMEOUT )) || return
+  (( _AI_CANDY_HAS_TIMEOUT )) || return
 
   local remote_key="$1"
   local branch="$2"
+  _ai_candy_request_background_refresh \
+    "gh-pr:${remote_key}|${branch}" \
+    "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
   local persistence_epoch=""
   _ai_candy_cache_read_persistence_epoch || return
   persistence_epoch="$REPLY"
   _ai_candy_start_registered_background_worker _ai_candy_gh_pr_update_cache_worker \
-    "$remote_key" "$branch" "${_CACHE_DIR}/gh_pr_updating.lock" \
-    "${_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
+    "$remote_key" "$branch" "${_AI_CANDY_CACHE_DIR}/gh_pr_updating.lock" \
+    "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
 # Combined optional-tool status uses compact or delimited display formats.
-# Direct-assignment version: writes result to _PP_AI_STATUS global variable
-# Plaintext mode also generates _PP_AI_STATUS_LONG with full names.
+# Direct-assignment version: writes result to _AI_CANDY_PP_AI_STATUS global variable
+# Plaintext mode also generates _AI_CANDY_PP_AI_STATUS_LONG with full names.
 # PERFORMANCE: Avoids subshells by using direct variable assignment
-typeset -g _PP_AI_STATUS=""
-typeset -g _PP_AI_STATUS_LONG=""
-typeset -gA _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-typeset -g _AI_PROCESS_SNAPSHOT_TIME=0
-typeset -g _AI_PROCESS_SNAPSHOT_TTL=30
-typeset -g _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
-typeset -g _AI_PROCESS_SNAPSHOT_RETRY_TTL=5
-typeset -g _AI_TOOL_REFRESH_RETRY_DELAY=30
-typeset -gA _AI_TOOL_REFRESH_REQUESTED
-
+typeset -g _AI_CANDY_PP_AI_STATUS=""
+typeset -g _AI_CANDY_PP_AI_STATUS_LONG=""
+typeset -gA _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TTL=30
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
+typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL=5
 function _ai_candy_refresh_ai_process_counts() {
   local current_time=$EPOCHSECONDS
-  if _ai_candy_cache_timestamp_is_fresh "$_AI_PROCESS_SNAPSHOT_TIME" \
-       "$_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
+  if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME" \
+       "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
     return 0
   fi
-  if _ai_candy_cache_timestamp_is_fresh "$_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME" \
-       "$_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time"; then
+  if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME" \
+       "$_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time"; then
     return 0
   fi
-  _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME="$current_time"
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME="$current_time"
 
   local process_table=""
   if [[ "$OSTYPE" == darwin* ]]; then
@@ -583,8 +611,8 @@ function _ai_candy_refresh_ai_process_counts() {
     process_table=$(_ai_candy_run_process_count_probe ps -u "$UID" -o comm= -o args= 2>/dev/null) || return 0
   fi
 
-  _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-  _AI_PROCESS_SNAPSHOT_TIME="$current_time"
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME="$current_time"
 
   local line process_name
   for line in "${(@f)process_table}"; do
@@ -594,14 +622,14 @@ function _ai_candy_refresh_ai_process_counts() {
     process_name="${process_name:t}"
     case "$process_name" in
       claude|codex|kimi)
-        _AI_PROCESS_COUNTS[$process_name]=$(( ${_AI_PROCESS_COUNTS[$process_name]:-0} + 1 ))
+        _AI_CANDY_AI_PROCESS_COUNTS[$process_name]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[$process_name]:-0} + 1 ))
         ;;
       gemini)
-        _AI_PROCESS_COUNTS[gemini]=$(( ${_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
+        _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
         ;;
       node)
         if [[ "$line" == *'/bin/gemini'* ]]; then
-          _AI_PROCESS_COUNTS[gemini]=$(( ${_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
+          _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
         fi
         ;;
     esac
@@ -610,7 +638,7 @@ function _ai_candy_refresh_ai_process_counts() {
 
 function _ai_candy_count_ai_instances() {
   local process_name="$1"
-  REPLY="${_AI_PROCESS_COUNTS[$process_name]:-0}"
+  REPLY="${_AI_CANDY_AI_PROCESS_COUNTS[$process_name]:-0}"
 }
 
 # Generic optional-tool status computation
@@ -628,7 +656,7 @@ function _ai_candy_compute_ai_tool_status() {
 
   (( has_flag )) || return
 
-  local installed_version="" remote_version="" cache_time=0 request_time=0
+  local installed_version="" remote_version="" cache_time=0
   local current_time=${EPOCHSECONDS}
   integer refresh_needed=0
 
@@ -641,18 +669,17 @@ function _ai_candy_compute_ai_tool_status() {
     _ai_candy_cache_timestamp_is_valid "$cache_time" "$current_time" || cache_time=0
     _ai_candy_valid_ai_version "$installed_version" || installed_version=""
     _ai_candy_valid_ai_version "$remote_version" || remote_version=""
-    (( _PROMPT_NETWORK_MODE )) || remote_version=""
-    _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_CACHE_TTL_LOW" \
+    (( _AI_CANDY_PROMPT_NETWORK_MODE )) || remote_version=""
+    _ai_candy_cache_timestamp_is_fresh "$cache_time" "$_AI_CANDY_CACHE_TTL_LOW" \
       "$current_time" || refresh_needed=1
   else
     refresh_needed=1
   fi
 
   if (( refresh_needed )); then
-    request_time="${_AI_TOOL_REFRESH_REQUESTED[$cache_file]-0}"
-    if ! _ai_candy_cache_timestamp_is_fresh "$request_time" \
-         "$_AI_TOOL_REFRESH_RETRY_DELAY" "$current_time"; then
-      _AI_TOOL_REFRESH_REQUESTED[$cache_file]="$current_time"
+    if _ai_candy_request_background_refresh \
+         "tool:${cache_file}" "$_AI_CANDY_TOOL_REFRESH_RETRY_DELAY" \
+         "$current_time"; then
       refresh_jobs+=("$cache_file" "$cmd_name" "$version_url")
     fi
   fi
@@ -669,7 +696,7 @@ function _ai_candy_compute_ai_tool_status() {
     local count_str=""
     (( instance_count > 0 )) && count_str="(x${instance_count})"
 
-    if (( _PROMPT_EMOJI_MODE )); then
+    if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
       # Emoji mode: icon version*(xN)
       tool_result="%{$FG[$color_code]%}%B${short_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
       tool_result_long="%{$FG[$color_code]%}%B${long_icon}${installed_version}${update_ind}${count_str}%b%{$reset_color%}"
@@ -685,18 +712,18 @@ function _ai_candy_compute_ai_tool_status() {
 
 function _ai_candy_compute_ai_tools_direct() {
   # Skip if optional-tool display is disabled.
-  if (( ! _PROMPT_AI_MODE )); then
-    _PP_AI_STATUS=""
-    _PP_AI_STATUS_LONG=""
+  if (( ! _AI_CANDY_PROMPT_AI_MODE )); then
+    _AI_CANDY_PP_AI_STATUS=""
+    _AI_CANDY_PP_AI_STATUS_LONG=""
     return
   fi
 
   # Detect optional tools on the first render, after shell managers load.
-  if (( ! _AI_TOOLS_DETECTED )); then
+  if (( ! _AI_CANDY_AI_TOOLS_DETECTED )); then
     _ai_candy_detect_optional_commands
   fi
 
-  if (( _HAS_CLAUDE || _HAS_CODEX || _HAS_GEMINI || _HAS_KIMI )); then
+  if (( _AI_CANDY_HAS_CLAUDE || _AI_CANDY_HAS_CODEX || _AI_CANDY_HAS_GEMINI || _AI_CANDY_HAS_KIMI )); then
     _ai_candy_refresh_ai_process_counts
   fi
 
@@ -705,34 +732,34 @@ function _ai_candy_compute_ai_tools_direct() {
   local tool_result tool_result_long  # Set by _ai_candy_compute_ai_tool_status
 
   local icon_s icon_l
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CLAUDE" icon_l="$_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_CLAUDE" "$_CLAUDE_CACHE_FILE" "claude" \
-    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_CLR_CLAUDE" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_CLAUDE" icon_l="$_AI_CANDY_NF_CLAUDE" || { icon_s="Cl:"; icon_l="Claude:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_CLAUDE" "$_AI_CANDY_CLAUDE_CACHE_FILE" "claude" \
+    "https://registry.npmjs.org/@anthropic-ai/claude-code/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_CLAUDE" \
     "Claude" "claude"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_CODEX" icon_l="$_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_CODEX" "$_CODEX_CACHE_FILE" "codex" \
-    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_CLR_CODEX" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_CODEX" icon_l="$_AI_CANDY_NF_CODEX" || { icon_s="Cx:"; icon_l="Codex:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_CODEX" "$_AI_CANDY_CODEX_CACHE_FILE" "codex" \
+    "https://registry.npmjs.org/@openai/codex/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_CODEX" \
     "Codex" "codex"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_GEMINI" icon_l="$_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_GEMINI" "$_GEMINI_CACHE_FILE" "gemini" \
-    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_CLR_GEMINI" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_GEMINI" icon_l="$_AI_CANDY_NF_GEMINI" || { icon_s="Gm:"; icon_l="Gemini:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_GEMINI" "$_AI_CANDY_GEMINI_CACHE_FILE" "gemini" \
+    "https://registry.npmjs.org/@google/gemini-cli/latest" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_GEMINI" \
     "Gemini" "gemini"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
-  (( _PROMPT_EMOJI_MODE )) && icon_s="$_NF_KIMI" icon_l="$_NF_KIMI" || { icon_s="Km:"; icon_l="Kimi:"; }
-  _ai_candy_compute_ai_tool_status "$_HAS_KIMI" "$_KIMI_CACHE_FILE" "kimi" \
-    "https://code.kimi.com/kimi-code/latest.json" "$icon_s" "$icon_l" "$_CLR_KIMI" \
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && icon_s="$_AI_CANDY_NF_KIMI" icon_l="$_AI_CANDY_NF_KIMI" || { icon_s="Km:"; icon_l="Kimi:"; }
+  _ai_candy_compute_ai_tool_status "$_AI_CANDY_HAS_KIMI" "$_AI_CANDY_KIMI_CACHE_FILE" "kimi" \
+    "https://code.kimi.com/kimi-code/latest.json" "$icon_s" "$icon_l" "$_AI_CANDY_CLR_KIMI" \
     "Kimi" "kimi"
   [[ -n "$tool_result" ]] && short_results+=("$tool_result") && long_results+=("$tool_result_long")
 
   (( ${#refresh_jobs} )) && \
-    _ai_candy_ai_tools_update_caches "$_PROMPT_NETWORK_MODE" "${refresh_jobs[@]}"
+    _ai_candy_ai_tools_update_caches "$_AI_CANDY_PROMPT_NETWORK_MODE" "${refresh_jobs[@]}"
 
-  if (( _PROMPT_EMOJI_MODE )); then
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
     ai_status="${(j::)short_results}"
     ai_status_long="${(j::)long_results}"
   else
@@ -742,10 +769,10 @@ function _ai_candy_compute_ai_tools_direct() {
 
   # Wrap in brackets if any tools are present
   if [[ -n "$ai_status" ]]; then
-    _PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
-    _PP_AI_STATUS_LONG="%{$fg[white]%}[${ai_status_long}%{$fg[white]%}]%{$reset_color%}"
+    _AI_CANDY_PP_AI_STATUS="%{$fg[white]%}[${ai_status}%{$fg[white]%}]%{$reset_color%}"
+    _AI_CANDY_PP_AI_STATUS_LONG="%{$fg[white]%}[${ai_status_long}%{$fg[white]%}]%{$reset_color%}"
   else
-    _PP_AI_STATUS=""
-    _PP_AI_STATUS_LONG=""
+    _AI_CANDY_PP_AI_STATUS=""
+    _AI_CANDY_PP_AI_STATUS_LONG=""
   fi
 }

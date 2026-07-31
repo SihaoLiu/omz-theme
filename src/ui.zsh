@@ -5,29 +5,29 @@
 # Acquire a background lock using atomic mkdir to prevent TOCTOU race conditions
 # Returns 0 if lock acquired, 1 if already locked (another process is running)
 # Args: $1=lock_name (base path, will use .d suffix for directory lock)
-# Args: $2=timeout (optional, defaults to _NETWORK_TIMEOUT)
+# Args: $2=timeout (optional, defaults to _AI_CANDY_NETWORK_TIMEOUT)
 # SECURITY: Uses mkdir which is atomic on POSIX systems, preventing race conditions
 function _ai_candy_acquire_background_lock() {
-  (( _CACHE_READY )) || return 1
+  (( _AI_CANDY_CACHE_READY )) || return 1
 
   local lock_name="$1"
-  local timeout="${2:-${_NETWORK_TIMEOUT:-5}}"
+  local timeout="${2:-${_AI_CANDY_NETWORK_TIMEOUT:-5}}"
   local lock_dir="${lock_name}.d"
-  local commit_wait_seconds=$(( (_CACHE_COMMIT_WAIT_TICKS + 99) / 100 ))
-  local stale_after=$(( timeout + commit_wait_seconds + _CACHE_COMMIT_STALE_AFTER ))
+  local commit_wait_seconds=$(( (_AI_CANDY_CACHE_COMMIT_WAIT_TICKS + 99) / 100 ))
+  local stale_after=$(( timeout + commit_wait_seconds + _AI_CANDY_CACHE_COMMIT_STALE_AFTER ))
   _ai_candy_cache_lock_acquire "$lock_dir" "$stale_after" 0
 }
 
 # Emoji mode toggle (1 = emoji-rich, 0 = plaintext)
 # Persisted to file so it survives shell restarts
-# (_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
+# (_AI_CANDY_EMOJI_MODE_FILE defined in CACHE FILE PATHS section)
 
 function _ai_candy_load_boolean_setting() {
   local setting_file="$1"
   local default_value="$2"
   local value=""
 
-  if (( _CACHE_READY )) && _ai_candy_cache_read_small_file "$setting_file"; then
+  if (( _AI_CANDY_CACHE_READY )) && _ai_candy_cache_read_small_file "$setting_file"; then
     value="$REPLY"
   fi
 
@@ -39,57 +39,31 @@ function _ai_candy_persist_boolean_setting() {
   _ai_candy_cache_write "$1" "$2" || true
 }
 
-# Load emoji mode from file or default to 1 (emoji-rich)
-_ai_candy_load_boolean_setting "$_EMOJI_MODE_FILE" 1
-typeset -g _PROMPT_EMOJI_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_EMOJI_MODE="$REPLY"
 
-# Path separator mode toggle (0 = '/', 1 = ' ' space)
-# Space mode allows double-click selection of path segments in terminal
-# Persisted to file so it survives shell restarts
-# (_PATH_SEP_MODE_FILE defined in CACHE FILE PATHS section)
+_ai_candy_load_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_PATH_SEP_MODE="$REPLY"
 
-# Load path separator mode from file or default to 1 (space mode)
-_ai_candy_load_boolean_setting "$_PATH_SEP_MODE_FILE" 1
-typeset -g _PROMPT_PATH_SEP_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_NETWORK_MODE="$REPLY"
 
-# Network mode toggle (1 = enabled, 0 = disabled)
-# Controls public IP, GitHub identity/PR, and tool update checks.
-# When disabled, network features are hidden AND underlying network calls are skipped
-# Persisted to file so it survives shell restarts
-# (_NETWORK_MODE_FILE defined in CACHE FILE PATHS section)
+_ai_candy_load_boolean_setting "$_AI_CANDY_AI_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_AI_MODE="$REPLY"
 
-# Load network mode from file or default to 1 (network enabled)
-_ai_candy_load_boolean_setting "$_NETWORK_MODE_FILE" 1
-typeset -g _PROMPT_NETWORK_MODE="$REPLY"
-
-# Optional-tool display mode toggle (1 = show, 0 = hide)
-# Controls whether the tool section is displayed in the prompt.
-# Persisted to file so it survives shell restarts
-# (_AI_MODE_FILE defined in CACHE FILE PATHS section)
-
-# Load tool display mode from file or default to 1 (show).
-_ai_candy_load_boolean_setting "$_AI_MODE_FILE" 1
-typeset -g _PROMPT_AI_MODE="$REPLY"
-
-# OS/kernel display mode toggle (1 = show, 0 = hide)
-# Controls whether OS and kernel info is displayed in prompt
-# Persisted to file so it survives shell restarts
-# (_OS_MODE_FILE defined in CACHE FILE PATHS section)
-
-# Load OS mode from file or default to 1 (show)
-_ai_candy_load_boolean_setting "$_OS_MODE_FILE" 1
-typeset -g _PROMPT_OS_MODE="$REPLY"
+_ai_candy_load_boolean_setting "$_AI_CANDY_OS_MODE_FILE" 1
+typeset -g _AI_CANDY_PROMPT_OS_MODE="$REPLY"
 
 # Toggle emoji mode
 function _ai_candy_prompt_toggle_emoji() {
   emulate -L zsh
-  if (( _PROMPT_EMOJI_MODE )); then
-    _PROMPT_EMOJI_MODE=0
-    _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _AI_CANDY_PROMPT_EMOJI_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "0"
     builtin print -r -- "Switched to plaintext mode"
   else
-    _PROMPT_EMOJI_MODE=1
-    _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_EMOJI_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "1"
     builtin print -r -- "Switched to emoji mode"
   fi
 }
@@ -98,10 +72,10 @@ function _ai_candy_prompt_toggle_emoji() {
 # Note: Space mode is disabled when current path contains spaces (would cause ambiguity)
 function _ai_candy_prompt_toggle_path_sep() {
   emulate -L zsh
-  if (( _PROMPT_PATH_SEP_MODE )); then
+  if (( _AI_CANDY_PROMPT_PATH_SEP_MODE )); then
     # Currently in space mode, switch to slash mode (always allowed)
-    _PROMPT_PATH_SEP_MODE=0
-    _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "0"
+    _AI_CANDY_PROMPT_PATH_SEP_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "0"
     builtin print -r -- "Slash mode: [repo/root/submodule/path/in/submodule]"
   else
     # Currently in slash mode, try to switch to space mode
@@ -113,8 +87,8 @@ function _ai_candy_prompt_toggle_path_sep() {
       builtin print -r -- "Space mode would cause ambiguity with space-containing directory names."
       return 1
     fi
-    _PROMPT_PATH_SEP_MODE=1
-    _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_PATH_SEP_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "1"
     builtin print -r -- "Space mode: [repo/root submodule path/in/submodule]"
   fi
 }
@@ -124,14 +98,14 @@ function _ai_candy_prompt_toggle_path_sep() {
 # Affected features: public IP, GitHub identity/PR, and tool update checks.
 function _ai_candy_prompt_toggle_network() {
   emulate -L zsh
-  if (( _PROMPT_NETWORK_MODE )); then
-    _PROMPT_NETWORK_MODE=0
-    _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_NETWORK_MODE )); then
+    _AI_CANDY_PROMPT_NETWORK_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "0"
     builtin print -r -- "Network mode: OFF"
     builtin print -r -- "Disabled: public IP, GitHub username/PR status, AI update checks"
   else
-    _PROMPT_NETWORK_MODE=1
-    _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_NETWORK_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "1"
     builtin print -r -- "Network mode: ON"
     builtin print -r -- "Enabled: public IP, GitHub username/PR status, AI update checks"
   fi
@@ -140,13 +114,13 @@ function _ai_candy_prompt_toggle_network() {
 # Toggle optional-tool display mode.
 function _ai_candy_prompt_toggle_ai() {
   emulate -L zsh
-  if (( _PROMPT_AI_MODE )); then
-    _PROMPT_AI_MODE=0
-    _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_AI_MODE )); then
+    _AI_CANDY_PROMPT_AI_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "0"
     builtin print -r -- "AI tools display: OFF"
   else
-    _PROMPT_AI_MODE=1
-    _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_AI_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "1"
     builtin print -r -- "AI tools display: ON"
   fi
 }
@@ -154,13 +128,13 @@ function _ai_candy_prompt_toggle_ai() {
 # Toggle OS/kernel display mode (show/hide)
 function _ai_candy_prompt_toggle_os() {
   emulate -L zsh
-  if (( _PROMPT_OS_MODE )); then
-    _PROMPT_OS_MODE=0
-    _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "0"
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
+    _AI_CANDY_PROMPT_OS_MODE=0
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "0"
     builtin print -r -- "OS/kernel display: OFF"
   else
-    _PROMPT_OS_MODE=1
-    _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "1"
+    _AI_CANDY_PROMPT_OS_MODE=1
+    _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "1"
     builtin print -r -- "OS/kernel display: ON"
   fi
 }
@@ -169,24 +143,24 @@ function _ai_candy_prompt_toggle_os() {
 function _ai_candy_prompt_all_off() {
   emulate -L zsh
   # 1. Plaintext mode (e)
-  _PROMPT_EMOJI_MODE=0
-  _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_EMOJI_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "0"
 
   # 2. Slash separator (p)
-  _PROMPT_PATH_SEP_MODE=0
-  _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_PATH_SEP_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "0"
 
   # 3. Network disabled (n)
-  _PROMPT_NETWORK_MODE=0
-  _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_NETWORK_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "0"
 
   # 4. Optional tools hidden (a)
-  _PROMPT_AI_MODE=0
-  _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_AI_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "0"
 
   # 5. OS hidden (o)
-  _PROMPT_OS_MODE=0
-  _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "0"
+  _AI_CANDY_PROMPT_OS_MODE=0
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "0"
 
   builtin print -r -- "All toggles turned OFF:"
   builtin print -r -- "  - Emoji mode: OFF (Plaintext)"
@@ -200,25 +174,25 @@ function _ai_candy_prompt_all_off() {
 function _ai_candy_prompt_all_on() {
   emulate -L zsh
   # 1. Emoji mode (e)
-  _PROMPT_EMOJI_MODE=1
-  _ai_candy_persist_boolean_setting "$_EMOJI_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_EMOJI_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_EMOJI_MODE_FILE" "1"
 
   # 2. Space separator (p)
   # The variable sets the preference, the render logic handles the fallback if path has spaces
-  _PROMPT_PATH_SEP_MODE=1
-  _ai_candy_persist_boolean_setting "$_PATH_SEP_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_PATH_SEP_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_PATH_SEP_MODE_FILE" "1"
 
   # 3. Network enabled (n)
-  _PROMPT_NETWORK_MODE=1
-  _ai_candy_persist_boolean_setting "$_NETWORK_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_NETWORK_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_NETWORK_MODE_FILE" "1"
 
   # 4. Optional tools visible (a)
-  _PROMPT_AI_MODE=1
-  _ai_candy_persist_boolean_setting "$_AI_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_AI_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_AI_MODE_FILE" "1"
 
   # 5. OS visible (o)
-  _PROMPT_OS_MODE=1
-  _ai_candy_persist_boolean_setting "$_OS_MODE_FILE" "1"
+  _AI_CANDY_PROMPT_OS_MODE=1
+  _ai_candy_persist_boolean_setting "$_AI_CANDY_OS_MODE_FILE" "1"
 
   builtin print -r -- "All toggles turned ON:"
   builtin print -r -- "  - Emoji mode: ON"
@@ -234,97 +208,97 @@ function _ai_candy_prompt_emoji_help() {
   local border=""
   integer border_index
   for border_index in {1..66}; do
-    border+="$_BOX_H"
+    border+="$_AI_CANDY_BOX_H"
   done
-  local TOP="${_BOX_TL}${border}${_BOX_TR}"
-  local MID="${_BOX_ML}${border}${_BOX_MR}"
-  local BOT="${_BOX_BL}${border}${_BOX_BR}"
+  local TOP="${_AI_CANDY_BOX_TL}${border}${_AI_CANDY_BOX_TR}"
+  local MID="${_AI_CANDY_BOX_ML}${border}${_AI_CANDY_BOX_MR}"
+  local BOT="${_AI_CANDY_BOX_BL}${border}${_AI_CANDY_BOX_BR}"
 
   builtin print -r -- ""
   builtin print -r -- "$TOP"
-  builtin print -r -- "${_BOX_V}              ZSH Prompt Emoji/Symbol Reference                   ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}              ZSH Prompt Emoji/Symbol Reference                   ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  COMMAND STATUS                                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [${_SYM_CHECK}] / [OK]    Last command succeeded (exit code 0)            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [${_SYM_CROSS}N] / [ERRN] Last command failed with exit code N            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: [${_SYM_CROSS}127] means 'command not found'                     ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  COMMAND STATUS                                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [${_AI_CANDY_SYM_CHECK}] / [OK]    Last command succeeded (exit code 0)            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [${_AI_CANDY_SYM_CROSS}N] / [ERRN] Last command failed with exit code N            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: [${_AI_CANDY_SYM_CROSS}127] means 'command not found'                     ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  CONNECTION & ENVIRONMENT                                        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_SSH}/ [SSH] Connected via SSH                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_CONTAINER} / C     Running inside a container                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_TTY} / T     TTY session                                         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GNOME}/ G     GNOME desktop                                       ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_KDE} / K     KDE Plasma desktop                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_XFCE} / X     XFCE desktop                                        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_XORG} / O     Xorg session (generic X11)                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_HOST} / H     Other host environment                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    (x.x.x.x)  Public IP address (green=online, red=offline)      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}               ${_SYM_WARNING} Privacy: IP is sent to external services         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}               Use 'n' to disable network features if concerned   ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  CONNECTION & ENVIRONMENT                                        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_SSH}/ [SSH] Connected via SSH                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_CONTAINER} / C     Running inside a container                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_TTY} / T     TTY session                                         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GNOME}/ G     GNOME desktop                                       ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_KDE} / K     KDE Plasma desktop                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_XFCE} / X     XFCE desktop                                        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_XORG} / O     Xorg session (generic X11)                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_HOST} / H     Other host environment                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    (x.x.x.x)  Public IP address (green=online, red=offline)      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}               ${_AI_CANDY_SYM_WARNING} Privacy: IP is sent to external services         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}               Use 'n' to disable network features if concerned   ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GITHUB IDENTITY                                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GITHUB}User /     GitHub username (white bg, black text)           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [Username]   Emoji mode: icon, Plaintext mode: brackets       ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}                 Detected via gh auth (active) & ssh -T github    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_GITHUB}A|B /      Mismatch warning (red) - A=gh, B=ssh identity    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [A|B]        Format: gh_user|ssh_user - check your config!    ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GITHUB IDENTITY                                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GITHUB}User /     GitHub username (white bg, black text)           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [Username]   Emoji mode: icon, Plaintext mode: brackets       ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}                 Detected via gh auth (active) & ssh -T github    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_GITHUB}A|B /      Mismatch warning (red) - A=gh, B=ssh identity    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [A|B]        Format: gh_user|ssh_user - check your config!    ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GIT STATUS                                                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_UP}N / +N   N commits ahead of upstream (need to push)          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_DOWN}N / -N   N commits behind upstream (need to pull)            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_STASH}N / SN   N stashed changes                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    *         Uncommitted changes in working directory            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: main ${_SYM_UP}2${_SYM_DOWN}1${_SYM_STASH}3 means branch 'main', 2 ahead,            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}             1 behind, 3 stashes                                  ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GIT STATUS                                                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_UP}N / +N   N commits ahead of upstream (need to push)          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_DOWN}N / -N   N commits behind upstream (need to pull)            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_STASH}N / SN   N stashed changes                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    *         Uncommitted changes in working directory            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: main ${_AI_CANDY_SYM_UP}2${_AI_CANDY_SYM_DOWN}1${_AI_CANDY_SYM_STASH}3 means branch 'main', 2 ahead,            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}             1 behind, 3 stashes                                  ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GIT SPECIAL STATES                                              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_BRANCH} / [RB] Rebase in progress (with step/total if interactive) ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_BRANCH} / [MG] Merge in progress                                   ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CHERRY} / [CP] Cherry-pick in progress                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_REWIND} / [RV] Revert in progress                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_SEARCH} / [BI] Bisect in progress                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_PLUG} / [DT] Detached HEAD state                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: ${_SYM_BRANCH}2/5 means interactive rebase at step 2 of 5        ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GIT SPECIAL STATES                                              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_BRANCH} / [RB] Rebase in progress (with step/total if interactive) ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_BRANCH} / [MG] Merge in progress                                   ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CHERRY} / [CP] Cherry-pick in progress                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_REWIND} / [RV] Revert in progress                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_SEARCH} / [BI] Bisect in progress                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_PLUG} / [DT] Detached HEAD state                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: ${_AI_CANDY_SYM_BRANCH}2/5 means interactive rebase at step 2 of 5        ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  GITHUB PR STATUS                                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    #N        Pull request number N for current branch            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CHECK} / OK    All CI checks passed                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_CROSS} / X     Some CI checks failed                               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_PENDING} / ...   CI checks still running                            ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: #42${_SYM_CHECK} means PR #42 with all checks passing            ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  GITHUB PR STATUS                                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    #N        Pull request number N for current branch            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CHECK} / OK    All CI checks passed                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_CROSS} / X     Some CI checks failed                               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_PENDING} / ...   CI checks still running                            ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: #42${_AI_CANDY_SYM_CHECK} means PR #42 with all checks passing            ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  AI CODING TOOLS                                                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_CLAUDE / Cl:   Claude Code version                                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_CODEX / Cx:   OpenAI Codex version                               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_GEMINI / Gm:   Google Gemini CLI version                          ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    $_NF_KIMI / Km:   Moonshot Kimi version                              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    *         Update available (shown after version)              ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: ${_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  AI CODING TOOLS                                                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_CLAUDE / Cl:   Claude Code version                                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_CODEX / Cx:   OpenAI Codex version                               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_GEMINI / Gm:   Google Gemini CLI version                          ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    $_AI_CANDY_NF_KIMI / Km:   Moonshot Kimi version                              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    *         Update available (shown after version)              ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: ${_AI_CANDY_NF_CLAUDE}2.0.76* means Claude v2.0.76 with update available ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  SYSTEM INFO (shown in brackets at end of prompt)                ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    [OS, kernel] shows operating system and kernel version        ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_REDHAT} RHEL  ${_NF_UBUNTU} Ubuntu  ${_NF_CENTOS} CentOS  ${_NF_FEDORA} Fedora  ${_NF_ALMA} AlmaLinux  ${_NF_MACOS} macOS    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_NF_APPLE} Darwin kernel    ${_NF_LINUX} Linux kernel                             ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Example: [${_NF_REDHAT} 9.5, ${_NF_LINUX}-5.14.0] for RHEL 9.5 on Linux kernel       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  SYSTEM INFO (shown in brackets at end of prompt)                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    [OS, kernel] shows operating system and kernel version        ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Emoji mode uses Nerd Font icons for OS/distro and kernel:     ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_REDHAT} RHEL  ${_AI_CANDY_NF_UBUNTU} Ubuntu  ${_AI_CANDY_NF_CENTOS} CentOS  ${_AI_CANDY_NF_FEDORA} Fedora  ${_AI_CANDY_NF_ALMA} AlmaLinux  ${_AI_CANDY_NF_MACOS} macOS    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_NF_APPLE} Darwin kernel    ${_AI_CANDY_NF_LINUX} Linux kernel                             ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Example: [${_AI_CANDY_NF_REDHAT} 9.5, ${_AI_CANDY_NF_LINUX}-5.14.0] for RHEL 9.5 on Linux kernel       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  OTHER                                                           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ${_SYM_JOBS}N / JN   N background jobs running                           ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    ..        Path truncated (in narrow terminal)                 ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  OTHER                                                           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ${_AI_CANDY_SYM_JOBS}N / JN   N background jobs running                           ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    ..        Path truncated (in narrow terminal)                 ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  PATH DISPLAY (in git repos)                                     ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Space mode: [repo/root submodule relative/path]               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Slash mode: [repo/root/submodule/relative/path]               ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    Space mode enables double-click to select path segments       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  PATH DISPLAY (in git repos)                                     ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Space mode: [repo/root submodule relative/path]               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Slash mode: [repo/root/submodule/relative/path]               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Space mode enables double-click to select path segments       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
-  builtin print -r -- "${_BOX_V}  QUICK COMMANDS                                                  ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    u         Refresh all cached prompt info                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    e         Toggle emoji/plaintext mode                         ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    p         Toggle path separator (space/slash)                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    n         Toggle network features (IP, GitHub, AI updates)    ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    a         Toggle AI tools display (show/hide)                 ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    h         Show this help                                      ${_BOX_V}"
-  builtin print -r -- "${_BOX_V}    t         Show tool availability status                       ${_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}  QUICK COMMANDS                                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    u         Refresh all cached prompt info                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    e         Toggle emoji/plaintext mode                         ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    p         Toggle path separator (space/slash)                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    n         Toggle network features (IP, GitHub, AI updates)    ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    a         Toggle AI tools display (show/hide)                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    h         Show this help                                      ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    t         Show tool availability status                       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$BOT"
   builtin print -r -- ""
 }
@@ -341,7 +315,7 @@ function _ai_candy_tool_status_line() {
   local visible_length=${#visible}
   local padding=$(( inner - visible_length ))
   (( padding < 0 )) && padding=0
-  builtin printf "${_BOX_V}%s%*s${_BOX_V}\n" "$content" "$padding" ""
+  builtin printf "${_AI_CANDY_BOX_V}%s%*s${_AI_CANDY_BOX_V}\n" "$content" "$padding" ""
 }
 
 function _ai_candy_prompt_tool_status() {
@@ -353,8 +327,8 @@ function _ai_candy_prompt_tool_status() {
   local YELLOW=$'\e[33m'
   local CYAN=$'\e[36m'
   local RESET=$'\e[0m'
-  local CHECK="${GREEN}${_SYM_CHECK}${RESET}"
-  local CROSS="${RED}${_SYM_CROSS}${RESET}"
+  local CHECK="${GREEN}${_AI_CANDY_SYM_CHECK}${RESET}"
+  local CROSS="${RED}${_AI_CANDY_SYM_CROSS}${RESET}"
   local WARN="${YELLOW}!${RESET}"
   local QMARK="${YELLOW}?${RESET}"
 
@@ -363,9 +337,9 @@ function _ai_candy_prompt_tool_status() {
   local INNER=$((WIDTH - 2))  # Content width between borders
 
   # Border lines
-  local TOP="${_BOX_TL}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_TR}"
-  local MID="${_BOX_ML}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_MR}"
-  local BOT="${_BOX_BL}$(builtin printf "${_BOX_H}%.0s" {1..$INNER})${_BOX_BR}"
+  local TOP="${_AI_CANDY_BOX_TL}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_TR}"
+  local MID="${_AI_CANDY_BOX_ML}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_MR}"
+  local BOT="${_AI_CANDY_BOX_BL}$(builtin printf "${_AI_CANDY_BOX_H}%.0s" {1..$INNER})${_AI_CANDY_BOX_BR}"
 
   builtin print -r -- ""
   builtin print -r -- "$TOP"
@@ -376,35 +350,35 @@ function _ai_candy_prompt_tool_status() {
 
   # Emoji mode (e)
   local ZWS=$'\xe2\x80\x8b'  # Zero-width space affects string length only.
-  if (( _PROMPT_EMOJI_MODE )); then
-    _ai_candy_tool_status_line "    ${CHECK} e  Emoji mode      [${_SYM_CHECK}] ${_NF_SSH}$_NF_CLAUDE ${_SYM_UP}${_SYM_DOWN} ${_SYM_STASH}"
+  if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
+    _ai_candy_tool_status_line "    ${CHECK} e  Emoji mode      [${_AI_CANDY_SYM_CHECK}] ${_AI_CANDY_NF_SSH}$_AI_CANDY_NF_CLAUDE ${_AI_CANDY_SYM_UP}${_AI_CANDY_SYM_DOWN} ${_AI_CANDY_SYM_STASH}"
   else
     _ai_candy_tool_status_line "    ${CROSS} e  Plaintext mode  [OK] [SSH] Cl: +- S"
   fi
 
   # Path separator mode (p)
-  if (( _PROMPT_PATH_SEP_MODE )); then
+  if (( _AI_CANDY_PROMPT_PATH_SEP_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} p  Space separator [repo submodule path]"
   else
     _ai_candy_tool_status_line "    ${CROSS} p  Slash separator [repo/submodule/path]"
   fi
 
   # Network mode (n)
-  if (( _PROMPT_NETWORK_MODE )); then
+  if (( _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} n  Network enabled (IP, GitHub, AI updates)"
   else
     _ai_candy_tool_status_line "    ${CROSS} n  Network disabled"
   fi
 
   # Optional-tool display mode (a)
-  if (( _PROMPT_AI_MODE )); then
+  if (( _AI_CANDY_PROMPT_AI_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} a  AI tools display enabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} a  AI tools display hidden"
   fi
 
   # OS/kernel display mode (o)
-  if (( _PROMPT_OS_MODE )); then
+  if (( _AI_CANDY_PROMPT_OS_MODE )); then
     _ai_candy_tool_status_line "    ${CHECK} o  OS/kernel display enabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} o  OS/kernel display hidden"
@@ -418,7 +392,7 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_cache_backend_init >/dev/null 2>&1
 
   # sqlite3
-  if (( _HAS_SQLITE3 )); then
+  if (( _AI_CANDY_HAS_SQLITE3 )); then
     _ai_candy_tool_status_line "    ${CHECK} sqlite3     - Persistent cache backend available"
   else
     _ai_candy_tool_status_line "    ${WARN} sqlite3     - Portable file cache active"
@@ -426,8 +400,8 @@ function _ai_candy_prompt_tool_status() {
   fi
 
   # timeout/gtimeout
-  if (( _HAS_TIMEOUT )); then
-    _ai_candy_tool_status_line "    ${CHECK} ${_TIMEOUT_CMD:t}     - Command timeout support"
+  if (( _AI_CANDY_HAS_TIMEOUT )); then
+    _ai_candy_tool_status_line "    ${CHECK} ${_AI_CANDY_TIMEOUT_CMD:t}     - Command timeout support"
   else
     _ai_candy_tool_status_line "    ${CROSS} timeout     - Network features DISABLED (gh, PR status)"
     _ai_candy_tool_status_line "                    Install: apt install coreutils"
@@ -440,16 +414,16 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_tool_status_line ""
 
   # gh CLI
-  if (( _HAS_GH )); then
+  if (( _AI_CANDY_HAS_GH )); then
     local gh_output=$(_ai_candy_run_local_probe gh --version 2>/dev/null)
     local gh_version=""
     [[ "$gh_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && gh_version="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} gh          - GitHub CLI v${gh_version}"
-    if (( _HAS_TIMEOUT )); then
+    if (( _AI_CANDY_HAS_TIMEOUT )); then
       local auth_status=""
       local current_time=${EPOCHSECONDS}
       # Check cache first
-      if _ai_candy_cache_read_small_file "$_GH_AUTH_CACHE_FILE"; then
+      if _ai_candy_cache_read_small_file "$_AI_CANDY_GH_AUTH_CACHE_FILE"; then
         local auth_data="$REPLY"
         local cached_auth_status="${auth_data%%|*}"
         local cache_time="${auth_data#*|}"
@@ -461,12 +435,12 @@ function _ai_candy_prompt_tool_status() {
       fi
       # If no valid cache, check synchronously (user explicitly requested status)
       if [[ -z "$auth_status" ]]; then
-        if _ai_candy_run_with_timeout "${_NETWORK_TIMEOUT:-5}" gh auth status &>/dev/null; then
+        if _ai_candy_run_with_timeout "${_AI_CANDY_NETWORK_TIMEOUT:-5}" gh auth status &>/dev/null; then
           auth_status="1"
-          _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "1|${current_time}"
+          _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "1|${current_time}"
         else
           auth_status="?"
-          _ai_candy_cache_write "$_GH_AUTH_CACHE_FILE" "?|${current_time}"
+          _ai_candy_cache_write "$_AI_CANDY_GH_AUTH_CACHE_FILE" "?|${current_time}"
         fi
       fi
       # Display result
@@ -486,21 +460,21 @@ function _ai_candy_prompt_tool_status() {
   fi
 
   # hash command (for PR cache key generation)
-  if (( _HAS_HASH_CMD )); then
-    _ai_candy_tool_status_line "    ${CHECK} ${_HASH_CMD:t}    - Private PR cache keys"
+  if (( _AI_CANDY_HAS_HASH_CMD )); then
+    _ai_candy_tool_status_line "    ${CHECK} ${_AI_CANDY_HASH_CMD:t}    - Private PR cache keys"
   else
     _ai_candy_tool_status_line "    ${WARN} hash        - PR caching disabled (no SHA-256 tool)"
   fi
 
   # ssh
-  if (( _HAS_SSH )); then
+  if (( _AI_CANDY_HAS_SSH )); then
     _ai_candy_tool_status_line "    ${CHECK} ssh         - GitHub SSH identity detection"
   else
     _ai_candy_tool_status_line "    ${CROSS} ssh         - No SSH identity in prompt"
   fi
 
   # curl
-  if (( _HAS_CURL )); then
+  if (( _AI_CANDY_HAS_CURL )); then
     _ai_candy_tool_status_line "    ${CHECK} curl        - AI tool update checks, public IP display"
   else
     _ai_candy_tool_status_line "    ${WARN} curl        - No update notifications for AI tools"
@@ -511,13 +485,13 @@ function _ai_candy_prompt_tool_status() {
   builtin print -r -- "$MID"
   _ai_candy_tool_status_line "  ${CYAN}CACHE STATUS${RESET}"
   _ai_candy_tool_status_line ""
-  _ai_candy_sanitize_terminal_text "$_CACHE_DIR"
+  _ai_candy_sanitize_terminal_text "$_AI_CANDY_CACHE_DIR"
   local display_cache_dir="$REPLY"
   _ai_candy_tool_status_line "    Cache directory: ${display_cache_dir}"
 
-  case "$_CACHE_BACKEND" in
+  case "$_AI_CANDY_CACHE_BACKEND" in
     sqlite)
-      local db_info=$(command du -h "$_CACHE_DB_FILE" 2>/dev/null)
+      local db_info=$(command du -h "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null)
       local db_size="${db_info%%[[:space:]]*}"
       _ai_candy_tool_status_line "    Persistent cache: ${CHECK} SQLite (${db_size:-0K})"
       ;;
@@ -529,7 +503,7 @@ function _ai_candy_prompt_tool_status() {
       ;;
   esac
 
-  local -a cache_entries=("$_CACHE_DIR"/*(N))
+  local -a cache_entries=("$_AI_CANDY_CACHE_DIR"/*(N))
   local cache_count=${#cache_entries}
   _ai_candy_tool_status_line "    Cache files:    ${cache_count} files"
 
@@ -538,48 +512,48 @@ function _ai_candy_prompt_tool_status() {
   _ai_candy_tool_status_line "  ${CYAN}AI CODING TOOLS${RESET} (Version display in prompt)"
   _ai_candy_tool_status_line ""
 
-  if (( _HAS_CLAUDE )); then
+  if (( _AI_CANDY_HAS_CLAUDE )); then
     local claude_output=$(_ai_candy_run_background_probe claude --version 2>/dev/null)
     local claude_ver=""
     [[ "$claude_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && claude_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} claude      - Claude Code v${claude_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} claude      - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} claude      - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @anthropic-ai/claude-code"
   fi
 
-  if (( _HAS_CODEX )); then
+  if (( _AI_CANDY_HAS_CODEX )); then
     local codex_output=$(_ai_candy_run_background_probe codex --version 2>/dev/null)
     local codex_ver=""
     [[ "$codex_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && codex_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} codex       - OpenAI Codex v${codex_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} codex       - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} codex       - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @openai/codex"
   fi
 
-  if (( _HAS_GEMINI )); then
+  if (( _AI_CANDY_HAS_GEMINI )); then
     local gemini_output=$(_ai_candy_run_background_probe gemini --version 2>/dev/null)
     local gemini_ver=""
     [[ "$gemini_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && gemini_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} gemini      - Google Gemini v${gemini_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} gemini      - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} gemini      - Not installed"
     _ai_candy_tool_status_line "                    Install: npm i -g @google/gemini-cli"
   fi
 
-  if (( _HAS_KIMI )); then
+  if (( _AI_CANDY_HAS_KIMI )); then
     local kimi_output=$(_ai_candy_run_background_probe kimi --version 2>/dev/null)
     local kimi_ver=""
     [[ "$kimi_output" =~ '[0-9]+\.[0-9]+\.[0-9]+' ]] && kimi_ver="$MATCH"
     _ai_candy_tool_status_line "    ${CHECK} kimi        - Moonshot Kimi v${kimi_ver:-?}"
-  elif (( ! _PROMPT_NETWORK_MODE )); then
+  elif (( ! _AI_CANDY_PROMPT_NETWORK_MODE )); then
     _ai_candy_tool_status_line "    ${QMARK} kimi        - Network disabled"
   else
     _ai_candy_tool_status_line "    ${CROSS} kimi        - Not installed"
@@ -606,35 +580,35 @@ function _ai_candy_prompt_refresh_all_caches() {
   local cache_file
   integer refresh_status=0
   local -a derived_cache_files=(
-    "$_CACHE_DB_FILE"
-    "$_CACHE_BACKEND_OWNER_FILE"
-    "$_GIT_TOPOLOGY_GENERATION_FILE"
-    "${_CACHE_DB_FILE}-journal"
-    "${_CACHE_DB_FILE}-shm"
-    "${_CACHE_DB_FILE}-wal"
-    "$_CACHE_OPERATION_FILE"
-    "$_CACHE_OPERATION_SEQUENCE_FILE"
-    "$_SYSINFO_CACHE_FILE"
-    "${_CACHE_DIR}/git_root_cache"
-    "${_CACHE_DIR}/git_hierarchy_cache"
-    "${_CACHE_DIR}/gh_pr_cache"
-    "$_GH_AUTH_CACHE_FILE"
-    "$_GH_USERNAME_GH_CACHE_FILE"
-    "$_GH_USERNAME_SSH_CACHE_FILE"
-    "$_PUBLIC_IP_CACHE_FILE"
-    "$_CLAUDE_CACHE_FILE"
-    "$_CODEX_CACHE_FILE"
-    "$_GEMINI_CACHE_FILE"
-    "$_KIMI_CACHE_FILE"
+    "$_AI_CANDY_CACHE_DB_FILE"
+    "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE"
+    "$_AI_CANDY_GIT_TOPOLOGY_GENERATION_FILE"
+    "${_AI_CANDY_CACHE_DB_FILE}-journal"
+    "${_AI_CANDY_CACHE_DB_FILE}-shm"
+    "${_AI_CANDY_CACHE_DB_FILE}-wal"
+    "$_AI_CANDY_CACHE_OPERATION_FILE"
+    "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE"
+    "$_AI_CANDY_SYSINFO_CACHE_FILE"
+    "${_AI_CANDY_CACHE_DIR}/git_root_cache"
+    "${_AI_CANDY_CACHE_DIR}/git_hierarchy_cache"
+    "${_AI_CANDY_CACHE_DIR}/gh_pr_cache"
+    "$_AI_CANDY_GH_AUTH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"
+    "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"
+    "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
+    "$_AI_CANDY_CLAUDE_CACHE_FILE"
+    "$_AI_CANDY_CODEX_CACHE_FILE"
+    "$_AI_CANDY_GEMINI_CACHE_FILE"
+    "$_AI_CANDY_KIMI_CACHE_FILE"
   )
-  if (( _CACHE_READY )); then
-    local operation_lock="${_CACHE_OPERATION_FILE}.lock.d"
+  if (( _AI_CANDY_CACHE_READY )); then
+    local operation_lock="${_AI_CANDY_CACHE_OPERATION_FILE}.lock.d"
     if ! _ai_candy_cache_lock_acquire "$operation_lock" 300 200; then
       builtin print -u2 -- "ai-candy: cache refresh could not acquire the operation lock"
       return 1
     fi
-    if ! _ai_candy_cache_lock_acquire "$_CACHE_COMMIT_LOCK" \
-      "$_CACHE_COMMIT_STALE_AFTER" "$_CACHE_COMMIT_WAIT_TICKS"; then
+    if ! _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
+      "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS"; then
       _ai_candy_cache_lock_release "$operation_lock"
       builtin print -u2 -- "ai-candy: cache refresh could not acquire the commit lock"
       return 1
@@ -647,7 +621,7 @@ function _ai_candy_prompt_refresh_all_caches() {
         done
       fi
     } always {
-      _ai_candy_cache_lock_release "$_CACHE_COMMIT_LOCK"
+      _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
       _ai_candy_cache_lock_release "$operation_lock"
     }
     if (( refresh_status != 0 )); then
@@ -658,39 +632,41 @@ function _ai_candy_prompt_refresh_all_caches() {
   fi
 
   # The next persistent access lazily recreates the selected backend.
-  _CACHE_BACKEND_STATE=0
-  _CACHE_BACKEND="none"
+  _AI_CANDY_CACHE_BACKEND_STATE=0
+  _AI_CANDY_CACHE_BACKEND="none"
 
   # Clear memory-based associative array caches
-  _MEM_CACHE_GIT_ROOT=()
-  _MEM_CACHE_GIT_ROOT_GENERATION=()
-  _MEM_CACHE_GIT_HIERARCHY=()
-  _MEM_CACHE_GH_PR=()
-  _MEM_CACHE_TOMBSTONES=()
-  _GIT_REMOTE_KEY_BY_ROOT=()
-  _GIT_OMZ_OPTIONS_BY_ROOT=()
-  _GIT_SNAPSHOT_RETRY_AFTER_BY_ROOT=()
+  _AI_CANDY_MEM_CACHE_GIT_ROOT=()
+  _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION=()
+  _AI_CANDY_MEM_CACHE_GIT_HIERARCHY=()
+  _AI_CANDY_MEM_CACHE_GH_PR=()
+  _AI_CANDY_MEM_CACHE_TOMBSTONES=()
+  _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
+  _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
+  _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
 
   # Reset in-memory per-prompt caches
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
-  _PROMPT_GIT_SPECIAL_CACHE=""
-  _PROMPT_GIT_SPECIAL_CACHE_ID=-1
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _SYSINFO_SESSION_READY=0
-  _GH_AUTH_MEM_CACHE=""
-  _GH_AUTH_MEM_CACHE_TIME=0
-  _AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-  _AI_PROCESS_SNAPSHOT_TIME=0
-  _AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
-  _AI_TOOL_REFRESH_REQUESTED=()
-  _GIT_SNAPSHOT_RENDER_ID=-1
-  _GIT_SNAPSHOT_ROOT=""
-  _SMART_PATH_CONTEXT_KEY=""
-  _SMART_PATH_CONTEXT_TIMESTAMP=0
-  _GIT_TOPOLOGY_GENERATION=0
-  _GIT_TOPOLOGY_GENERATION_VALID=1
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE=""
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_ID=-1
+  _AI_CANDY_PROMPT_GIT_SPECIAL_CACHE_CONTEXT=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_SYSINFO_SESSION_READY=0
+  _AI_CANDY_GH_AUTH_MEM_CACHE=""
+  _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=0
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
+  _AI_CANDY_REFRESH_REQUESTED=()
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+  _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
+  _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
 
   builtin print -r -- "Prompt caches refreshed."
 }
@@ -718,11 +694,11 @@ function _ai_candy_install_short_aliases() {
 }
 _ai_candy_install_short_aliases
 
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE=0
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-typeset -g _PROMPT_GIT_CACHE_INVALIDATE_PATH=""
-typeset -g _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-typeset -g _PROMPT_GIT_REMOTE_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+typeset -g _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
+typeset -g _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+typeset -g _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
 function _ai_candy_prompt_git_command_affects_cached_status() {
   local command_text="$1"
@@ -770,42 +746,43 @@ function _ai_candy_prompt_git_command_affects_cached_status() {
 function _ai_candy_prompt_mark_git_cache_invalidation() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
-  local _CACHE_SCHEDULE_PERSISTENCE=0
+  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+  local REPLY=""
 
   local typed_command="$1"
   local expanded_command="${2:-$typed_command}"
   local full_command="${3:-$expanded_command}"
   local command_text="${expanded_command:-${full_command:-$typed_command}}"
 
-  _PROMPT_GIT_CACHE_INVALIDATE=0
-  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-  _PROMPT_GIT_CACHE_INVALIDATE_PATH="$PWD"
-  _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-  _PROMPT_GIT_REMOTE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH="$PWD"
+  _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
   if ! _ai_candy_prompt_git_command_affects_cached_status "$command_text"; then
     return 0
   fi
   local git_subcommand="$REPLY"
 
-  [[ "$git_subcommand" == config ]] && _GIT_OMZ_OPTIONS_BY_ROOT=()
+  [[ "$git_subcommand" == config ]] && _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
 
   [[ "$git_subcommand" == init || "$git_subcommand" == clone || \
      "$git_subcommand" == submodule || "$git_subcommand" == worktree ]] && \
-    _PROMPT_GIT_TOPOLOGY_INVALIDATE=1
+    _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=1
   [[ "$git_subcommand" == remote || "$git_subcommand" == config ]] && \
-    _PROMPT_GIT_REMOTE_INVALIDATE=1
+    _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=1
 
-  _PROMPT_GIT_CACHE_INVALIDATE=1
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=1
 
-  local git_root="${_PP_CACHED_GIT_ROOT:-}"
+  local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-}"
   if [[ -z "$git_root" || "$git_root" == "NOT_GIT" ]]; then
     _ai_candy_get_cached_git_root
     git_root="$REPLY"
   fi
 
   if [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]]; then
-    _PROMPT_GIT_CACHE_INVALIDATE_ROOT="$git_root"
+    _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT="$git_root"
   fi
   return 0
 }
@@ -813,48 +790,52 @@ function _ai_candy_prompt_mark_git_cache_invalidation() {
 function _ai_candy_prompt_invalidate_git_status_cache_for_root() {
   local git_root="$1"
   [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return
+  _ai_candy_git_context_cache_key "$git_root"
+  local context_key="$REPLY"
 
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _GIT_SNAPSHOT_RENDER_ID=-1
-  _GIT_SNAPSHOT_ROOT=""
-  _GIT_OMZ_OPTIONS_BY_ROOT[$git_root]=""
-  _ai_candy_mem_cache_remove_key git_snapshot_retry "$git_root"
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+  _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""
+  _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$context_key]=""
+  _ai_candy_mem_cache_remove_key git_snapshot_retry "$context_key"
 }
 
 function _ai_candy_prompt_invalidate_git_remote_cache_for_root() {
-  _GIT_REMOTE_KEY_BY_ROOT=()
-  _GIT_REMOTE_BRANCH_CACHE=""
-  _GIT_REMOTE_BRANCH_CACHE_ID=-1
-  _PROMPT_GH_PR_CACHE=""
-  _PROMPT_GH_PR_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID=-1
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE=""
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
 }
 
 function _ai_candy_prompt_invalidate_git_topology_for_path() {
   local directory="$1"
 
   _ai_candy_record_git_topology_invalidation "$directory" || true
-  _PP_CACHED_GIT_ROOT=""
-  _SMART_PATH_CONTEXT_KEY=""
-  _SMART_PATH_CONTEXT_TIMESTAMP=0
+  _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
 
 function _ai_candy_prompt_apply_git_cache_invalidation() {
   emulate -L zsh
   setopt localoptions noerrexit noerrreturn
-  (( _PROMPT_GIT_CACHE_INVALIDATE )) || return 0
+  (( _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE )) || return 0
 
-  local git_root="$_PROMPT_GIT_CACHE_INVALIDATE_ROOT"
-  local command_path="$_PROMPT_GIT_CACHE_INVALIDATE_PATH"
-  local invalidate_topology="$_PROMPT_GIT_TOPOLOGY_INVALIDATE"
-  local invalidate_remote="$_PROMPT_GIT_REMOTE_INVALIDATE"
-  _PROMPT_GIT_CACHE_INVALIDATE=0
-  _PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
-  _PROMPT_GIT_CACHE_INVALIDATE_PATH=""
-  _PROMPT_GIT_TOPOLOGY_INVALIDATE=0
-  _PROMPT_GIT_REMOTE_INVALIDATE=0
+  local git_root="$_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT"
+  local command_path="$_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH"
+  local invalidate_topology="$_AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE"
+  local invalidate_remote="$_AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE"
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT=""
+  _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
+  _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
+  _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
 
   (( invalidate_topology )) && _ai_candy_prompt_invalidate_git_topology_for_path "$command_path"
   [[ -n "$git_root" ]] && _ai_candy_prompt_invalidate_git_status_cache_for_root "$git_root"
@@ -864,9 +845,9 @@ function _ai_candy_prompt_apply_git_cache_invalidation() {
 
 # Capture exit status before any other precmd runs
 # IMPORTANT: Must be FIRST in precmd_functions to capture $? before other hooks modify it
-_LAST_EXIT_STATUS=0
+_AI_CANDY_LAST_EXIT_STATUS=0
 function _ai_candy_capture_exit_status() {
-  _LAST_EXIT_STATUS=$?
+  _AI_CANDY_LAST_EXIT_STATUS=$?
   return 0
 }
 # Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
@@ -882,18 +863,22 @@ precmd_functions=(
   ${precmd_functions[@]}
 )
 
-add-zsh-hook -d preexec _ai_candy_prompt_mark_git_cache_invalidation 2>/dev/null || true
-add-zsh-hook -d preexec _ai_candy_preexec_cleanup_for_exec 2>/dev/null || true
+# Per-prompt render id to avoid recomputing expensive segments multiple times
+_AI_CANDY_PROMPT_RENDER_ID=0
+function _ai_candy_prompt_bump_render_id() {
+  emulate -L zsh
+  (( ++_AI_CANDY_PROMPT_RENDER_ID ))
+  return 0
+}
+
+add-zsh-hook -d preexec _ai_candy_prompt_mark_git_cache_invalidation \
+  2>/dev/null || true
+add-zsh-hook -d preexec _ai_candy_preexec_cleanup_for_exec \
+  2>/dev/null || true
+add-zsh-hook -d chpwd _ai_candy_capture_physical_pwd 2>/dev/null || true
+add-zsh-hook chpwd _ai_candy_capture_physical_pwd
 add-zsh-hook preexec _ai_candy_prompt_mark_git_cache_invalidation
 add-zsh-hook preexec _ai_candy_preexec_cleanup_for_exec
 add-zsh-hook zshexit _ai_candy_stop_registered_background_jobs
 _ai_candy_install_signal_traps
-
-# Per-prompt render id to avoid recomputing expensive segments multiple times
-_PROMPT_RENDER_ID=0
-function _ai_candy_prompt_bump_render_id() {
-  emulate -L zsh
-  (( ++_PROMPT_RENDER_ID ))
-  return 0
-}
 add-zsh-hook precmd _ai_candy_prompt_bump_render_id

@@ -15,14 +15,14 @@
 # Order: status, identity, session, time, path, Git, PR, system, tools, jobs
 # Second line: -> %#
 #
-# PERFORMANCE: Uses precomputed variables (_PP_*) from precmd to avoid subshells
+# PERFORMANCE: Uses precomputed variables (_AI_CANDY_PP_*) from precmd to avoid subshells
 # All segments are computed once in _ai_candy_precmd_compute_prompt before prompt display
-PROMPT='${_PP_VENV}${_PP_EXIT}${_PP_SSH}${_PP_USER_HOST}${_PP_PUBLIC_IP}${_PP_GH_USER}${_PP_BADGE} %B${_PP_TIME}%b ${_PP_PATH}${${_AI_CANDY_USE_OMZ_ASYNC:#1}:+${_PP_GIT_INFO:+ }${_PP_GIT_INFO}${_PP_GIT_EXT}}${${_AI_CANDY_USE_OMZ_ASYNC:#0}:+${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-}}${_PP_GIT_SPECIAL}${_PP_PR:+ }${_PP_PR}${_PP_SYSINFO_LEFT}${_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_PP_JOBS}%j%{$reset_color%}.)
+PROMPT='${_AI_CANDY_PP_VENV}${_AI_CANDY_PP_EXIT}${_AI_CANDY_PP_SSH}${_AI_CANDY_PP_USER_HOST}${_AI_CANDY_PP_PUBLIC_IP}${_AI_CANDY_PP_GH_USER}${_AI_CANDY_PP_BADGE} %B${_AI_CANDY_PP_TIME}%b ${_AI_CANDY_PP_PATH}${${_AI_CANDY_USE_OMZ_ASYNC:#1}:+${_AI_CANDY_PP_GIT_INFO:+ }${_AI_CANDY_PP_GIT_INFO}${_AI_CANDY_PP_GIT_EXT}}${${_AI_CANDY_USE_OMZ_ASYNC:#0}:+${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-}}${_AI_CANDY_PP_GIT_SPECIAL}${_AI_CANDY_PP_PR:+ }${_AI_CANDY_PP_PR}${_AI_CANDY_PP_SYSINFO_LEFT}${_AI_CANDY_PP_AI_LEFT}%(1j. %{$fg[yellow]%}${_AI_CANDY_PP_JOBS}%j%{$reset_color%}.)
 %{$fg[blue]%}->%{$fg_bold[blue]%} %#%{$reset_color%} '
 
 # Right prompt: system info and optional tools in short/minimal modes
 # Auto-hides when command line is long
-RPROMPT='${_PP_RPROMPT}'
+RPROMPT='${_AI_CANDY_PP_RPROMPT}'
 
 ZSH_THEME_GIT_PROMPT_PREFIX='%F{green}'
 ZSH_THEME_GIT_PROMPT_SUFFIX='%f'

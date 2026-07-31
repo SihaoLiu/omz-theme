@@ -40,7 +40,7 @@ path=("$EMPTY_BIN")
 rehash
 source "$1"
 _ai_candy_prompt_refresh_all_caches >/dev/null
-print -r -- "TOOLS=${_HAS_CLAUDE}${_HAS_CODEX}${_HAS_GEMINI}${_HAS_KIMI}"
+print -r -- "TOOLS=${_AI_CANDY_HAS_CLAUDE}${_AI_CANDY_HAS_CODEX}${_AI_CANDY_HAS_GEMINI}${_AI_CANDY_HAS_KIMI}"
 """,
                 cache_home=root / "cache",
                 env={"EMPTY_BIN": str(empty_bin)},
@@ -75,7 +75,7 @@ print -r -- "SHADOWED=$([[ -f $SHADOW_LOG ]] && print yes || print no)"
 source "$1"
 function kill() { print -r -- kill >> "$SHADOW_LOG"; }
 function zselect() { command sleep 1; }
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 start=$EPOCHREALTIME
 _ai_candy_run_with_timeout 0.05 /bin/sleep 1
 command_status=$?
@@ -107,10 +107,10 @@ print -r -- "SHADOWED=$([[ -f $SHADOW_LOG ]] && print yes || print no)"
                 r"""
 function timeout() { print -r -- SHADOWED; }
 source "$1"
-_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
 _ai_candy_detect_core_commands
-functions[$_TIMEOUT_CMD]='print -r -- SHADOWED'
-print -r -- "COMMAND=${_TIMEOUT_CMD}"
+functions[$_AI_CANDY_TIMEOUT_CMD]='print -r -- SHADOWED'
+print -r -- "COMMAND=${_AI_CANDY_TIMEOUT_CMD}"
 start=$EPOCHREALTIME
 _ai_candy_run_with_timeout 0.1 sh -c 'trap "" TERM; while :; do :; done'
 command_status=$?
@@ -145,10 +145,10 @@ print -r -- "ELAPSED=${elapsed}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_NATIVE_TIMEOUT=0
-_HAS_ZSH_SYSTEM=0
-_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
-_TIMEOUT_OUTPUT_MAX_BYTES=4096
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=4096
 output=$(_ai_candy_run_with_timeout 2 sh -c '
   i=0
   while [ "$i" -lt 128 ]; do
@@ -158,7 +158,7 @@ output=$(_ai_candy_run_with_timeout 2 sh -c '
 ')
 command_status=$?
 setopt null_glob
-artifacts=("${_CACHE_DIR}"/ai-candy-timeout.*(N))
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
 print -r -- "STATUS=${command_status} BYTES=${#output} ARTIFACTS=${#artifacts}"
 """,
                 cache_home=Path(tmp) / "cache",
@@ -182,9 +182,9 @@ print -r -- "STATUS=${command_status} BYTES=${#output} ARTIFACTS=${#artifacts}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_NATIVE_TIMEOUT=0
-_HAS_ZSH_SYSTEM=0
-_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
 output=$(_ai_candy_run_with_timeout 2 sh -c 'printf "alpha\\nbeta\\n"')
 command_status=$?
 print -r -- "STATUS=${command_status}"
@@ -206,9 +206,9 @@ print -r -- "$output"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_ZSH_NATIVE_TIMEOUT=0
-_HAS_ZSH_SYSTEM=0
-_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_SYSTEM=0
+_AI_CANDY_TIMEOUT_CMD="$EXTERNAL_TIMEOUT"
 output=$(_ai_candy_run_with_timeout_combined_output 2 sh -c '
   printf diagnostic >&2
   exit 7
@@ -229,11 +229,11 @@ print -r -- "STATUS=$? OUTPUT=${output}"
 source "$1"
 for index in {1..64}; do
   print -r -- stale >| \
-    "${_CACHE_DIR}/ai-candy-timeout.$((900000000 + index)).artifact"
+    "${_AI_CANDY_CACHE_DIR}/ai-candy-timeout.$((900000000 + index)).artifact"
 done
-_ai_candy_cleanup_stale_timeout_files "$_CACHE_DIR"
+_ai_candy_cleanup_stale_timeout_files "$_AI_CANDY_CACHE_DIR"
 setopt null_glob
-artifacts=("${_CACHE_DIR}"/ai-candy-timeout.*(N))
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
 print -r -- "REMOVED=$((64 - ${#artifacts})) REMAINING=${#artifacts}"
 """,
                 cache_home=Path(tmp) / "cache",
@@ -249,7 +249,7 @@ print -r -- "REMOVED=$((64 - ${#artifacts})) REMAINING=${#artifacts}"
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_OUTPUT_MAX_BYTES=4096
+_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=4096
 output=$(_ai_candy_run_with_timeout 2 sh -c '
   dd if=/dev/zero of="$1" bs=1024 count=16 2>/dev/null
   printf complete
@@ -307,7 +307,7 @@ print -r -- "STATUS=$? OUTPUT=${output}"
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_OUTPUT_MAX_BYTES=4096
+_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=4096
 output=$(_ai_candy_run_with_timeout_combined_output 2 sh -c '
   i=0
   while [ "$i" -lt 128 ]; do
@@ -338,8 +338,8 @@ print -r -- "STATUS=${command_status} BYTES=${#output}"
 function sha256sum() { print -r -- FORGED; }
 function printf() { print -r -- FORGED; }
 source "$1"
-functions[$_HASH_CMD]='print -r -- FORGED'
-print -r -- "COMMAND=${_HASH_CMD}"
+functions[$_AI_CANDY_HASH_CMD]='print -r -- FORGED'
+print -r -- "COMMAND=${_AI_CANDY_HASH_CMD}"
 _ai_candy_hash_string abc
 print -r -- "HASH=${REPLY}"
 """,
@@ -369,9 +369,9 @@ print -r -- "HASH=${REPLY}"
             result = run_zsh(
                 r"""
 source "$1"
-_HASH_CMD="$HASH_TOOL"
-_HAS_HASH_CMD=1
-_LOCAL_PROMPT_TIMEOUT=0.1
+_AI_CANDY_HASH_CMD="$HASH_TOOL"
+_AI_CANDY_HAS_HASH_CMD=1
+_AI_CANDY_LOCAL_PROMPT_TIMEOUT=0.1
 start_time=$EPOCHREALTIME
 _ai_candy_hash_string https://example.invalid/repository.git
 elapsed_ms=$(( (EPOCHREALTIME - start_time) * 1000 ))
@@ -399,8 +399,8 @@ builtin printf 'HASH=%s ELAPSED_MS=%.3f\n' "$REPLY" "$elapsed_ms"
             result = run_zsh(
                 r"""
 source "$1"
-_HASH_CMD="$HASH_TOOL"
-_HAS_HASH_CMD=1
+_AI_CANDY_HASH_CMD="$HASH_TOOL"
+_AI_CANDY_HAS_HASH_CMD=1
 _ai_candy_hash_string input
 builtin print -r -- "HASH=${REPLY}"
 """,

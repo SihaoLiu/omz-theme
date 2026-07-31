@@ -23,8 +23,8 @@ source "$1"
 zmodload -u zsh/datetime
 setopt octalzeroes
 _ai_candy_compute_time_direct
-expected="%{$FG[$_CLR_TIME_MORNING]%}"
-if [[ "$_PP_TIME" == "${expected}"* ]]; then
+expected="%{$FG[$_AI_CANDY_CLR_TIME_MORNING]%}"
+if [[ "$_AI_CANDY_PP_TIME" == "${expected}"* ]]; then
   print -r -- TIME=morning
 else
   print -r -- TIME=wrong
@@ -93,7 +93,7 @@ print -r -- "WIDE=${wide_width} EMOJI=${emoji_width} MODERN=${modern_width} HEBR
                 r"""
 source "$1"
 _ai_candy_render_plain_smart_path "$WIDE_PATH" 10
-plain="${_PP_PATH//\%\{*\%\}/}"
+plain="${_AI_CANDY_PP_PATH//\%\{*\%\}/}"
 plain="${plain//\%[BbUuSsfk]/}"
 plain="${plain//\%[FK]\{*\}/}"
 _ai_candy_prompt_text_width "$plain"
@@ -172,9 +172,9 @@ print -r -- "REPORTED=${reported} RENDERED=${REPLY}"
             result = run_zsh(
                 r"""
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
 setopt err_return
 _ai_candy_precmd_compute_prompt
 [[ -o errreturn ]]
@@ -207,19 +207,19 @@ function read() { builtin print -r -- read >> "$SHADOW_LOG"; return 1; }
 function strftime() { builtin print -r -- strftime >> "$SHADOW_LOG"; return 1; }
 _ai_candy_compute_time_direct
 _ai_candy_logicalize_path_from_pwd "$PWD" >/dev/null
-_PP_CACHED_GIT_ROOT=""
+_AI_CANDY_PP_CACHED_GIT_ROOT=""
 _ai_candy_get_git_hierarchy
-cache_file="${_CACHE_DIR}/shadow_version_cache"
+cache_file="${_AI_CANDY_CACHE_DIR}/shadow_version_cache"
 sep=$'\x1f'
 builtin print -r -- "1.2.3${sep}${sep}${EPOCHSECONDS}" >| "$cache_file"
 tool_result=""
 tool_result_long=""
-_AI_PROCESS_COUNTS[codex]=0
-_PROMPT_NETWORK_MODE=0
-_PROMPT_EMOJI_MODE=0
+_AI_CANDY_AI_PROCESS_COUNTS[codex]=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_EMOJI_MODE=0
 _ai_candy_compute_ai_tool_status 1 "$cache_file" codex https://invalid.example \
   Cx: Cx: 15 Codex codex
-_CACHE_READY=0
+_AI_CANDY_CACHE_READY=0
 _ai_candy_prompt_toggle_emoji >/dev/null
 if [[ -f "$SHADOW_LOG" ]]; then
   print -r -- "SHADOWED=${(j:,:)${(@f)$(<"$SHADOW_LOG")}}"
@@ -284,23 +284,23 @@ print -r -- "DATE_ALIAS=$(alias date)"
                 r"""
 source "$1"
 COLUMNS=100
-_PROMPT_OS_MODE=0
-_PP_VENV="%{$fg[yellow]%}(${(l:150::v:)})%{$reset_color%}"
-_PP_AI_STATUS=""
-_PP_AI_STATUS_LONG=""
-_PP_GIT_INFO=""
-_PP_GIT_EXT=""
-_PP_GIT_SPECIAL=""
-_PP_PR=""
-_PP_GH_USER=""
-_PP_EXIT=""
-_PP_SSH=""
-_PP_PUBLIC_IP=""
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PP_VENV="%{$fg[yellow]%}(${(l:150::v:)})%{$reset_color%}"
+_AI_CANDY_PP_AI_STATUS=""
+_AI_CANDY_PP_AI_STATUS_LONG=""
+_AI_CANDY_PP_GIT_INFO=""
+_AI_CANDY_PP_GIT_EXT=""
+_AI_CANDY_PP_GIT_SPECIAL=""
+_AI_CANDY_PP_PR=""
+_AI_CANDY_PP_GH_USER=""
+_AI_CANDY_PP_EXIT=""
+_AI_CANDY_PP_SSH=""
+_AI_CANDY_PP_PUBLIC_IP=""
 typeset -g _TEST_PATH_CALLS=""
-function _ai_candy_prepare_smart_path_context() { _SMART_PATH_TOTAL_LENGTH=1; }
+function _ai_candy_prepare_smart_path_context() { _AI_CANDY_SMART_PATH_TOTAL_LENGTH=1; }
 function _ai_candy_compute_smart_path_direct() {
   _TEST_PATH_CALLS+="${1},"
-  _PP_PATH="[x]"
+  _AI_CANDY_PP_PATH="[x]"
 }
 _ai_candy_compute_layout_mode
 print -r -- "CALLS=${_TEST_PATH_CALLS}"
@@ -390,11 +390,11 @@ exit 0
                 r"""
 setopt promptbang
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 _ai_candy_format_git_snapshot
-print -P -r -- "${_GIT_FORMATTED_INFO}"
+print -P -r -- "${_AI_CANDY_GIT_FORMATTED_INFO}"
 """,
                 cache_home=root / "cache",
                 cwd=repo,
@@ -443,11 +443,11 @@ print -P -r -- "${_GIT_FORMATTED_INFO}"
                     result = run_zsh(
                         r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_collect_git_snapshot
 _ai_candy_format_git_snapshot
-print -P -r -- "${_GIT_FORMATTED_INFO}"
+print -P -r -- "${_AI_CANDY_GIT_FORMATTED_INFO}"
 """,
                         cache_home=root / "cache",
                         cwd=repo,

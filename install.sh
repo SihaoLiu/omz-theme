@@ -10,7 +10,13 @@ theme_name="ai-candy"
 theme_url_default="https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/ai-candy.zsh-theme"
 theme_url=${AI_CANDY_THEME_URL:-$theme_url_default}
 theme_max_bytes=1048576
-theme_limit_blocks=$(( (theme_max_bytes + 511) / 512 ))
+theme_limit_unit=512
+if [ -n "${BASH_VERSION:-}" ]; then
+  theme_limit_unit=1024
+fi
+theme_limit_blocks=$((
+  (theme_max_bytes + theme_limit_unit - 1) / theme_limit_unit
+))
 modify_zshrc=1
 confirm_install=0
 theme_temp=""
@@ -145,14 +151,12 @@ else
       fail "cannot create a theme backup"
     cp -p "$theme_file" "$theme_backup_temp" || \
       fail "cannot back up the existing theme"
+    published_backup="$theme_backup_temp"
+    theme_backup_temp=""
   fi
   chmod 644 "$theme_temp" || fail "cannot set theme permissions"
   mv -f "$theme_temp" "$theme_file" || fail "cannot publish the theme"
   theme_temp=""
-  if [ -n "$theme_backup_temp" ]; then
-    published_backup="$theme_backup_temp"
-    theme_backup_temp=""
-  fi
   theme_changed=1
 fi
 

@@ -17,21 +17,82 @@ from tests.theme_test_support import (
 
 
 class ProcessRuntimeTest(unittest.TestCase):
+    @unittest.skipUnless(Path("/proc").is_dir(), "Linux procfs is required")
+    def test_process_table_uses_procfs_before_external_ps(self) -> None:
+        source = (ROOT / "src" / "bootstrap.zsh").read_text(encoding="utf-8")
+        function_body = source.partition(
+            "function _ai_candy_read_process_table() {"
+        )[2].partition("\n}\n")[0]
+
+        self.assertLess(function_body.index("[[ -d /proc ]]"), function_body.index("ps"))
+
     def test_process_table_failure_discards_a_previous_process_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_PROCESS_TREE=(111 222)
+_AI_CANDY_TIMEOUT_PROCESS_TREE=(111 222)
 function _ai_candy_read_process_table() { return 1; }
 _ai_candy_collect_process_tree 333
-print -r -- "STATUS=$? TREE=${(j:,:)_TIMEOUT_PROCESS_TREE}"
+print -r -- "STATUS=$? TREE=${(j:,:)_AI_CANDY_TIMEOUT_PROCESS_TREE}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("STATUS=0 TREE=333\n", result.stdout)
+
+    def test_process_tree_parsing_ignores_ambient_ifs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+IFS=$'\x1f'
+_ai_candy_collect_process_tree 100 $'100 1 S\n200 100 S\n300 200 S'
+builtin print -r -- "TREE=${(j:,:)_AI_CANDY_TIMEOUT_PROCESS_TREE}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("TREE=100,200,300\n", result.stdout)
+
+    @unittest.skipUnless(Path("/proc").is_dir(), "Linux procfs is required")
+    def test_background_worker_registration_ignores_ambient_ifs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+saved_ifs="$IFS"
+IFS=$'\x1f'
+(command sleep 30) </dev/null &>/dev/null &!
+worker_pid=$!
+_ai_candy_register_background_pid "$worker_pid"
+register_status=$?
+registered_count=${#_AI_CANDY_BACKGROUND_PIDS}
+if (( register_status == 0 )); then
+  _ai_candy_stop_registered_background_jobs
+else
+  builtin kill -TERM "$worker_pid" 2>/dev/null || true
+  builtin wait "$worker_pid" 2>/dev/null || true
+fi
+IFS="$saved_ifs"
+if builtin kill -0 "$worker_pid" 2>/dev/null; then
+  worker_state=alive
+  builtin kill -KILL "$worker_pid" 2>/dev/null || true
+  builtin wait "$worker_pid" 2>/dev/null || true
+else
+  worker_state=stopped
+fi
+builtin print -r -- \
+  "STATUS=${register_status} COUNT=${registered_count} STATE=${worker_state}"
+""",
+                cache_home=Path(tmp) / "cache",
+                timeout=5,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=0 COUNT=1 STATE=stopped\n", result.stdout)
 
     def test_cache_dependent_worker_is_not_started_without_a_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -44,7 +105,7 @@ function _ai_candy_test_cache_worker() {
   builtin print -r -- started >| "$MARKER"
   zselect -t 100
 }
-_CACHE_READY=0
+_AI_CANDY_CACHE_READY=0
 _ai_candy_start_registered_background_worker _ai_candy_test_cache_worker
 worker_status=$?
 zselect -t 5
@@ -263,8 +324,8 @@ builtin print -r -- "PREVIOUS=${previous_preserved} CALLS=${trap_calls}"
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 function _ai_candy_cache_commit_operation() {
   builtin print -r -- "$sysparams[pid]" >| "$CHILD_FILE"
   zselect -t 3000
@@ -308,8 +369,8 @@ print -r -- "CHILD=${child_alive}"
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_BACKEND_STATE=1
-_CACHE_BACKEND=file
+_AI_CANDY_CACHE_BACKEND_STATE=1
+_AI_CANDY_CACHE_BACKEND=file
 _ai_candy_cache_persist_write git_root "$PWD" NOT_GIT "$EPOCHSECONDS"
 _ai_candy_mem_cache_remove_key git_root "$PWD"
 git init -q
@@ -600,6 +661,57 @@ _ai_candy_stop_registered_background_jobs
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("COUNT=16 REJECTED=8 LIMIT=16\n", result.stdout)
 
+    def test_registration_failure_stops_and_reaps_the_started_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+typeset -g FAILED_WORKER_PID=0
+function _ai_candy_register_background_pid() {
+  FAILED_WORKER_PID="$1"
+  return 1
+}
+function _test_background_worker() { command sleep 30; }
+_ai_candy_start_registered_background_worker _test_background_worker
+worker_status=$?
+if builtin kill -0 "$FAILED_WORKER_PID" 2>/dev/null; then
+  worker_state=alive
+  builtin kill -KILL "$FAILED_WORKER_PID" 2>/dev/null || true
+  builtin wait "$FAILED_WORKER_PID" 2>/dev/null || true
+else
+  worker_state=stopped
+fi
+print -r -- \
+  "STATUS=${worker_status} COUNT=${#_AI_CANDY_BACKGROUND_PIDS} STATE=${worker_state}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=1 COUNT=0 STATE=stopped\n", result.stdout)
+
+    def test_timeout_output_prefers_the_local_temporary_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            temp_dir = root / "tmp"
+            temp_dir.mkdir()
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=0
+_ai_candy_create_timeout_output_file || return 70
+output_file="$REPLY"
+print -r -- "ROOT=${output_file:h}"
+_ai_candy_remove_timeout_files "$output_file"
+""",
+                cache_home=root / "cache",
+                env={"TMPDIR": str(temp_dir)},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        output_root = Path(result.stdout.strip().partition("=")[2])
+        self.assertEqual(temp_dir, output_root.parent)
+
     def test_background_cleanup_does_not_signal_a_reused_pid_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(
@@ -624,6 +736,62 @@ print -r -- "STATE=${state}"
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("STATE=alive\n", result.stdout)
+
+    def test_background_cleanup_does_not_resume_a_root_that_loses_identity(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+function _test_background_worker() {
+  function TRAPCONT() {
+    builtin print -r -- resumed >| "$RESUMED_FILE"
+    exit 0
+  }
+  while true; do
+    zselect -t 100
+  done
+}
+_test_background_worker </dev/null &>/dev/null &!
+worker_pid=$!
+_ai_candy_register_background_pid "$worker_pid" || return 70
+functions[_identity_before_failure]="${functions[_ai_candy_background_pid_identity]}"
+typeset -gi IDENTITY_CALLS=0
+function _ai_candy_background_pid_identity() {
+  (( ++IDENTITY_CALLS ))
+  (( IDENTITY_CALLS < 2 )) || return 1
+  _identity_before_failure "$@"
+}
+_ai_candy_stop_registered_background_jobs
+[[ -f "$RESUMED_FILE" ]] && state=resumed || state=stopped
+builtin kill -KILL "$worker_pid" 2>/dev/null || true
+builtin wait "$worker_pid" 2>/dev/null || true
+builtin print -r -- "STATE=${state}"
+""",
+                cache_home=root / "cache",
+                env={"RESUMED_FILE": str(root / "resumed")},
+                timeout=3,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATE=stopped\n", result.stdout)
+
+    def test_timeout_runner_localizes_hostile_shell_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+setopt KSH_ARRAYS SH_WORD_SPLIT GLOB_SUBST
+output=$(_ai_candy_run_with_timeout 0.2 /bin/echo isolated) || return 70
+builtin print -r -- "OUTPUT=${output} KSH=${options[ksharrays]}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("OUTPUT=isolated KSH=on\n", result.stdout)
 
     def test_background_cleanup_never_resumes_worker_body_after_child_kill(
         self,
@@ -705,9 +873,9 @@ print -r -- "IDENTITY=${identity_status:-0} OWNER=${owner_status:-0}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_CURL=0
-_ai_candy_ai_tool_update_cache "${_CACHE_DIR}/version-tool" version-tool ignored
-print -r -- "PARENT_LOCKS=${#_CACHE_LOCK_FDS}"
+_AI_CANDY_HAS_CURL=0
+_ai_candy_ai_tool_update_cache "${_AI_CANDY_CACHE_DIR}/version-tool" version-tool ignored
+print -r -- "PARENT_LOCKS=${#_AI_CANDY_CACHE_LOCK_FDS}"
 """,
                 cache_home=root / "cache",
                 env={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
@@ -731,7 +899,7 @@ print -r -- "PARENT_LOCKS=${#_CACHE_LOCK_FDS}"
                     "-fc",
                     r"""
 source "$1"
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 _ai_candy_run_with_timeout 30 sh -c 'printenv PPID >/dev/null; echo $$ > "$CHILD_PID_FILE"; exec sleep 30'
 builtin print -r -- SURVIVED
 """,
@@ -779,8 +947,8 @@ builtin print -r -- SURVIVED
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_TIMEOUT=0
-_TIMEOUT_CMD=""
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
 output=$(_ai_candy_run_with_timeout 0.5 sh -c 'printf result; exit 7')
 command_status=$?
 print -r -- "OUTPUT=${output}"
@@ -1061,6 +1229,27 @@ print -r -- "STATE=${state}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("STATE=stopped\n", result.stdout)
 
+    def test_exec_cleanup_preexec_hook_preserves_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+(command sleep 30) </dev/null &>/dev/null &!
+worker_pid=$!
+_ai_candy_register_background_pid "$worker_pid"
+REPLY=preserved
+_ai_candy_preexec_cleanup_for_exec \
+  'false && exec /bin/true' 'false && exec /bin/true' \
+  'false && exec /bin/true'
+builtin print -r -- "REPLY=${REPLY}"
+""",
+                cache_home=root / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("REPLY=preserved\n", result.stdout)
+
     def test_compound_command_exec_stops_registered_workers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(
@@ -1197,8 +1386,8 @@ print -r -- "STATE=${state}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_TIMEOUT=0
-_TIMEOUT_CMD=""
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
 start=$EPOCHREALTIME
 _ai_candy_run_with_timeout 0.1 sh -c 'sleep 2'
 command_status=$?
@@ -1223,8 +1412,8 @@ print -r -- "ELAPSED=${elapsed}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_TIMEOUT=0
-_TIMEOUT_CMD=""
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
 pid_file="${XDG_CACHE_HOME}/child.pid"
 _ai_candy_run_with_timeout 0.1 sh -c 'sleep 5 & printf "%s\n" "$!" > "$1"; wait' sh "$pid_file"
 command_status=$?
@@ -1265,7 +1454,7 @@ print -r -- "ALIVE=${alive}"
                 result = run_zsh(
                     r"""
 source "$1"
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 _ai_candy_run_with_timeout 0.1 sh -c 'trap "sleep 30 </dev/null >/dev/null 2>&1 & printf \"%s\\n\" \$! > \"\$1\"; exit 0" TERM; while :; do :; done' sh "$ESCAPED_PID_FILE"
 command_status=$?
 for attempt in {1..100}; do
@@ -1318,7 +1507,7 @@ function _ai_candy_create_timeout_output_file() {
   : >| "$TEST_OUTPUT_FILE"
   REPLY="$TEST_OUTPUT_FILE"
 }
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 _ai_candy_run_with_timeout 0.05 sleep 1
 print -r -- "STATUS=$?"
 """,
@@ -1334,13 +1523,15 @@ print -r -- "STATUS=$?"
     def test_timeout_fallback_removes_stale_private_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            stale_file = root / "ai-candy-timeout.99999999.1"
+            private_temp = root / f"ai-candy-{os.geteuid()}"
+            private_temp.mkdir(mode=0o700)
+            stale_file = private_temp / "ai-candy-timeout.99999999.1"
             stale_file.write_text("private output\n", encoding="ascii")
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_READY=0
-_TIMEOUT_STALE_FILES_SCANNED=0
+_AI_CANDY_CACHE_READY=0
+_AI_CANDY_TIMEOUT_STALE_FILES_SCANNED=0
 _ai_candy_create_timeout_output_file || return 70
 output_file="$REPLY"
 if [[ -e "$STALE_FILE" || -L "$STALE_FILE" ]]; then
@@ -1363,7 +1554,7 @@ print -r -- "STALE=${stale_state}"
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_OUTPUT_MAX_BYTES=4096
+_AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES=4096
 output=$(_ai_candy_run_with_timeout 2 sh -c '
   i=0
   while [ "$i" -lt 16384 ]; do
@@ -1373,7 +1564,7 @@ output=$(_ai_candy_run_with_timeout 2 sh -c '
 ')
 command_status=$?
 setopt null_glob
-artifacts=("${_CACHE_DIR}"/ai-candy-timeout.*(N))
+artifacts=("${_AI_CANDY_CACHE_DIR}"/ai-candy-timeout.*(N))
 print -r -- "STATUS=${command_status} BYTES=${#output} ARTIFACTS=${#artifacts}"
 """,
                 cache_home=Path(tmp) / "cache",

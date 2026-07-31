@@ -22,17 +22,17 @@ class ThemePerformanceTest(unittest.TestCase):
 autoload -Uz colors
 colors
 source "$1"
-_CACHE_SCHEDULE_PERSISTENCE=0
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
-_HAS_GH=0
-_HAS_SSH=0
-_HAS_CURL=0
-_PROMPT_RENDER_ID=1
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_HAS_GH=0
+_AI_CANDY_HAS_SSH=0
+_AI_CANDY_HAS_CURL=0
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_precmd_compute_prompt
 for iteration in {1..80}; do
-  (( _PROMPT_RENDER_ID++ ))
+  (( _AI_CANDY_PROMPT_RENDER_ID++ ))
   start=$EPOCHREALTIME
   _ai_candy_precmd_compute_prompt
   builtin printf '%.6f\n' "$(( (EPOCHREALTIME - start) * 1000 ))"
@@ -78,13 +78,13 @@ done
 autoload -Uz colors
 colors
 source "$1"
-_CACHE_SCHEDULE_PERSISTENCE=0
-_PROMPT_NETWORK_MODE=1
-_PROMPT_AI_MODE=0
-_PROMPT_OS_MODE=0
-_PROMPT_RENDER_ID=1
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_PROMPT_AI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_precmd_compute_prompt
-(( _PROMPT_RENDER_ID++ ))
+(( _AI_CANDY_PROMPT_RENDER_ID++ ))
 _ai_candy_precmd_compute_prompt
 zselect -t 5
 print -r -- READY
@@ -133,7 +133,7 @@ print -r -- \
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT=NOT_GIT
+_AI_CANDY_PP_CACHED_GIT_ROOT=NOT_GIT
 typeset -gi PATH_RENDER_CALLS=0
 functions[_render_path_without_cache]="${functions[_ai_candy_render_plain_smart_path]}"
 function _ai_candy_render_plain_smart_path() {
@@ -141,9 +141,9 @@ function _ai_candy_render_plain_smart_path() {
   _render_path_without_cache "$@"
 }
 _ai_candy_compute_smart_path_direct short 18
-first_path="$_PP_PATH"
+first_path="$_AI_CANDY_PP_PATH"
 _ai_candy_compute_smart_path_direct short 18
-second_path="$_PP_PATH"
+second_path="$_AI_CANDY_PP_PATH"
 _ai_candy_compute_smart_path_direct short 16
 print -r -- \
   "CALLS=${PATH_RENDER_CALLS} SAME=$([[ "$first_path" == "$second_path" ]] && print yes || print no)"
@@ -167,13 +167,13 @@ colors
 source "$1"
 fg[white]=""
 reset_color=""
-_PP_CACHED_GIT_ROOT=NOT_GIT
+_AI_CANDY_PP_CACHED_GIT_ROOT=NOT_GIT
 unsetopt promptbang
 _ai_candy_compute_smart_path_direct full
-first=$(print -P -- "$_PP_PATH")
+first=$(print -P -- "$_AI_CANDY_PP_PATH")
 setopt promptbang
 _ai_candy_compute_smart_path_direct full
-second=$(print -P -- "$_PP_PATH")
+second=$(print -P -- "$_AI_CANDY_PP_PATH")
 print -r -- "FIRST=${first} SECOND=${second}"
 """,
                 cache_home=root / "cache",
@@ -196,12 +196,12 @@ function _ai_candy_run_process_count_probe() {
   (( PROBE_CALLS++ ))
   builtin print -r -- "codex codex"
 }
-_AI_PROCESS_SNAPSHOT_TIME=$(( EPOCHSECONDS - 29 ))
+_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=$(( EPOCHSECONDS - 29 ))
 _ai_candy_refresh_ai_process_counts
 cached_calls="$PROBE_CALLS"
-_AI_PROCESS_COUNTS=(claude 0 codex 4 gemini 0 kimi 0)
-_AI_PROCESS_SNAPSHOT_TIME=1
-_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=1
+_AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 4 gemini 0 kimi 0)
+_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=1
+_AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=1
 function _ai_candy_run_process_count_probe() {
   builtin print -r -- called >> "$PROBE_LOG"
   return 1
@@ -210,7 +210,7 @@ _ai_candy_refresh_ai_process_counts
 _ai_candy_refresh_ai_process_counts
 FAILED_PROBE_CALLS=$(command wc -l < "$PROBE_LOG")
 FAILED_PROBE_CALLS="${FAILED_PROBE_CALLS//[[:space:]]/}"
-print -r -- "TTL=${_AI_PROCESS_SNAPSHOT_TTL} RETRY=${_AI_PROCESS_SNAPSHOT_RETRY_TTL} CACHED_CALLS=${cached_calls} FAILED_CALLS=${FAILED_PROBE_CALLS} FAILED_COUNT=${_AI_PROCESS_COUNTS[codex]} FAILED_TIME=${_AI_PROCESS_SNAPSHOT_TIME}"
+print -r -- "TTL=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL} RETRY=${_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL} CACHED_CALLS=${cached_calls} FAILED_CALLS=${FAILED_PROBE_CALLS} FAILED_COUNT=${_AI_CANDY_AI_PROCESS_COUNTS[codex]} FAILED_TIME=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME}"
 """,
                 cache_home=root / "cache",
                 env={"PROBE_LOG": str(root / "probe.log")},
@@ -245,21 +245,21 @@ source "$1"
 PATH="$SLOW_BIN:$PATH"
 unset USER HOST HOSTNAME
 COLUMNS=200
-_PROMPT_EMOJI_MODE=0
-_PROMPT_OS_MODE=0
-_PP_AI_STATUS=""
-_PP_AI_STATUS_LONG=""
-_PP_GIT_INFO=""
-_PP_GIT_EXT=""
-_PP_GIT_SPECIAL=""
-_PP_PR=""
-_PP_GH_USER=""
-_PP_EXIT=""
-_PP_SSH=""
-_PP_PUBLIC_IP=""
-_PP_VENV=""
-function _ai_candy_prepare_smart_path_context() { _SMART_PATH_TOTAL_LENGTH=1; }
-function _ai_candy_compute_smart_path_direct() { _PP_PATH="[x]"; }
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PP_AI_STATUS=""
+_AI_CANDY_PP_AI_STATUS_LONG=""
+_AI_CANDY_PP_GIT_INFO=""
+_AI_CANDY_PP_GIT_EXT=""
+_AI_CANDY_PP_GIT_SPECIAL=""
+_AI_CANDY_PP_PR=""
+_AI_CANDY_PP_GH_USER=""
+_AI_CANDY_PP_EXIT=""
+_AI_CANDY_PP_SSH=""
+_AI_CANDY_PP_PUBLIC_IP=""
+_AI_CANDY_PP_VENV=""
+function _ai_candy_prepare_smart_path_context() { _AI_CANDY_SMART_PATH_TOTAL_LENGTH=1; }
+function _ai_candy_compute_smart_path_direct() { _AI_CANDY_PP_PATH="[x]"; }
 start_time=$EPOCHREALTIME
 _ai_candy_compute_layout_mode
 elapsed_ms=$(( (EPOCHREALTIME - start_time) * 1000 ))
@@ -292,9 +292,9 @@ builtin printf 'CALLED=%s ELAPSED_MS=%.3f\n' "$called" "$elapsed_ms"
                 r"""
 source "$1"
 COLUMNS=20
-_PP_CACHED_GIT_ROOT=NOT_GIT
+_AI_CANDY_PP_CACHED_GIT_ROOT=NOT_GIT
 _ai_candy_compute_smart_path_direct short "$COLUMNS"
-plain="$_PP_PATH"
+plain="$_AI_CANDY_PP_PATH"
 plain="${(S)plain//\%\{*\%\}/}"
 plain="${plain//\%[BbUuSsfk]/}"
 plain="${(S)plain//\%[FK]\{*\}/}"
@@ -315,25 +315,25 @@ print -r -- "WIDTH=${#plain} PATH=${plain}"
                 r"""
 source "$1"
 COLUMNS=1
-_PROMPT_EMOJI_MODE=0
-_PROMPT_OS_MODE=0
-_PP_AI_STATUS=""
-_PP_AI_STATUS_LONG=""
-_PP_GIT_INFO=""
-_PP_GIT_EXT=""
-_PP_GIT_SPECIAL=""
-_PP_PR=""
-_PP_GH_USER=""
-_PP_EXIT=""
-_PP_SSH=""
-_PP_PUBLIC_IP=""
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_PROMPT_OS_MODE=0
+_AI_CANDY_PP_AI_STATUS=""
+_AI_CANDY_PP_AI_STATUS_LONG=""
+_AI_CANDY_PP_GIT_INFO=""
+_AI_CANDY_PP_GIT_EXT=""
+_AI_CANDY_PP_GIT_SPECIAL=""
+_AI_CANDY_PP_PR=""
+_AI_CANDY_PP_GH_USER=""
+_AI_CANDY_PP_EXIT=""
+_AI_CANDY_PP_SSH=""
+_AI_CANDY_PP_PUBLIC_IP=""
 typeset -g _TEST_PATH_CALLS=""
 function _ai_candy_prepare_smart_path_context() {
-  _SMART_PATH_TOTAL_LENGTH=120
+  _AI_CANDY_SMART_PATH_TOTAL_LENGTH=120
 }
 function _ai_candy_compute_smart_path_direct() {
   _TEST_PATH_CALLS+="${1},"
-  _PP_PATH="${(l:120::x:)}"
+  _AI_CANDY_PP_PATH="${(l:120::x:)}"
 }
 _ai_candy_compute_layout_mode
 print -r -- "CALLS=${_TEST_PATH_CALLS}"
@@ -349,7 +349,7 @@ print -r -- "CALLS=${_TEST_PATH_CALLS}"
             result = run_zsh(
                 r"""
 source "$1"
-_TIMEOUT_CMD=zsh-native
+_AI_CANDY_TIMEOUT_CMD=zsh-native
 start=$EPOCHREALTIME
 for iteration in {1..5}; do
   _ai_candy_run_with_timeout 1 true
@@ -421,8 +421,8 @@ printf 'ELAPSED_MS=%.3f PERSISTED=%d\n' "$elapsed_ms" "$persisted"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_TIMEOUT=0
-_TIMEOUT_CMD=""
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
 output=$(_ai_candy_run_with_timeout 0.5 /bin/sh -c 'printf result')
 print -r -- "OUTPUT=${output}"
 print -r -- "HELPERS=$([[ -f "$HELPER_LOG" ]] && print used || print none)"
@@ -456,10 +456,10 @@ print -r -- "HELPERS=$([[ -f "$HELPER_LOG" ]] && print used || print none)"
                 r"""
 source "$1"
 _ai_candy_compute_sysinfo_direct
-print -r -- "FIRST=${_PP_SYSINFO_OS_LONG}"
-_ai_candy_cache_write "$_SYSINFO_CACHE_FILE" "${EPOCHSECONDS}\nSecond OS|Second|, Linux-2|, Linux-2"
+print -r -- "FIRST=${_AI_CANDY_PP_SYSINFO_OS_LONG}"
+_ai_candy_cache_write "$_AI_CANDY_SYSINFO_CACHE_FILE" "${EPOCHSECONDS}\nSecond OS|Second|, Linux-2|, Linux-2"
 _ai_candy_compute_sysinfo_direct
-print -r -- "SECOND=${_PP_SYSINFO_OS_LONG}"
+print -r -- "SECOND=${_AI_CANDY_PP_SYSINFO_OS_LONG}"
 """,
                 cache_home=root / "cache",
             )
@@ -518,8 +518,8 @@ colors
 typeset -gA FG
 for color in {0..255}; do FG[$color]=""; done
 source "$1"
-_PROMPT_NETWORK_MODE=0
-_PROMPT_AI_MODE=1
+_AI_CANDY_PROMPT_NETWORK_MODE=0
+_AI_CANDY_PROMPT_AI_MODE=1
 _ai_candy_compute_ai_tools_direct
 calls=("${(@f)$(<"$PROCESS_LOG")}")
 print -r -- "CALLS=${#calls}"
@@ -546,10 +546,10 @@ source "$1"
 typeset -g HIERARCHY_CALLS=0
 function _ai_candy_get_git_hierarchy() {
   (( HIERARCHY_CALLS++ ))
-  REPLY="${PWD}${_GIT_HIERARCHY_SEP}"
+  REPLY="${PWD}${_AI_CANDY_GIT_HIERARCHY_SEP}"
 }
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_compute_smart_path_direct full
 _ai_candy_compute_smart_path_direct short
 print -r -- "CALLS=${HIERARCHY_CALLS}"
@@ -572,12 +572,12 @@ source "$1"
 typeset -g HIERARCHY_CALLS=0
 function _ai_candy_get_git_hierarchy() {
   (( HIERARCHY_CALLS++ ))
-  REPLY="${PWD}${_GIT_HIERARCHY_SEP}"
+  REPLY="${PWD}${_AI_CANDY_GIT_HIERARCHY_SEP}"
 }
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_compute_smart_path_direct full
-_PROMPT_RENDER_ID=2
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_compute_smart_path_direct full
 print -r -- "CALLS=${HIERARCHY_CALLS}"
 """,
@@ -611,7 +611,7 @@ print -r -- "CALLS=${HIERARCHY_CALLS}"
                 r"""
 source "$1"
 _ai_candy_get_cached_git_root
-_PP_CACHED_GIT_ROOT="$REPLY"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
 _ai_candy_get_git_hierarchy
 calls=("${(@f)$(<"$GIT_LOG")}")
 show_root=("${(@)calls:#*rev-parse --show-toplevel*}")
@@ -634,15 +634,15 @@ print -r -- "SHOW_ROOT=$(( ${#calls} - ${#show_root} ))"
             result = run_zsh(
                 r"""
 source "$1"
-_CACHE_SCHEDULE_PERSISTENCE=0
-_PP_CACHED_GIT_ROOT="$PWD"
-_GIT_HIERARCHY_CACHE_VERSION=1
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION=1
 _ai_candy_get_git_hierarchy
 _ai_candy_get_git_hierarchy
-first_count=${#_MEM_CACHE_GIT_HIERARCHY}
-_GIT_HIERARCHY_CACHE_VERSION=2
+first_count=${#_AI_CANDY_MEM_CACHE_GIT_HIERARCHY}
+_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION=2
 _ai_candy_get_git_hierarchy
-print -r -- "FIRST=${first_count} SECOND=${#_MEM_CACHE_GIT_HIERARCHY}"
+print -r -- "FIRST=${first_count} SECOND=${#_AI_CANDY_MEM_CACHE_GIT_HIERARCHY}"
 """,
                 cache_home=root / "cache",
                 cwd=root,
@@ -690,11 +690,11 @@ print -r -- "FIRST=${first_count} SECOND=${#_MEM_CACHE_GIT_HIERARCHY}"
             result = run_zsh(
                 r"""
 source "$1"
-_PP_CACHED_GIT_ROOT="$PWD"
-_PROMPT_RENDER_ID=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
 _ai_candy_get_cached_git_remote_branch
 first="$REPLY"
-_PROMPT_RENDER_ID=2
+_AI_CANDY_PROMPT_RENDER_ID=2
 _ai_candy_get_cached_git_remote_branch
 second="$REPLY"
 calls=("${(@f)$(<"$GIT_LOG")}")
@@ -729,14 +729,14 @@ print -r -- "SAME=$([[ "$first" == "$second" ]] && print yes || print no)"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SQLITE3=0
-_HAS_GH=0
-_HAS_SSH=0
-_HAS_CURL=0
-_HAS_CLAUDE=0
-_HAS_CODEX=0
-_HAS_GEMINI=0
-_HAS_KIMI=0
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_HAS_GH=0
+_AI_CANDY_HAS_SSH=0
+_AI_CANDY_HAS_CURL=0
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
 _ai_candy_prompt_tool_status >/dev/null
 print -r -- "SED=$([[ -f "$SED_LOG" ]] && print used || print unused)"
 """,
@@ -762,8 +762,8 @@ print -r -- "SED=$([[ -f "$SED_LOG" ]] && print used || print unused)"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_SSH=1
-_NETWORK_TIMEOUT=0.2
+_AI_CANDY_HAS_SSH=1
+_AI_CANDY_NETWORK_TIMEOUT=0.2
 start=$EPOCHREALTIME
 _ai_candy_gh_username_update_ssh
 worker_pid="${_AI_CANDY_BACKGROUND_PIDS[-1]-}"
@@ -806,10 +806,10 @@ print -r -- "ELAPSED=${elapsed}"
             result = run_zsh(
                 r"""
 source "$1"
-_HAS_GH=1
-_NETWORK_TIMEOUT=0.5
-_GH_AUTH_MEM_CACHE=1
-_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
+_AI_CANDY_HAS_GH=1
+_AI_CANDY_NETWORK_TIMEOUT=0.5
+_AI_CANDY_GH_AUTH_MEM_CACHE=1
+_AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
 start=$EPOCHREALTIME
 _ai_candy_gh_pr_update_cache remote branch
 worker_pid="${_AI_CANDY_BACKGROUND_PIDS[-1]-}"

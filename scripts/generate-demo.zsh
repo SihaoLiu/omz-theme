@@ -8,15 +8,13 @@ typeset -gr REPO_ROOT="${SCRIPT_DIR:h}"
 typeset -gr THEME_FILE="${REPO_ROOT}/ai-candy.zsh-theme"
 typeset -gr TAPE_FILE="${SCRIPT_DIR}/demo.tape"
 typeset -gr PRIVACY_MARKER_FILE="${SCRIPT_DIR}/privacy-markers.zsh"
-typeset -gr VHS_IMAGE="ghcr.io/charmbracelet/vhs@sha256:9d5fc3dc0c160b0fb1d2212baff07e6bdf3fa9438c504a3237484567302fcf93"
 typeset -gr ACTUAL_HOME="${HOME:-}"
+typeset -gr ACTUAL_XDG_DATA_HOME="${XDG_DATA_HOME:-}"
 typeset -gr ACTUAL_USER="${USER:-${LOGNAME:-${USERNAME:-}}}"
 typeset -gr ACTUAL_HOST="$(hostname 2>/dev/null || true)"
 typeset -g _DEMO_PUBLICATION_ACTIVE=0
 typeset -g _DEMO_PUBLICATION_BACKUP_DIR=""
 typeset -g _DEMO_RENDERER_PID=""
-typeset -g _DEMO_DOCKER_COMMAND=""
-typeset -g _DEMO_DOCKER_CONTAINER_NAME=""
 typeset -ga _DEMO_RENDERER_PROCESS_TREE=()
 typeset -g _DEMO_CLEANUP_STARTED=0
 typeset -g _DEMO_CLEANUP_STATUS=0
@@ -33,209 +31,256 @@ function _demo_usage() {
 
 function _demo_write_session() {
   local output_dir="$1"
-  local session_file="${output_dir}/session.sh"
+  local session_file="${output_dir}/session.zsh"
   local temp_file
   temp_file=$(command mktemp "${output_dir}/.session.XXXXXX")
 
   command cat >| "$temp_file" <<'SESSION'
-#!/bin/sh
-set -eu
+#!/usr/bin/env zsh
 
-fixture_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
-mode=rich
-message=""
+emulate -L zsh
+setopt errexit nounset pipe_fail
 
-show_frame() {
-  printf '\033[2J\033[H'
-  printf 'AI Candy | %s\n' "$1"
-  printf 'Workspace: ~/src/ai-candy | Identity: demo@workstation\n'
-  if [ -n "$message" ]; then
-    printf '%s\n' "$message"
-  fi
-  printf '\n'
-  command cat "${fixture_dir}/${mode}.ansi"
+typeset -gr fixture_dir="${0:A:h}"
+export HOME="${fixture_dir}/home"
+export XDG_DATA_HOME="${fixture_dir}/data"
+export XDG_CACHE_HOME="${fixture_dir}/cache"
+export XDG_CONFIG_HOME="${fixture_dir}/config"
+export TMPDIR="${fixture_dir}/tmp"
+export USER=demo LOGNAME=demo HOST=workstation HOSTNAME=workstation
+export LANG=C TZ=UTC
+unset SSH_CONNECTION SSH_CLIENT SSH_TTY
+cd "${HOME}/src/ai-candy"
+
+autoload -Uz colors
+colors
+typeset -gA FG
+integer color
+for color in {0..255}; do
+  FG[$color]=$'\e['"38;5;${color}m"
+done
+
+AI_CANDY_ENABLE_SHORT_ALIASES=0
+source "${fixture_dir}/ai-candy.zsh-theme"
+
+typeset -g _DEMO_COLUMNS=160
+typeset -g _DEMO_TITLE="RICH / LONG"
+typeset -g _DEMO_MESSAGE=""
+
+# A renderer regression must fail closed instead of reaching the network.
+function _ai_candy_start_registered_background_worker() {
+  builtin print -u2 -r -- "Demo fixture attempted background work: $1"
+  return 1
 }
 
-show_frame "RICH / LONG"
-while IFS= read -r demo_command; do
+function _demo_seed_caches() {
+  local separator=$'\x1f'
+  local now="$EPOCHSECONDS"
+
+  _ai_candy_cache_write "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" \
+    "203.0.113.42|${now}"
+  _ai_candy_cache_write "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE" \
+    "demo-user|${now}"
+  _ai_candy_cache_write "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE" \
+    "demo-user|${now}"
+  _ai_candy_cache_write "$_AI_CANDY_CODEX_CACHE_FILE" \
+    "1.2${separator}1.2${separator}${now}"
+  _ai_candy_cache_write "$_AI_CANDY_GEMINI_CACHE_FILE" \
+    "2.3${separator}2.3${separator}${now}"
+}
+
+function _demo_seed_path_context() {
+  local git_root="${HOME}/src/ai-candy"
+  local separator="/"
+  (( _AI_CANDY_PROMPT_PATH_SEP_MODE )) && separator=" "
+
+  _AI_CANDY_PP_CACHED_GIT_ROOT="$git_root"
+  _ai_candy_smart_path_context_key
+  _AI_CANDY_SMART_PATH_CONTEXT_KEY="$REPLY"
+  _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP="$EPOCHSECONDS"
+  _AI_CANDY_SMART_PATH_FALLBACK=""
+  _AI_CANDY_SMART_PATH_NUM_REPOS=3
+  _AI_CANDY_SMART_PATH_TOTAL_LENGTH=16
+  _AI_CANDY_SMART_PATH_SEPARATOR="$separator"
+  _AI_CANDY_SMART_PATH_SEGMENTS=("~" "src" "ai-candy")
+  _AI_CANDY_SMART_PATH_SEGMENT_LENGTHS=(1 3 8)
+  _AI_CANDY_SMART_PATH_RENDER_KEY=""
+  _AI_CANDY_SMART_PATH_RENDER_VALUE=""
+}
+
+function _demo_compute_prompt() {
+  setopt localoptions noerrexit noerrreturn
+  local pr_key="demo-remote|main"
+  (( ++_AI_CANDY_PROMPT_RENDER_ID ))
+  _AI_CANDY_USE_OMZ_ASYNC=0
+  _AI_CANDY_LAST_EXIT_STATUS=0
+  _AI_CANDY_PP_VENV=""
+  _ai_candy_compute_exit_status_direct
+  _AI_CANDY_PP_SSH=""
+  _AI_CANDY_PP_USER_HOST="%{$FG[$_AI_CANDY_CLR_USER_HOST]%}demo@workstation%{$reset_color%}"
+
+  _AI_CANDY_HAS_CURL=1
+  _AI_CANDY_HAS_GH=1
+  _AI_CANDY_HAS_SSH=1
+  _ai_candy_compute_public_ip_direct
+  _ai_candy_compute_gh_username_direct
+  _AI_CANDY_PP_TIME="%{$FG[$_AI_CANDY_CLR_TIME_MORNING]%}[09:41:27 UTC]%{$reset_color%}"
+  (( _AI_CANDY_PROMPT_EMOJI_MODE )) && \
+    _AI_CANDY_PP_JOBS="$_AI_CANDY_SYM_JOBS" || _AI_CANDY_PP_JOBS="J"
+
+  _AI_CANDY_GIT_SNAPSHOT_VALID=1
+  _AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE=1
+  _AI_CANDY_GIT_SNAPSHOT_BRANCH=main
+  _AI_CANDY_GIT_SNAPSHOT_UPSTREAM=origin/main
+  _AI_CANDY_GIT_SNAPSHOT_OID=0123456789abcdef
+  _AI_CANDY_GIT_SNAPSHOT_DIRTY=1
+  _AI_CANDY_GIT_SNAPSHOT_AHEAD=2
+  _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
+  _AI_CANDY_GIT_SNAPSHOT_STASH=1
+  _AI_CANDY_GIT_HIDE_INFO=0
+  _AI_CANDY_GIT_HIDE_DIRTY=0
+  ZSH_THEME_GIT_SHOW_UPSTREAM=1
+  _ai_candy_format_git_snapshot
+  _AI_CANDY_PP_GIT_INFO="$_AI_CANDY_GIT_FORMATTED_INFO"
+  _AI_CANDY_PP_GIT_EXT="$_AI_CANDY_GIT_FORMATTED_EXT"
+  _AI_CANDY_PP_GIT_SPECIAL=""
+
+  _AI_CANDY_GH_AUTH_MEM_CACHE=1
+  _AI_CANDY_GH_AUTH_MEM_CACHE_TIME="$EPOCHSECONDS"
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID="$_AI_CANDY_PROMPT_RENDER_ID"
+  _AI_CANDY_GIT_REMOTE_BRANCH_CACHE="$pr_key"
+  _AI_CANDY_MEM_CACHE_GH_PR[$pr_key]="42|pass|${EPOCHSECONDS}"
+  _AI_CANDY_PROMPT_GH_PR_CACHE_ID=-1
+  _ai_candy_compute_pr_status_direct
+
+  _AI_CANDY_AI_TOOLS_DETECTED=1
+  _AI_CANDY_HAS_CLAUDE=0
+  _AI_CANDY_HAS_CODEX=1
+  _AI_CANDY_HAS_GEMINI=1
+  _AI_CANDY_HAS_KIMI=0
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 1 gemini 0 kimi 0)
+  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME="$EPOCHSECONDS"
+  _ai_candy_compute_ai_tools_direct
+
+  _AI_CANDY_PP_SYSINFO_OS_LONG="AlmaLinux-9.7"
+  _AI_CANDY_PP_SYSINFO_OS_SHORT="Alma-9.7"
+  _AI_CANDY_PP_SYSINFO_KERNEL_LONG=", Linux-5.14.0"
+  _AI_CANDY_PP_SYSINFO_KERNEL_SHORT=", Linux-5.14"
+  _ai_candy_sysinfo_set_emoji_variants
+
+  _demo_seed_path_context
+  COLUMNS="$_DEMO_COLUMNS"
+  _ai_candy_compute_layout_mode
+}
+
+function _demo_render_prompt() {
+  _demo_compute_prompt
+  local evaluated_prompt="${(e)PROMPT}"
+  local evaluated_rprompt="${(e)RPROMPT}"
+  local first_line="$evaluated_prompt"
+  local second_line=""
+  integer left_width=0 right_width=0 right_column=0
+
+  if [[ "$evaluated_prompt" == *$'\n'* ]]; then
+    first_line="${evaluated_prompt%%$'\n'*}"
+    second_line="${evaluated_prompt#*$'\n'}"
+  fi
+  builtin print -Pn -- "$first_line"
+  if [[ -n "$evaluated_rprompt" ]]; then
+    _ai_candy_prompt_markup_width "$first_line"
+    left_width="$REPLY"
+    _ai_candy_prompt_markup_width "$evaluated_rprompt"
+    right_width="$REPLY"
+    right_column=$(( COLUMNS - right_width + 1 ))
+    if (( right_column > left_width + 1 )); then
+      builtin print -Pn -- $'\e['"${right_column}G"
+    else
+      builtin print -n -- " "
+    fi
+    builtin print -Pn -- "$evaluated_rprompt"
+  fi
+  builtin print
+  [[ -n "$second_line" ]] && builtin print -Pn -- "$second_line"
+}
+
+function _demo_show_frame() {
+  builtin print -n -- $'\e[2J\e[H'
+  builtin print -r -- "AI Candy | $_DEMO_TITLE"
+  builtin print -r -- "Workspace: ~/src/ai-candy | Identity: demo@workstation"
+  [[ -n "$_DEMO_MESSAGE" ]] && builtin print -r -- "$_DEMO_MESSAGE"
+  builtin print
+  _demo_render_prompt
+}
+
+function _demo_run_toggle() {
+  local toggle_function="$1"
+  local message_file="${TMPDIR}/toggle-message"
+  "$toggle_function" >| "$message_file"
+  _DEMO_MESSAGE="$(<"$message_file")"
+  _ai_candy_cache_remove_path "$message_file"
+}
+
+_demo_seed_caches
+_demo_show_frame
+while IFS= builtin read -r demo_command; do
   case "$demo_command" in
     e)
-      mode=plain
-      message="Switched to plaintext mode"
-      title="PLAIN / LONG"
+      _demo_run_toggle _ai_candy_prompt_toggle_emoji
+      _DEMO_TITLE="PLAIN / LONG"
       ;;
     p)
-      mode=slash
-      message="Slash mode: [repo/project/submodule/path]"
-      title="PLAIN / SLASH PATH"
+      _demo_run_toggle _ai_candy_prompt_toggle_path_sep
+      _DEMO_TITLE="PLAIN / SLASH PATH"
       ;;
     n)
-      mode=offline
-      message="Network mode: OFF"
-      title="NETWORK OFF"
+      _demo_run_toggle _ai_candy_prompt_toggle_network
+      _DEMO_TITLE="NETWORK OFF"
       ;;
     a)
-      mode=no-tools
-      message="Coding-tool display: OFF"
-      title="TOOLS OFF"
+      _demo_run_toggle _ai_candy_prompt_toggle_ai
+      _DEMO_TITLE="TOOLS OFF"
       ;;
     o)
-      mode=no-os
-      message="OS/kernel display: OFF"
-      title="OS OFF"
+      _demo_run_toggle _ai_candy_prompt_toggle_os
+      _DEMO_TITLE="OS OFF"
       ;;
     off)
-      mode=off
-      message="All toggles turned OFF"
-      title="ALL OPTIONAL FEATURES OFF"
+      _demo_run_toggle _ai_candy_prompt_all_off
+      _DEMO_TITLE="ALL OPTIONAL FEATURES OFF"
       ;;
     on)
-      mode=rich
-      message="All toggles turned ON"
-      title="RICH / LONG"
+      _demo_run_toggle _ai_candy_prompt_all_on
+      _DEMO_COLUMNS=160
+      _DEMO_TITLE="RICH / LONG"
       ;;
     compact)
-      mode=compact
-      message="Layout: COMPACT"
-      title="RICH / COMPACT"
+      _DEMO_COLUMNS=112
+      _DEMO_MESSAGE="Layout: COMPACT"
+      _DEMO_TITLE="RICH / COMPACT"
       ;;
     minimal)
-      mode=minimal
-      message="Layout: MINIMAL"
-      title="PLAIN / MINIMAL"
+      _DEMO_COLUMNS=72
+      _DEMO_MESSAGE="Layout: MINIMAL"
+      _DEMO_TITLE="RICH / MINIMAL"
       ;;
     clean)
-      mode=rich
-      message=""
-      title="RICH / LONG"
+      _DEMO_COLUMNS=160
+      _DEMO_MESSAGE=""
+      _DEMO_TITLE="RICH / LONG"
       ;;
     quit|exit)
-      printf '\n'
+      builtin print
       exit 0
       ;;
     *)
-      message="Commands: e p n a o off on compact minimal quit"
-      title="${mode}"
+      _DEMO_MESSAGE="Commands: e p n a o off on compact minimal quit"
       ;;
   esac
-  show_frame "$title"
+  _demo_show_frame
 done
 SESSION
   command chmod 700 "$temp_file"
   command mv -f "$temp_file" "$session_file"
-}
-
-function _demo_path_segment() {
-  local text="$1"
-  local background="$2"
-  local esc=$'\e'
-  REPLY="%{${esc}[48;5;${background}m${esc}[38;5;16m%}${text}%{$reset_color%}"
-}
-
-function _demo_build_path() {
-  local separator="$1"
-  local compact="$2"
-  local result="["
-
-  if (( compact )); then
-    result+="%{$FG[240]%}..%{$reset_color%}${separator}"
-  else
-    _demo_path_segment "~" 159
-    result+="$REPLY${separator}"
-    _demo_path_segment "src" 229
-    result+="$REPLY${separator}"
-  fi
-  _demo_path_segment "ai-candy" 157
-  result+="$REPLY]"
-  REPLY="$result"
-}
-
-function _demo_render_frame() {
-  local output_dir="$1"
-  local name="$2"
-  integer emoji="$3"
-  local separator="$4"
-  integer network="$5"
-  integer tools="$6"
-  integer os_info="$7"
-  local layout="$8"
-  local output_file="${output_dir}/${name}.ansi"
-  local temp_file
-  temp_file=$(command mktemp "${output_dir}/.${name}.XXXXXX")
-
-  _PROMPT_EMOJI_MODE="$emoji"
-  _LAST_EXIT_STATUS=0
-  _ai_candy_compute_exit_status_direct
-
-  local user_host="%{$FG[$_CLR_USER_HOST]%}demo@workstation%{$reset_color%}"
-  local public_ip=""
-  local github_user=""
-  local pull_request=""
-  if (( network )); then
-    public_ip="%{$fg[green]%}(203.0.113.42)%{$reset_color%}"
-    github_user="%{$fg[white]%}[demo-user]%{$reset_color%}"
-    pull_request="%{$FG[$_CLR_PR]%}#42%{$fg[green]%}OK%{$reset_color%}"
-  fi
-
-  local badge="%{$fg[yellow]%}H%{$reset_color%}"
-  (( emoji )) && badge="%{$fg[magenta]%}${_NF_CONTAINER}%{$reset_color%}"
-  local fixed_time="%{$FG[$_CLR_TIME_MORNING]%}[09:41:27 UTC]%{$reset_color%}"
-
-  integer compact_path=0
-  [[ "$layout" == "minimal" ]] && compact_path=1
-  _demo_build_path "$separator" "$compact_path"
-  local path_display="$REPLY"
-
-  _GIT_SNAPSHOT_VALID=1
-  _GIT_SNAPSHOT_BRANCH="main"
-  _GIT_SNAPSHOT_UPSTREAM="origin/main"
-  _GIT_SNAPSHOT_OID="0123456789abcdef"
-  _GIT_SNAPSHOT_DIRTY=1
-  _GIT_SNAPSHOT_AHEAD=2
-  _GIT_SNAPSHOT_BEHIND=0
-  _GIT_SNAPSHOT_STASH=1
-  _ai_candy_format_git_snapshot
-  local git_display="${_GIT_FORMATTED_INFO}${_GIT_FORMATTED_EXT}"
-
-  local system_display=""
-  if (( os_info )); then
-    if (( emoji )); then
-      _ai_candy_sysinfo_apply_os_icons "AlmaLinux-9.7"
-      local demo_os="$REPLY"
-      _ai_candy_sysinfo_apply_kernel_icons ", Linux-5.14"
-      system_display="%{$fg[cyan]%}[${demo_os}${REPLY}]%{$reset_color%}"
-    else
-      system_display="%{$fg[cyan]%}[Alma-9.7, Linux-5.14]%{$reset_color%}"
-    fi
-  fi
-
-  local tools_display=""
-  if (( tools )); then
-    if (( emoji )); then
-      tools_display="%{$fg[white]%}[%{$FG[$_CLR_CODEX]%}${_NF_CODEX}1.2%{$FG[$_CLR_GEMINI]%}${_NF_GEMINI}2.3%{$fg[white]%}]%{$reset_color%}"
-    else
-      tools_display="%{$fg[white]%}[%{$FG[$_CLR_CODEX]%}Cx:1.2%{$fg[white]%}|%{$FG[$_CLR_GEMINI]%}Gm:2.3%{$fg[white]%}]%{$reset_color%}"
-    fi
-  fi
-
-  local prompt_line="${_PP_EXIT}${user_host}${public_ip}${github_user} ${badge} ${fixed_time} ${path_display} ${git_display}"
-  [[ -n "$pull_request" ]] && prompt_line+=" ${pull_request}"
-  local right_display="${system_display}${tools_display:+ ${tools_display}}"
-
-  {
-    if [[ "$layout" == "compact" ]]; then
-      print -Pn -- "$prompt_line"
-      print -Pn -- $'\e[98G'
-      print -P -- "$right_display"
-    elif [[ "$layout" == "minimal" ]]; then
-      print -P -- "$prompt_line"
-    else
-      print -P -- "${prompt_line}${system_display:+ ${system_display}}${tools_display:+ ${tools_display}}"
-    fi
-    print -Pn -- "%{$fg[blue]%}->%{$fg_bold[blue]%} %%%{$reset_color%} "
-  } >| "$temp_file"
-  command chmod 600 "$temp_file"
-  command mv -f "$temp_file" "$output_file"
 }
 
 function _demo_assert_private_text_absent() {
@@ -306,6 +351,10 @@ function _demo_validate_directory_target() {
 function _demo_prepare_fixture() {
   setopt localoptions err_return
   local output_dir="${1:a}"
+  [[ -f "$THEME_FILE" && ! -L "$THEME_FILE" ]] || {
+    print -u2 -r -- "Theme source must be a regular file."
+    return 1
+  }
   _demo_validate_directory_target "$output_dir" || return 1
   command mkdir -p "$output_dir"
   _demo_validate_directory_target "$output_dir" || return 1
@@ -320,49 +369,27 @@ function _demo_prepare_fixture() {
   local fixture_home="${output_dir}/home"
   local fixture_cache="${output_dir}/cache"
   local fixture_config="${output_dir}/config"
+  local fixture_data="${output_dir}/data"
   local fixture_tmp="${output_dir}/tmp"
-  command mkdir -p "$fixture_home" "$fixture_cache" "$fixture_config" \
-    "$fixture_tmp"
+  local fixture_workspace="${fixture_home}/src/ai-candy"
+  command mkdir -p "$fixture_workspace" "$fixture_cache" "$fixture_config" \
+    "$fixture_data" "$fixture_tmp"
   command chmod 700 "$fixture_home" "$fixture_cache" "$fixture_config" \
-    "$fixture_tmp"
+    "$fixture_data" "$fixture_tmp" "${fixture_home}/src" "$fixture_workspace"
 
-  (
-    export HOME="$fixture_home"
-    export XDG_CACHE_HOME="$fixture_cache"
-    export USER="demo"
-    export HOST="workstation"
-    export HOSTNAME="workstation"
-    unset SSH_CONNECTION SSH_CLIENT SSH_TTY
-
-    autoload -Uz colors
-    colors
-    typeset -gA FG
-    local color
-    for color in {0..255}; do
-      FG[$color]=$'\e['"38;5;${color}m"
-    done
-    source "$THEME_FILE"
-    _PROMPT_NETWORK_MODE=0
-    _PROMPT_AI_MODE=0
-    _PROMPT_OS_MODE=0
-    _AI_CANDY_USE_OMZ_ASYNC=0
-
-    _demo_render_frame "$output_dir" rich 1 " " 1 1 1 long
-    _demo_render_frame "$output_dir" plain 0 " " 1 1 1 long
-    _demo_render_frame "$output_dir" slash 0 "/" 1 1 1 long
-    _demo_render_frame "$output_dir" offline 0 "/" 0 1 1 long
-    _demo_render_frame "$output_dir" no-tools 0 "/" 0 0 1 long
-    _demo_render_frame "$output_dir" no-os 0 "/" 0 0 0 long
-    _demo_render_frame "$output_dir" off 0 "/" 0 0 0 minimal
-    _demo_render_frame "$output_dir" compact 1 " " 1 1 1 compact
-    _demo_render_frame "$output_dir" minimal 0 "/" 0 0 0 minimal
-  )
+  local theme_copy="${output_dir}/ai-candy.zsh-theme"
+  local theme_temp
+  theme_temp=$(command mktemp "${output_dir}/.theme.XXXXXX")
+  command cp "$THEME_FILE" "$theme_temp"
+  command chmod 600 "$theme_temp"
+  command mv -f "$theme_temp" "$theme_copy"
 
   _demo_write_session "$output_dir"
-  local fixture_file
-  for fixture_file in "$output_dir"/*.ansi "$output_dir/session.sh"; do
-    _demo_assert_private_text_absent "$fixture_file"
+  local old_frame
+  for old_frame in "$output_dir"/*.ansi(N); do
+    command rm -f "$old_frame"
   done
+  _demo_assert_private_text_absent "${output_dir}/session.zsh"
 }
 
 function _demo_collect_renderer_process_tree() {
@@ -407,25 +434,6 @@ function _demo_collect_renderer_process_tree() {
   done
 }
 
-function _demo_remove_docker_container() {
-  local docker_command="$_DEMO_DOCKER_COMMAND"
-  local container_name="$_DEMO_DOCKER_CONTAINER_NAME"
-  integer attempt
-
-  [[ -n "$docker_command" && -x "$docker_command" && \
-     -n "$container_name" ]] || return 0
-  for attempt in {1..6}; do
-    command "$docker_command" rm -f "$container_name" \
-      >/dev/null 2>&1 && return 0
-    if (( ${+builtins[zselect]} )); then
-      builtin zselect -t 5 2>/dev/null || true
-    else
-      command /bin/sleep 0.05 2>/dev/null || true
-    fi
-  done
-  return 1
-}
-
 function _demo_stop_renderer() {
   setopt localoptions noerrexit
   local renderer_pid="$_DEMO_RENDERER_PID"
@@ -433,7 +441,6 @@ function _demo_stop_renderer() {
   integer attempt previous_count=-1 index
 
   [[ "$renderer_pid" == <-> ]] || return 0
-  _demo_remove_docker_container || true
   builtin kill -STOP "$renderer_pid" 2>/dev/null || true
   for attempt in {1..4}; do
     _demo_collect_renderer_process_tree "$renderer_pid"
@@ -448,10 +455,7 @@ function _demo_stop_renderer() {
       2>/dev/null || true
   done
   builtin wait "$renderer_pid" 2>/dev/null || true
-  _demo_remove_docker_container || true
   _DEMO_RENDERER_PID=""
-  _DEMO_DOCKER_COMMAND=""
-  _DEMO_DOCKER_CONTAINER_NAME=""
   _DEMO_RENDERER_PROCESS_TREE=()
   return 0
 }
@@ -468,8 +472,6 @@ function _demo_run_renderer_command() {
   _DEMO_RENDERER_PID=$!
   builtin wait "$_DEMO_RENDERER_PID" || renderer_status=$?
   _DEMO_RENDERER_PID=""
-  _DEMO_DOCKER_COMMAND=""
-  _DEMO_DOCKER_CONTAINER_NAME=""
   return "$renderer_status"
 }
 
@@ -477,52 +479,39 @@ function _demo_render_with_vhs() {
   setopt localoptions err_return
   local render_dir="${1:a}"
   local vhs_command="" ttyd_command="" ffmpeg_command=""
-  local docker_command="" env_command=""
+  local env_command=""
+  local font_home="${ACTUAL_HOME:-${render_dir}/home}"
+  local -a render_environment
 
   vhs_command=$(builtin whence -p vhs 2>/dev/null) || vhs_command=""
   ttyd_command=$(builtin whence -p ttyd 2>/dev/null) || ttyd_command=""
   ffmpeg_command=$(builtin whence -p ffmpeg 2>/dev/null) || ffmpeg_command=""
-  if [[ -x "$vhs_command" && -x "$ttyd_command" && -x "$ffmpeg_command" ]]; then
-    env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
-    [[ -x "$env_command" ]] || {
-      print -u2 -r -- "The env command is required for isolated rendering."
-      return 1
-    }
-    _demo_run_renderer_command "$render_dir" "$env_command" -i \
-      HOME="${render_dir}/home" \
-      XDG_CACHE_HOME="${render_dir}/cache" \
-      XDG_CONFIG_HOME="${render_dir}/config" \
-      TMPDIR="${render_dir}/tmp" \
-      USER=demo LOGNAME=demo HOST=workstation HOSTNAME=workstation \
-      LANG=C TERM="${TERM:-xterm-256color}" PATH="${PATH:-/usr/bin:/bin}" \
-      "$vhs_command" "$TAPE_FILE"
-    return $?
-  fi
-
-  docker_command=$(builtin whence -p docker 2>/dev/null) || docker_command=""
-  [[ -x "$docker_command" ]] || {
-    print -u2 -r -- "Install VHS with ttyd and ffmpeg, or install Docker."
+  [[ -x "$vhs_command" && -x "$ttyd_command" && -x "$ffmpeg_command" ]] || {
+    print -u2 -r -- "Install VHS, ttyd, and ffmpeg to generate demo assets."
     return 1
   }
-  _DEMO_DOCKER_COMMAND="$docker_command"
-  _DEMO_DOCKER_CONTAINER_NAME="ai-candy-${render_dir:t}"
-  _demo_run_renderer_command "$render_dir" "$docker_command" run --rm \
-    --name "$_DEMO_DOCKER_CONTAINER_NAME" \
-    --network none \
-    --user "$(id -u):$(id -g)" \
-    -e HOME=/work/home \
-    -e XDG_CACHE_HOME=/work/cache \
-    -e XDG_CONFIG_HOME=/work/config \
-    -e TMPDIR=/work/tmp \
-    -e USER=demo \
-    -e LOGNAME=demo \
-    -e HOST=workstation \
-    -e HOSTNAME=workstation \
-    -e LANG=C \
-    -v "${TAPE_FILE}:/tape/demo.tape:ro" \
-    -v "${render_dir}:/work:rw" \
-    -w /work \
-    "$VHS_IMAGE" /tape/demo.tape
+  env_command=$(builtin whence -p env 2>/dev/null) || env_command=""
+  [[ -x "$env_command" ]] || {
+    print -u2 -r -- "The env command is required for isolated rendering."
+    return 1
+  }
+  render_environment=(
+    HOME="$font_home"
+    ZDOTDIR="${render_dir}/config"
+    XDG_CACHE_HOME="${render_dir}/cache"
+    XDG_CONFIG_HOME="${render_dir}/config"
+    USER=demo
+    LOGNAME=demo
+    HOST=workstation
+    HOSTNAME=workstation
+    LANG=C
+    TERM="${TERM:-xterm-256color}"
+    PATH="${PATH:-/usr/bin:/bin}"
+  )
+  [[ -n "$ACTUAL_XDG_DATA_HOME" ]] && \
+    render_environment+=(XDG_DATA_HOME="$ACTUAL_XDG_DATA_HOME")
+  _demo_run_renderer_command "$render_dir" "$env_command" -i \
+    "${render_environment[@]}" "$vhs_command" "$TAPE_FILE"
 }
 
 function _demo_remove_publication_backup() {
@@ -629,6 +618,23 @@ function _demo_publish_assets() {
     }
   done
   _demo_assert_private_text_absent "$text_output"
+
+  local text_content="$(<"$text_output")"
+  local expected_text
+  local -a expected_texts=(
+    "AI Candy |"
+    "demo@workstation"
+    "Network mode: OFF"
+    "Disabled: public IP, GitHub username/PR status, AI update checks"
+    "All toggles turned ON:"
+    "Layout: MINIMAL"
+  )
+  for expected_text in "${expected_texts[@]}"; do
+    if [[ "$text_content" != *"$expected_text"* ]]; then
+      print -u2 -r -- "VHS output is missing expected demo content."
+      return 1
+    fi
+  done
 
   local strings_command="" strings_output scan_status
   strings_command=$(builtin whence -p strings 2>/dev/null) || strings_command=""
