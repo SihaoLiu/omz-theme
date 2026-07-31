@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+import errno
 import os
+import pty
 import re
+import select
 import subprocess
 import tempfile
 import time
@@ -319,6 +322,72 @@ class ThemeSafetyTest(unittest.TestCase):
                 offenders.append(f"{line_number}: {line.strip()}")
 
         self.assertEqual([], offenders)
+
+    def test_registered_background_worker_is_silent_in_an_interactive_tty(
+        self,
+    ) -> None:
+        script = r"""
+source "$1"
+_AI_CANDY_CACHE_READY=1
+function _ai_candy_test_silent_worker() {
+  command sleep 5
+}
+_ai_candy_start_registered_background_worker _ai_candy_test_silent_worker || exit 70
+builtin print -r -- WORKER_STARTED
+_ai_candy_stop_registered_background_jobs
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            environment = {
+                **os.environ,
+                "XDG_CACHE_HOME": str(Path(tmp) / "cache"),
+                "TERM": "dumb",
+            }
+            child_pid, master_fd = pty.fork()
+            if child_pid == 0:
+                try:
+                    os.chdir(ROOT)
+                    os.execvpe(
+                        "zsh",
+                        ["zsh", "-dfi", "-c", script, "zsh", str(THEME)],
+                        environment,
+                    )
+                finally:
+                    os._exit(127)
+
+            output = bytearray()
+            child_status: Optional[int] = None
+            timed_out = False
+            deadline = time.monotonic() + 5
+            try:
+                while child_status is None:
+                    waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
+                    if waited_pid == child_pid:
+                        child_status = status
+                    readable, _, _ = select.select([master_fd], [], [], 0.05)
+                    if readable:
+                        try:
+                            output.extend(os.read(master_fd, 4096))
+                        except OSError as error:
+                            if error.errno != errno.EIO:
+                                raise
+                    if child_status is None and time.monotonic() >= deadline:
+                        timed_out = True
+                        os.kill(child_pid, 9)
+                        _, child_status = os.waitpid(child_pid, 0)
+            finally:
+                os.close(master_fd)
+                if child_status is None:
+                    os.kill(child_pid, 9)
+                    os.waitpid(child_pid, 0)
+
+        rendered_output = output.decode("utf-8", errors="replace")
+        self.assertFalse(timed_out, rendered_output)
+        self.assertEqual(0, os.waitstatus_to_exitcode(child_status), rendered_output)
+        self.assertIn("WORKER_STARTED", rendered_output)
+        self.assertIsNone(
+            re.search(r"(?m)^\[[0-9]+\][ \t]+[0-9]+", rendered_output),
+            rendered_output,
+        )
 
     def test_github_ssh_probe_cannot_read_from_tty(self) -> None:
         ssh_lines = [

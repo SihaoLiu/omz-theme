@@ -1259,6 +1259,8 @@ function _ai_candy_start_registered_background_worker() {
       return 1
   fi
 
+  # Keep the worker waitable without publishing an interactive job notification.
+  unsetopt monitor
   (
     _AI_CANDY_BACKGROUND_PIDS=()
     _AI_CANDY_BACKGROUND_IDENTITIES=()
