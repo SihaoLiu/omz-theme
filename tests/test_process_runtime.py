@@ -19,10 +19,14 @@ from tests.theme_test_support import (
 
 
 class ProcessRuntimeTest(unittest.TestCase):
-    def test_dash_without_setsid_fails_closed_silently(self) -> None:
+    def test_dash_without_setsid_is_silent(self) -> None:
         dash = shutil.which("dash")
         if dash is None:
             self.skipTest("dash is not installed")
+
+        true_command = shutil.which("true")
+        if true_command is None:
+            self.skipTest("true is not installed")
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -31,7 +35,7 @@ class ProcessRuntimeTest(unittest.TestCase):
 source "$1"
 command "$DASH" -c "$_AI_CANDY_TIMEOUT_SUPERVISOR_SCRIPT" \
   ai-candy-timeout "$COMPLETION_FILE" "$GROUP_FILE" "" \
-  /usr/bin/env /bin/true
+  "$TRUE_COMMAND"
 print -r -- "STATUS=$?"
 """,
                 cache_home=root / "cache",
@@ -39,6 +43,7 @@ print -r -- "STATUS=$?"
                     "COMPLETION_FILE": str(root / "completion"),
                     "DASH": dash,
                     "GROUP_FILE": str(root / "group"),
+                    "TRUE_COMMAND": true_command,
                 },
             )
 
