@@ -11,6 +11,122 @@ from tests.theme_test_support import CACHE_SCHEDULING_BUDGET_MS, ROOT, THEME, ru
 
 
 class CacheOperationSequenceTest(unittest.TestCase):
+    def test_transient_file_cache_read_failure_preserves_existing_entries(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+cache_file="${_AI_CANDY_CACHE_DIR}/git_root_cache"
+_ai_candy_hex_encode first
+first_key="$REPLY"
+_ai_candy_hex_encode first-value
+first_value="$REPLY"
+_ai_candy_hex_encode second
+second_key="$REPLY"
+_ai_candy_hex_encode second-value
+second_value="$REPLY"
+builtin print -r -- "${first_key}|${first_value}|${EPOCHSECONDS}" >| "$cache_file"
+before="$(<"$cache_file")"
+_AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
+_AI_CANDY_HAS_TIMEOUT=1
+function _ai_candy_run_with_timeout() { return 124; }
+update_status=0
+_ai_candy_cache_update_line_by_prefix \
+  "$cache_file" "${second_key}|" \
+  "${second_key}|${second_value}|${EPOCHSECONDS}" || update_status=$?
+after="$(<"$cache_file")"
+print -r -- \
+  "STATUS=${update_status} UNCHANGED=$([[ $before == $after ]] && print yes || print no)"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex(
+            result.stdout,
+            r"^STATUS=[1-9][0-9]* UNCHANGED=yes\n$",
+        )
+
+    def test_transient_file_cache_read_failure_does_not_prune_the_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+cache_file="${_AI_CANDY_CACHE_DIR}/git_root_cache"
+_ai_candy_hex_encode key
+hex_key="$REPLY"
+_ai_candy_hex_encode value
+hex_value="$REPLY"
+builtin print -r -- "${hex_key}|${hex_value}|${EPOCHSECONDS}" >| "$cache_file"
+before="$(<"$cache_file")"
+_AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
+_AI_CANDY_HAS_TIMEOUT=1
+function _ai_candy_run_with_timeout() { return 124; }
+prune_status=0
+_ai_candy_file_cache_prune_unlocked \
+  "$cache_file" "$(( EPOCHSECONDS - 60 ))" || prune_status=$?
+if [[ -f "$cache_file" ]]; then
+  after="$(<"$cache_file")"
+else
+  after=missing
+fi
+print -r -- \
+  "STATUS=${prune_status} UNCHANGED=$([[ $before == $after ]] && print yes || print no)"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex(
+            result.stdout,
+            r"^STATUS=[1-9][0-9]* UNCHANGED=yes\n$",
+        )
+
+    def test_file_cache_write_retries_one_transient_read_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+cache_file="${_AI_CANDY_CACHE_DIR}/git_root_cache"
+_ai_candy_hex_encode first
+first_key="$REPLY"
+_ai_candy_hex_encode first-value
+first_value="$REPLY"
+_ai_candy_hex_encode second
+second_key="$REPLY"
+_ai_candy_hex_encode second-value
+second_value="$REPLY"
+builtin print -r -- "${first_key}|${first_value}|${EPOCHSECONDS}" >| "$cache_file"
+_AI_CANDY_HAS_ZSH_STAT_BUILTIN=0
+_AI_CANDY_HAS_TIMEOUT=1
+functions[_ai_candy_test_original_timeout]="${functions[_ai_candy_run_with_timeout]}"
+function _ai_candy_run_with_timeout() {
+  if [[ ! -f "$READ_MARKER" ]]; then
+    builtin print -r -- first >| "$READ_MARKER"
+    return 124
+  fi
+  builtin print -r -- retry >> "$READ_MARKER"
+  _ai_candy_test_original_timeout "$@"
+}
+_ai_candy_cache_update_line_by_prefix \
+  "$cache_file" "${second_key}|" \
+  "${second_key}|${second_value}|${EPOCHSECONDS}" || return 70
+lines=("${(@f)$(<"$cache_file")}")
+attempts=("${(@f)$(<"$READ_MARKER")}")
+print -r -- "LINES=${#lines} ATTEMPTS=${#attempts}"
+""",
+                cache_home=root / "cache",
+                env={"READ_MARKER": str(root / "read-attempts")},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("LINES=2 ATTEMPTS=2\n", result.stdout)
+
     def test_short_worker_lock_contention_does_not_drop_a_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

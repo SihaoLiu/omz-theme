@@ -2636,6 +2636,7 @@ function _ai_candy_hex_decode() {
   builtin printf -v REPLY '%b' "$escaped"
 }
 
+# Read status 1 means absent or unsafe, 2 invalid, and 3 transient I/O failure.
 function _ai_candy_cache_read_size_checked_file() {
   emulate -L zsh
   local LC_ALL=C
@@ -2645,12 +2646,12 @@ function _ai_candy_cache_read_size_checked_file() {
   REPLY=""
 
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 2
-  builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
-  [[ "${metadata[1]-}" == <-> ]] || return 2
+  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 3
+  builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 3
+  [[ "${metadata[1]-}" == <-> ]] || return 3
   _ai_candy_cache_file_limit_bytes
   (( metadata[1] <= REPLY )) || return 2
-  content="$(<"$cache_file")"
+  content="$(<"$cache_file")" 2>/dev/null || return 3
   _ai_candy_cache_file_limit_bytes
   (( ${#content} <= REPLY )) || return 2
   REPLY="$content"
@@ -2679,8 +2680,8 @@ function _ai_candy_cache_read_bounded_file() {
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
   if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     local -a metadata
-    builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
-    [[ "${metadata[1]-}" == <-> ]] || return 2
+    builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 3
+    [[ "${metadata[1]-}" == <-> ]] || return 3
     _ai_candy_cache_file_limit_bytes
     (( metadata[1] <= REPLY )) || return 2
   fi
@@ -2693,7 +2694,8 @@ function _ai_candy_cache_read_bounded_file() {
   local _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES="$REPLY"
   content=$(_ai_candy_run_with_timeout "${_AI_CANDY_CACHE_IO_TIMEOUT:-0.75}" \
     /bin/cat "$cache_file" 2>/dev/null) || read_status=$?
-  (( read_status == 0 )) || return 2
+  (( read_status == 125 )) && return 2
+  (( read_status == 0 )) || return 3
   _ai_candy_cache_file_limit_bytes
   (( ${#content} <= REPLY )) || return 2
   REPLY="$content"
@@ -2768,6 +2770,19 @@ function _ai_candy_cache_read_validated_lines() {
     _ai_candy_cache_record_is_valid "$record_kind" "$line" || return 2
   done
   reply=("${lines[@]}")
+}
+
+function _ai_candy_cache_read_validated_lines_for_file_mutation() {
+  emulate -L zsh
+  integer read_status=0
+
+  _ai_candy_cache_read_validated_lines "$@" || read_status=$?
+  if (( read_status == 3 )); then
+    _ai_candy_sleep_ticks 1
+    read_status=0
+    _ai_candy_cache_read_validated_lines "$@" || read_status=$?
+  fi
+  return "$read_status"
 }
 
 function _ai_candy_cache_join_bounded_lines() {
@@ -2848,18 +2863,25 @@ function _ai_candy_cache_update_line_by_prefix() {
   _ai_candy_cache_lock_acquire "$lock_dir" 300 "$max_wait_ticks" || return 1
   {
     if [[ -f "$cache_file" ]]; then
-      _ai_candy_cache_read_validated_lines "$cache_file" persistent || read_status=$?
-      (( read_status == 0 )) && lines=("${reply[@]}")
-      for entry in "${lines[@]}"; do
-        [[ "${entry[1,prefix_len]}" == "$prefix" ]] || new_lines+=("$entry")
-      done
+      _ai_candy_cache_read_validated_lines_for_file_mutation \
+        "$cache_file" persistent || read_status=$?
+      if (( read_status > 2 )); then
+        write_status=$read_status
+      else
+        (( read_status == 0 )) && lines=("${reply[@]}")
+        for entry in "${lines[@]}"; do
+          [[ "${entry[1,prefix_len]}" == "$prefix" ]] || new_lines+=("$entry")
+        done
+      fi
     fi
-    new_lines+=("$new_line")
-    if _ai_candy_cache_join_bounded_lines persistent "${new_lines[@]}"; then
-      content="$REPLY"
-      _ai_candy_cache_atomic_write_unlocked "$cache_file" "$content" || write_status=$?
-    else
-      write_status=1
+    if (( write_status == 0 )); then
+      new_lines+=("$new_line")
+      if _ai_candy_cache_join_bounded_lines persistent "${new_lines[@]}"; then
+        content="$REPLY"
+        _ai_candy_cache_atomic_write_unlocked "$cache_file" "$content" || write_status=$?
+      else
+        write_status=1
+      fi
     fi
   } always {
     _ai_candy_cache_lock_release "$lock_dir"
@@ -2881,7 +2903,8 @@ function _ai_candy_cache_remove_line_by_prefix() {
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
   _ai_candy_cache_lock_acquire "$lock_dir" 300 200 || return 1
   {
-    _ai_candy_cache_read_validated_lines "$cache_file" persistent || read_status=$?
+    _ai_candy_cache_read_validated_lines_for_file_mutation \
+      "$cache_file" persistent || read_status=$?
     if (( read_status == 0 )); then
       lines=("${reply[@]}")
       for entry in "${lines[@]}"; do
@@ -2895,8 +2918,10 @@ function _ai_candy_cache_remove_line_by_prefix() {
       else
         _ai_candy_cache_remove_path "$cache_file" || write_status=$?
       fi
-    else
+    elif (( read_status <= 2 )); then
       _ai_candy_cache_remove_path "$cache_file" || write_status=$?
+    else
+      write_status=$read_status
     fi
   } always {
     _ai_candy_cache_lock_release "$lock_dir"
@@ -3844,9 +3869,10 @@ function _ai_candy_file_cache_prune_unlocked() {
 
   [[ -e "$cache_file" || -L "$cache_file" ]] || return 0
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  _ai_candy_cache_read_validated_lines "$cache_file" "$record_kind" || read_status=$?
+  _ai_candy_cache_read_validated_lines_for_file_mutation \
+    "$cache_file" "$record_kind" || read_status=$?
   if (( read_status != 0 )); then
-    [[ "$record_kind" == operation ]] && return "$read_status"
+    [[ "$record_kind" == operation || read_status > 2 ]] && return "$read_status"
     _ai_candy_cache_remove_path "$cache_file"
     return $?
   fi
@@ -4641,6 +4667,7 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_VALUE=""
   _AI_CANDY_GIT_CONFIG_GRAPH_RENDER_PROBE_FAILED=0
   _AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE=0
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
   _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
@@ -4796,6 +4823,7 @@ function _ai_candy_prompt_invalidate_git_topology_for_path() {
 
   _ai_candy_record_git_topology_invalidation "$directory" || true
   _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
@@ -5475,6 +5503,8 @@ typeset -g _AI_CANDY_GIT_METADATA_MAX_BYTES=$((16 * 1024))
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
+typeset -g _AI_CANDY_GIT_METADATA_ROOT_HINT=""
+typeset -gi _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
 typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
@@ -5539,6 +5569,7 @@ function _ai_candy_apply_git_topology_generation() {
   _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
@@ -6100,6 +6131,7 @@ function _ai_candy_git_metadata_context_key() {
   _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
   _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
   _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
+  _AI_CANDY_GIT_METADATA_ROOT_HINT=""
   REPLY=""
 
   if (( ${+GIT_DIR} )); then
@@ -6161,6 +6193,9 @@ function _ai_candy_git_metadata_context_key() {
         if _ai_candy_resolve_git_common_dir \
              "$candidate_dir" "$resolved_git_dir"; then
           resolved_git_common_dir="$REPLY"
+          if [[ -z "${GIT_WORK_TREE-}${GIT_COMMON_DIR-}" ]]; then
+            _AI_CANDY_GIT_METADATA_ROOT_HINT="$candidate_dir"
+          fi
           _ai_candy_git_config_file_context_key \
             "${resolved_git_common_dir}/config"
           common_config_context="$REPLY"
@@ -6234,6 +6269,7 @@ function _ai_candy_path_has_git_metadata_context() {
 }
 
 function _ai_candy_get_cached_git_root() {
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   integer topology_persistence=1
   _ai_candy_sync_git_topology_generation || topology_persistence=0
   local current_dir="$PWD"
@@ -6253,7 +6289,12 @@ function _ai_candy_get_cached_git_root() {
   integer metadata_context_persistable=$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE
   integer metadata_probe_failed=$_AI_CANDY_GIT_METADATA_PROBE_FAILED
   if (( metadata_probe_failed )); then
-    REPLY="NOT_GIT"
+    if [[ -n "$_AI_CANDY_GIT_METADATA_ROOT_HINT" ]]; then
+      _AI_CANDY_GIT_ROOT_IS_FALLBACK=1
+      REPLY="$_AI_CANDY_GIT_METADATA_ROOT_HINT"
+    else
+      REPLY="NOT_GIT"
+    fi
     return 0
   fi
   if (( ! physical_pwd_is_current || ! current_directory_is_identified )); then
@@ -6415,6 +6456,7 @@ function _ai_candy_get_git_hierarchy() {
   [[ -n "$discovery_context" ]] && topology_persistence=0
   local current_time=${EPOCHSECONDS}
   local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-}"
+  integer root_is_fallback=$_AI_CANDY_GIT_ROOT_IS_FALLBACK
   _ai_candy_git_context_cache_key "$git_root" "$discovery_context"
   local git_context="$REPLY"
   local cache_key="${_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION:-1}:"
@@ -6466,6 +6508,7 @@ function _ai_candy_get_git_hierarchy() {
 
     local display_git_root=$(_ai_candy_logicalize_path_from_pwd "$git_root" "$logical_pwd" "$physical_pwd")
     hierarchy=("$display_git_root" "${hierarchy[@]}")  # prepend (outermost first)
+    (( root_is_fallback )) && break
 
     # Check for superproject
     local superproject=$(_ai_candy_run_git_probe_at_root "$git_root" \
@@ -6495,6 +6538,10 @@ function _ai_candy_get_git_hierarchy() {
     result+="${sep}${current_subdir}"
   fi
 
+  if (( root_is_fallback )); then
+    REPLY="$result"
+    return 0
+  fi
   # Cache result in both memory and persistent cache
   _AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]="${result}|${current_time}"
   (( topology_persistence )) && \
@@ -6653,8 +6700,14 @@ function _ai_candy_load_git_display_options() {
 function _ai_candy_collect_git_snapshot() {
   local current_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
   local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-NOT_GIT}"
-  _ai_candy_git_context_cache_key "$git_root"
-  local context_key="$REPLY"
+  integer root_is_fallback=$_AI_CANDY_GIT_ROOT_IS_FALLBACK
+  local context_key=""
+  if (( root_is_fallback )); then
+    context_key="fallback:${#git_root}:$git_root"
+  else
+    _ai_candy_git_context_cache_key "$git_root"
+    context_key="$REPLY"
+  fi
   if [[ "$_AI_CANDY_GIT_SNAPSHOT_RENDER_ID" == "$current_id" && \
         "$_AI_CANDY_GIT_SNAPSHOT_CONTEXT" == "$context_key" ]]; then
     return 0
@@ -6664,6 +6717,10 @@ function _ai_candy_collect_git_snapshot() {
   _AI_CANDY_GIT_SNAPSHOT_CONTEXT="$context_key"
   _ai_candy_reset_git_snapshot
   [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return 0
+  if (( root_is_fallback )); then
+    _ai_candy_load_git_head_snapshot "$git_root"
+    return $?
+  fi
   _ai_candy_load_git_display_options "$git_root"
 
   local current_time="${EPOCHSECONDS}"
@@ -6992,6 +7049,8 @@ function _ai_candy_compute_pr_status_direct() {
 
   _AI_CANDY_PP_PR=""
 
+  (( _AI_CANDY_GIT_ROOT_IS_FALLBACK )) && return
+
   # Skip if network mode is disabled
   (( _AI_CANDY_PROMPT_NETWORK_MODE )) || return
 
@@ -7142,6 +7201,13 @@ function _ai_candy_hash_string() {
 function _ai_candy_get_cached_git_remote_branch() {
   local current_id="$_AI_CANDY_PROMPT_RENDER_ID"
   local git_root="$_AI_CANDY_PP_CACHED_GIT_ROOT"
+  if (( _AI_CANDY_GIT_ROOT_IS_FALLBACK )); then
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="fallback:${#git_root}:$git_root"
+    REPLY=""
+    return 0
+  fi
   _ai_candy_git_context_cache_key "$git_root"
   local context_key="$REPLY"
   if [[ "$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" && \

@@ -326,6 +326,7 @@ function _ai_candy_hex_decode() {
   builtin printf -v REPLY '%b' "$escaped"
 }
 
+# Read status 1 means absent or unsafe, 2 invalid, and 3 transient I/O failure.
 function _ai_candy_cache_read_size_checked_file() {
   emulate -L zsh
   local LC_ALL=C
@@ -335,12 +336,12 @@ function _ai_candy_cache_read_size_checked_file() {
   REPLY=""
 
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 2
-  builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
-  [[ "${metadata[1]-}" == <-> ]] || return 2
+  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 3
+  builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 3
+  [[ "${metadata[1]-}" == <-> ]] || return 3
   _ai_candy_cache_file_limit_bytes
   (( metadata[1] <= REPLY )) || return 2
-  content="$(<"$cache_file")"
+  content="$(<"$cache_file")" 2>/dev/null || return 3
   _ai_candy_cache_file_limit_bytes
   (( ${#content} <= REPLY )) || return 2
   REPLY="$content"
@@ -369,8 +370,8 @@ function _ai_candy_cache_read_bounded_file() {
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
   if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )); then
     local -a metadata
-    builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 2
-    [[ "${metadata[1]-}" == <-> ]] || return 2
+    builtin zstat -A metadata +size -- "$cache_file" 2>/dev/null || return 3
+    [[ "${metadata[1]-}" == <-> ]] || return 3
     _ai_candy_cache_file_limit_bytes
     (( metadata[1] <= REPLY )) || return 2
   fi
@@ -383,7 +384,8 @@ function _ai_candy_cache_read_bounded_file() {
   local _AI_CANDY_TIMEOUT_OUTPUT_MAX_BYTES="$REPLY"
   content=$(_ai_candy_run_with_timeout "${_AI_CANDY_CACHE_IO_TIMEOUT:-0.75}" \
     /bin/cat "$cache_file" 2>/dev/null) || read_status=$?
-  (( read_status == 0 )) || return 2
+  (( read_status == 125 )) && return 2
+  (( read_status == 0 )) || return 3
   _ai_candy_cache_file_limit_bytes
   (( ${#content} <= REPLY )) || return 2
   REPLY="$content"
@@ -458,6 +460,19 @@ function _ai_candy_cache_read_validated_lines() {
     _ai_candy_cache_record_is_valid "$record_kind" "$line" || return 2
   done
   reply=("${lines[@]}")
+}
+
+function _ai_candy_cache_read_validated_lines_for_file_mutation() {
+  emulate -L zsh
+  integer read_status=0
+
+  _ai_candy_cache_read_validated_lines "$@" || read_status=$?
+  if (( read_status == 3 )); then
+    _ai_candy_sleep_ticks 1
+    read_status=0
+    _ai_candy_cache_read_validated_lines "$@" || read_status=$?
+  fi
+  return "$read_status"
 }
 
 function _ai_candy_cache_join_bounded_lines() {
@@ -538,18 +553,25 @@ function _ai_candy_cache_update_line_by_prefix() {
   _ai_candy_cache_lock_acquire "$lock_dir" 300 "$max_wait_ticks" || return 1
   {
     if [[ -f "$cache_file" ]]; then
-      _ai_candy_cache_read_validated_lines "$cache_file" persistent || read_status=$?
-      (( read_status == 0 )) && lines=("${reply[@]}")
-      for entry in "${lines[@]}"; do
-        [[ "${entry[1,prefix_len]}" == "$prefix" ]] || new_lines+=("$entry")
-      done
+      _ai_candy_cache_read_validated_lines_for_file_mutation \
+        "$cache_file" persistent || read_status=$?
+      if (( read_status > 2 )); then
+        write_status=$read_status
+      else
+        (( read_status == 0 )) && lines=("${reply[@]}")
+        for entry in "${lines[@]}"; do
+          [[ "${entry[1,prefix_len]}" == "$prefix" ]] || new_lines+=("$entry")
+        done
+      fi
     fi
-    new_lines+=("$new_line")
-    if _ai_candy_cache_join_bounded_lines persistent "${new_lines[@]}"; then
-      content="$REPLY"
-      _ai_candy_cache_atomic_write_unlocked "$cache_file" "$content" || write_status=$?
-    else
-      write_status=1
+    if (( write_status == 0 )); then
+      new_lines+=("$new_line")
+      if _ai_candy_cache_join_bounded_lines persistent "${new_lines[@]}"; then
+        content="$REPLY"
+        _ai_candy_cache_atomic_write_unlocked "$cache_file" "$content" || write_status=$?
+      else
+        write_status=1
+      fi
     fi
   } always {
     _ai_candy_cache_lock_release "$lock_dir"
@@ -571,7 +593,8 @@ function _ai_candy_cache_remove_line_by_prefix() {
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
   _ai_candy_cache_lock_acquire "$lock_dir" 300 200 || return 1
   {
-    _ai_candy_cache_read_validated_lines "$cache_file" persistent || read_status=$?
+    _ai_candy_cache_read_validated_lines_for_file_mutation \
+      "$cache_file" persistent || read_status=$?
     if (( read_status == 0 )); then
       lines=("${reply[@]}")
       for entry in "${lines[@]}"; do
@@ -585,8 +608,10 @@ function _ai_candy_cache_remove_line_by_prefix() {
       else
         _ai_candy_cache_remove_path "$cache_file" || write_status=$?
       fi
-    else
+    elif (( read_status <= 2 )); then
       _ai_candy_cache_remove_path "$cache_file" || write_status=$?
+    else
+      write_status=$read_status
     fi
   } always {
     _ai_candy_cache_lock_release "$lock_dir"
@@ -1534,9 +1559,10 @@ function _ai_candy_file_cache_prune_unlocked() {
 
   [[ -e "$cache_file" || -L "$cache_file" ]] || return 0
   [[ -f "$cache_file" && ! -L "$cache_file" ]] || return 1
-  _ai_candy_cache_read_validated_lines "$cache_file" "$record_kind" || read_status=$?
+  _ai_candy_cache_read_validated_lines_for_file_mutation \
+    "$cache_file" "$record_kind" || read_status=$?
   if (( read_status != 0 )); then
-    [[ "$record_kind" == operation ]] && return "$read_status"
+    [[ "$record_kind" == operation || read_status > 2 ]] && return "$read_status"
     _ai_candy_cache_remove_path "$cache_file"
     return $?
   fi

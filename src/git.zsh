@@ -6,6 +6,8 @@ typeset -g _AI_CANDY_GIT_METADATA_MAX_BYTES=$((16 * 1024))
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
 typeset -gi _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
+typeset -g _AI_CANDY_GIT_METADATA_ROOT_HINT=""
+typeset -gi _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
 typeset -gi _AI_CANDY_GIT_VOLATILE_CONFIG_SEQUENCE
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
@@ -70,6 +72,7 @@ function _ai_candy_apply_git_topology_generation() {
   _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_PP_CACHED_GIT_ROOT=""
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
 }
@@ -631,6 +634,7 @@ function _ai_candy_git_metadata_context_key() {
   _AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE=1
   _AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE=1
   _AI_CANDY_GIT_METADATA_PROBE_FAILED=0
+  _AI_CANDY_GIT_METADATA_ROOT_HINT=""
   REPLY=""
 
   if (( ${+GIT_DIR} )); then
@@ -692,6 +696,9 @@ function _ai_candy_git_metadata_context_key() {
         if _ai_candy_resolve_git_common_dir \
              "$candidate_dir" "$resolved_git_dir"; then
           resolved_git_common_dir="$REPLY"
+          if [[ -z "${GIT_WORK_TREE-}${GIT_COMMON_DIR-}" ]]; then
+            _AI_CANDY_GIT_METADATA_ROOT_HINT="$candidate_dir"
+          fi
           _ai_candy_git_config_file_context_key \
             "${resolved_git_common_dir}/config"
           common_config_context="$REPLY"
@@ -765,6 +772,7 @@ function _ai_candy_path_has_git_metadata_context() {
 }
 
 function _ai_candy_get_cached_git_root() {
+  _AI_CANDY_GIT_ROOT_IS_FALLBACK=0
   integer topology_persistence=1
   _ai_candy_sync_git_topology_generation || topology_persistence=0
   local current_dir="$PWD"
@@ -784,7 +792,12 @@ function _ai_candy_get_cached_git_root() {
   integer metadata_context_persistable=$_AI_CANDY_GIT_METADATA_CONTEXT_PERSISTABLE
   integer metadata_probe_failed=$_AI_CANDY_GIT_METADATA_PROBE_FAILED
   if (( metadata_probe_failed )); then
-    REPLY="NOT_GIT"
+    if [[ -n "$_AI_CANDY_GIT_METADATA_ROOT_HINT" ]]; then
+      _AI_CANDY_GIT_ROOT_IS_FALLBACK=1
+      REPLY="$_AI_CANDY_GIT_METADATA_ROOT_HINT"
+    else
+      REPLY="NOT_GIT"
+    fi
     return 0
   fi
   if (( ! physical_pwd_is_current || ! current_directory_is_identified )); then
@@ -946,6 +959,7 @@ function _ai_candy_get_git_hierarchy() {
   [[ -n "$discovery_context" ]] && topology_persistence=0
   local current_time=${EPOCHSECONDS}
   local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-}"
+  integer root_is_fallback=$_AI_CANDY_GIT_ROOT_IS_FALLBACK
   _ai_candy_git_context_cache_key "$git_root" "$discovery_context"
   local git_context="$REPLY"
   local cache_key="${_AI_CANDY_GIT_HIERARCHY_CACHE_VERSION:-1}:"
@@ -997,6 +1011,7 @@ function _ai_candy_get_git_hierarchy() {
 
     local display_git_root=$(_ai_candy_logicalize_path_from_pwd "$git_root" "$logical_pwd" "$physical_pwd")
     hierarchy=("$display_git_root" "${hierarchy[@]}")  # prepend (outermost first)
+    (( root_is_fallback )) && break
 
     # Check for superproject
     local superproject=$(_ai_candy_run_git_probe_at_root "$git_root" \
@@ -1026,6 +1041,10 @@ function _ai_candy_get_git_hierarchy() {
     result+="${sep}${current_subdir}"
   fi
 
+  if (( root_is_fallback )); then
+    REPLY="$result"
+    return 0
+  fi
   # Cache result in both memory and persistent cache
   _AI_CANDY_MEM_CACHE_GIT_HIERARCHY[$cache_key]="${result}|${current_time}"
   (( topology_persistence )) && \
@@ -1184,8 +1203,14 @@ function _ai_candy_load_git_display_options() {
 function _ai_candy_collect_git_snapshot() {
   local current_id="${_AI_CANDY_PROMPT_RENDER_ID:-0}"
   local git_root="${_AI_CANDY_PP_CACHED_GIT_ROOT:-NOT_GIT}"
-  _ai_candy_git_context_cache_key "$git_root"
-  local context_key="$REPLY"
+  integer root_is_fallback=$_AI_CANDY_GIT_ROOT_IS_FALLBACK
+  local context_key=""
+  if (( root_is_fallback )); then
+    context_key="fallback:${#git_root}:$git_root"
+  else
+    _ai_candy_git_context_cache_key "$git_root"
+    context_key="$REPLY"
+  fi
   if [[ "$_AI_CANDY_GIT_SNAPSHOT_RENDER_ID" == "$current_id" && \
         "$_AI_CANDY_GIT_SNAPSHOT_CONTEXT" == "$context_key" ]]; then
     return 0
@@ -1195,6 +1220,10 @@ function _ai_candy_collect_git_snapshot() {
   _AI_CANDY_GIT_SNAPSHOT_CONTEXT="$context_key"
   _ai_candy_reset_git_snapshot
   [[ -n "$git_root" && "$git_root" != "NOT_GIT" ]] || return 0
+  if (( root_is_fallback )); then
+    _ai_candy_load_git_head_snapshot "$git_root"
+    return $?
+  fi
   _ai_candy_load_git_display_options "$git_root"
 
   local current_time="${EPOCHSECONDS}"
@@ -1523,6 +1552,8 @@ function _ai_candy_compute_pr_status_direct() {
 
   _AI_CANDY_PP_PR=""
 
+  (( _AI_CANDY_GIT_ROOT_IS_FALLBACK )) && return
+
   # Skip if network mode is disabled
   (( _AI_CANDY_PROMPT_NETWORK_MODE )) || return
 
@@ -1673,6 +1704,13 @@ function _ai_candy_hash_string() {
 function _ai_candy_get_cached_git_remote_branch() {
   local current_id="$_AI_CANDY_PROMPT_RENDER_ID"
   local git_root="$_AI_CANDY_PP_CACHED_GIT_ROOT"
+  if (( _AI_CANDY_GIT_ROOT_IS_FALLBACK )); then
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE=""
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID="$current_id"
+    _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="fallback:${#git_root}:$git_root"
+    REPLY=""
+    return 0
+  fi
   _ai_candy_git_context_cache_key "$git_root"
   local context_key="$REPLY"
   if [[ "$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE_ID" == "$current_id" && \

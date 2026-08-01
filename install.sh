@@ -147,6 +147,8 @@ else
       fail "cannot create a theme backup"
     cp -p "$theme_file" "$theme_backup_temp" || \
       fail "cannot back up the existing theme"
+    chmod u+rw,go-w "$theme_backup_temp" || \
+      fail "cannot secure the theme backup"
     published_backup="$theme_backup_temp"
     theme_backup_temp=""
   fi

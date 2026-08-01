@@ -87,7 +87,9 @@ class InstallerTest(unittest.TestCase):
         if existing_theme is not None:
             theme_dir = omz / "custom" / "themes"
             theme_dir.mkdir(parents=True)
-            (theme_dir / THEME.name).write_bytes(existing_theme)
+            theme_file = theme_dir / THEME.name
+            theme_file.write_bytes(existing_theme)
+            theme_file.chmod(0o666)
         env = {
             **os.environ,
             "HOME": str(home),
@@ -443,6 +445,7 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(THEME.read_bytes(), (theme_dir / THEME.name).read_bytes())
             self.assertEqual(1, len(backups), backups)
             self.assertEqual(previous_theme, backups[0].read_bytes())
+            self.assertEqual(0, backups[0].stat().st_mode & 0o022)
             self.assertIn(str(backups[0]), result.stdout)
 
     def test_signal_after_publish_preserves_the_previous_theme_backup(self) -> None:

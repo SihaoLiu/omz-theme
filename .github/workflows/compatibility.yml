@@ -17,6 +17,25 @@ env:
   ZSH_54_IMAGE: zshusers/zsh@sha256:fef3586ad5edde90a7e8322d13056465b382a1d2db67b526ba6c16850441f0e6
 
 jobs:
+  quality:
+    name: Static analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv shellcheck
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check ruff==0.15.20
+      - name: Validate scripts and tests
+        run: |
+          shellcheck install.sh
+          .venv/bin/ruff check tests
+
   ubuntu:
     name: Ubuntu ${{ matrix.release }}
     runs-on: ubuntu-${{ matrix.release }}

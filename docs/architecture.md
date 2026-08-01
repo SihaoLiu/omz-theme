@@ -38,10 +38,12 @@ persisted and is discarded on the next stable metadata observation. Git itself
 resolves the active `include.path` and `includeIf` graph. The theme retains only
 the discovered file paths and their bounded fingerprints, rescanning when a
 file or branch selector changes. Graph discovery is timeout- and size-bounded;
-an incomplete or unsupported graph disables caching for that context. A
-relative `GIT_CONFIG` path is resolved from the shell's physical working
-directory before internal `git -C` calls, so probes and their cache identities
-read the same file.
+an incomplete or unsupported graph disables caching for that context. If graph
+discovery times out after a local worktree has been resolved, the current
+render falls back to direct Git metadata and shows branch-only state without
+starting more Git commands. A relative `GIT_CONFIG` path is resolved from the
+shell's physical working directory before internal `git -C` calls, so probes
+and their cache identities read the same file.
 
 Cache data is stored below:
 

@@ -1130,9 +1130,18 @@ builtin print -r -- "SCANS=${first_count}->${#scans}"
 source "$1"
 _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
 typeset -gi scan_count=0
+typeset -gi root_probe_count=0
 function _ai_candy_git_scan_config_graph_paths() {
   (( ++scan_count ))
   return 2
+}
+functions[_ai_candy_test_original_local_probe]="${functions[_ai_candy_run_local_probe]}"
+function _ai_candy_run_local_probe() {
+  if [[ "$*" == "git rev-parse --show-toplevel" ]]; then
+    (( ++root_probe_count ))
+    return 124
+  fi
+  _ai_candy_test_original_local_probe "$@"
 }
 
 _AI_CANDY_PROMPT_RENDER_ID=1
@@ -1147,10 +1156,15 @@ same_render_scans="$scan_count"
 (( ++_AI_CANDY_PROMPT_RENDER_ID ))
 _ai_candy_get_cached_git_root
 second_root="$REPLY"
+_AI_CANDY_PP_CACHED_GIT_ROOT="$second_root"
+_ai_candy_collect_git_snapshot
 builtin print -r -- \
   "ROOTS=${first_root}->${same_render_root}->${second_root}"
 builtin print -r -- \
   "SCANS=${same_render_scans}->${scan_count}"
+builtin print -r -- "ROOT_PROBES=${root_probe_count}"
+builtin print -r -- \
+  "FALLBACK=${_AI_CANDY_GIT_ROOT_IS_FALLBACK:-0} BRANCH=${_AI_CANDY_GIT_SNAPSHOT_BRANCH} COMPLETE=${_AI_CANDY_GIT_SNAPSHOT_STATUS_COMPLETE}"
 builtin print -r -- \
   "CACHEABLE=${first_cacheable}|${_AI_CANDY_GIT_METADATA_CONTEXT_CACHEABLE}"
 builtin print -r -- \
@@ -1162,8 +1176,10 @@ builtin print -r -- \
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            "ROOTS=NOT_GIT->NOT_GIT->NOT_GIT\n"
+            f"ROOTS={repo}->{repo}->{repo}\n"
             "SCANS=1->1\n"
+            "ROOT_PROBES=0\n"
+            "FALLBACK=1 BRANCH=main COMPLETE=0\n"
             "CACHEABLE=0|0\n"
             "PERSISTABLE=0|0\n",
             result.stdout,

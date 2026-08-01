@@ -19,6 +19,13 @@ Run the test suite:
 python3 -m unittest discover -s tests -v
 ```
 
+Run the static checks:
+
+```sh
+shellcheck install.sh
+ruff check tests
+```
+
 The tests cover cache concurrency and corruption, malformed timestamps, signal
 cleanup, process deadlines, Git cache invalidation, prompt escaping, symlink
 handling, startup behavior, and hot-path process counts.
