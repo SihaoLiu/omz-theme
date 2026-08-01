@@ -1480,6 +1480,7 @@ function _ai_candy_cache_persist_read() {
 }
 
 function _ai_candy_cache_get() {
+  (( ${_AI_CANDY_CACHE_READY:-0} )) || return 1
   local _AI_CANDY_CACHE_IO_TIMEOUT="${_AI_CANDY_CACHE_PROMPT_IO_TIMEOUT:-0.05}"
   local tombstone_key="$1:$2"
   local tombstone_time="${_AI_CANDY_MEM_CACHE_TOMBSTONES[$tombstone_key]-}"

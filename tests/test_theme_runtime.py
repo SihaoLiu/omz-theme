@@ -756,13 +756,15 @@ function _omz_register_handler() { return 0; }
 zstyle ':omz:alpha:lib:git' async-prompt force
 source "$1"
 print -r -- \
-  "CAPTURE=${precmd_functions[(i)_ai_candy_capture_exit_status]} INVALIDATE=${precmd_functions[(i)_ai_candy_prompt_apply_git_cache_invalidation]} ASYNC=${precmd_functions[(i)_omz_async_request]}"
+  "CAPTURE=${precmd_functions[(i)_ai_candy_capture_exit_status]} INVALIDATE=${precmd_functions[(i)_ai_candy_prompt_apply_git_cache_invalidation]} CONTEXT=${precmd_functions[(i)_ai_candy_prompt_sync_async_git_context]} ASYNC=${precmd_functions[(i)_omz_async_request]}"
 """,
                 cache_home=Path(tmp) / "cache",
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("CAPTURE=1 INVALIDATE=2 ASYNC=3\n", result.stdout)
+        self.assertEqual(
+            "CAPTURE=1 INVALIDATE=2 CONTEXT=3 ASYNC=4\n", result.stdout
+        )
 
     def test_omz_async_git_handler_respects_explicit_disable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

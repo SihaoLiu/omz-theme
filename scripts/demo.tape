@@ -41,6 +41,9 @@ Sleep 900ms
 Type "on"
 Enter
 Sleep 1200ms
+Type "false"
+Enter
+Sleep 1100ms
 Type "COLUMNS=112"
 Enter
 Sleep 1100ms

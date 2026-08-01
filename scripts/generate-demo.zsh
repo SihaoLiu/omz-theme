@@ -70,6 +70,7 @@ source "${fixture_dir}/ai-candy.zsh-theme"
 typeset -g _DEMO_COLUMNS=160
 typeset -g _DEMO_TITLE="RICH / LONG"
 typeset -g _DEMO_MESSAGE=""
+typeset -g _DEMO_EXIT_STATUS=0
 typeset -g _DEMO_CAPTURE_DIR=""
 typeset -g _DEMO_FRAME_NAME="rich"
 
@@ -124,7 +125,7 @@ function _demo_compute_prompt() {
   local pr_key=""
   (( ++_AI_CANDY_PROMPT_RENDER_ID ))
   _AI_CANDY_USE_OMZ_ASYNC=0
-  _AI_CANDY_LAST_EXIT_STATUS=0
+  _AI_CANDY_LAST_EXIT_STATUS="$_DEMO_EXIT_STATUS"
   _AI_CANDY_PP_VENV=""
   _ai_candy_compute_exit_status_direct
   _AI_CANDY_PP_SSH=""
@@ -235,6 +236,7 @@ function _demo_run_toggle() {
 
 function _demo_apply_command() {
   local demo_command="$1"
+  _DEMO_EXIT_STATUS=0
   case "$demo_command" in
     e)
       _demo_run_toggle _ai_candy_prompt_toggle_emoji
@@ -272,6 +274,12 @@ function _demo_apply_command() {
       _DEMO_TITLE="RICH / LONG"
       _DEMO_FRAME_NAME="on"
       ;;
+    false)
+      _DEMO_EXIT_STATUS=1
+      _DEMO_MESSAGE="Exit status: 1"
+      _DEMO_TITLE="FAILED COMMAND"
+      _DEMO_FRAME_NAME="error"
+      ;;
     COLUMNS=112)
       _DEMO_COLUMNS=112
       _DEMO_MESSAGE="Layout: SHORT"
@@ -295,7 +303,7 @@ function _demo_apply_command() {
       return 1
       ;;
     *)
-      _DEMO_MESSAGE="Commands: e p n a o off on COLUMNS=112 COLUMNS=72 COLUMNS=160 quit"
+      _DEMO_MESSAGE="Commands: e p n a o off on false COLUMNS=112 COLUMNS=72 COLUMNS=160 quit"
       ;;
   esac
   _demo_show_frame
@@ -305,7 +313,7 @@ _demo_seed_caches
 _demo_show_frame
 if [[ -n "$_DEMO_CAPTURE_DIR" ]]; then
   for demo_command in e p n a o off on \
-    "COLUMNS=112" "COLUMNS=72" "COLUMNS=160"; do
+    false "COLUMNS=112" "COLUMNS=72" "COLUMNS=160"; do
     _demo_apply_command "$demo_command"
   done
 else
@@ -344,6 +352,7 @@ while IFS= read -r demo_command; do
     o) mode=no-os ;;
     off) mode=off ;;
     on) mode=on ;;
+    false) mode=error ;;
     COLUMNS=112) mode=short ;;
     COLUMNS=72) mode=min ;;
     COLUMNS=160) mode=long ;;
@@ -360,6 +369,7 @@ PLAYBACK
 }
 
 function _demo_text_contains_path_marker() {
+  setopt localoptions extendedglob
   local content="$1"
   local marker="$2"
   local before=""
@@ -367,7 +377,8 @@ function _demo_text_contains_path_marker() {
 
   while [[ "$content" == *${(b)marker}* ]]; do
     before="${content%%${(b)marker}*}"
-    if [[ -z "$before" || "${before[-1]}" != [[:alnum:]] ]]; then
+    if [[ -z "$before" || "${before[-1]}" != [[:alnum:]] || \
+          "$before" == *$'\e['[0-?]#[\ -/]#[@-~] ]]; then
       return 0
     fi
     next_index=$(( ${#before} + ${#marker} + 1 ))
@@ -898,6 +909,7 @@ function _demo_publish_assets() {
     "Network mode: OFF"
     "Disabled: public IP, GitHub username/PR status, AI update checks"
     "All toggles turned ON:"
+    "Exit status: 1"
     "Layout: MIN"
   )
   for expected_text in "${expected_texts[@]}"; do

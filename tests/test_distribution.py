@@ -222,6 +222,19 @@ class DistributionTest(unittest.TestCase):
             check=True,
         )
 
+    def test_build_check_rejects_extra_arguments(self) -> None:
+        checked = subprocess.run(
+            ["zsh", str(BUILD_SCRIPT), "--check", "unexpected"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(2, checked.returncode)
+        self.assertIn("usage:", checked.stderr)
+
     def test_theme_functions_use_the_project_namespace(self) -> None:
         definition = re.compile(
             r"^(?:function[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)\(\)[ \t]*\{",
@@ -250,7 +263,7 @@ class DistributionTest(unittest.TestCase):
 
         self.assertEqual([], findings)
 
-    def test_build_temporary_file_cannot_follow_a_symbolic_link(self) -> None:
+    def test_build_refuses_a_symbolic_link_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             scripts = project / "scripts"
@@ -264,21 +277,11 @@ class DistributionTest(unittest.TestCase):
             victim = project / "victim"
             victim.write_text("keep\n", encoding="ascii")
             output = project / THEME.name
-            attack = r"""
-ln -s "$1" "${2}.tmp.$$" || exit 70
-exec zsh "$3"
-"""
+            output.unlink()
+            output.symlink_to(victim)
 
             built = subprocess.run(
-                [
-                    "zsh",
-                    "-fc",
-                    attack,
-                    "zsh",
-                    str(victim),
-                    str(output),
-                    str(scripts / BUILD_SCRIPT.name),
-                ],
+                ["zsh", str(scripts / BUILD_SCRIPT.name)],
                 cwd=project,
                 text=True,
                 stdout=subprocess.PIPE,
@@ -286,10 +289,9 @@ exec zsh "$3"
                 check=False,
             )
 
-            self.assertEqual(0, built.returncode, built.stderr)
+            self.assertNotEqual(0, built.returncode)
             self.assertEqual("keep\n", victim.read_text(encoding="ascii"))
-            self.assertTrue(output.is_file())
-            self.assertFalse(output.is_symlink())
+            self.assertTrue(output.is_symlink())
 
     def test_build_stops_without_publishing_after_termination(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

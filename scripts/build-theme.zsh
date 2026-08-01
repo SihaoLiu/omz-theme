@@ -27,7 +27,7 @@ for module in "${theme_modules[@]}"; do
   }
 done
 
-if [[ "${1:-}" == "--check" ]]; then
+if (( $# == 1 )) && [[ "$1" == "--check" ]]; then
   [[ -f "$output_file" && ! -L "$output_file" ]] || {
     print -u2 -r -- "ai-candy.zsh-theme must be a regular file"
     exit 1

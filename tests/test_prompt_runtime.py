@@ -9,6 +9,68 @@ from tests.theme_test_support import ROOT, THEME, run_zsh
 
 
 class PromptRuntimeTest(unittest.TestCase):
+    def test_layout_accounts_for_git_and_job_prefixes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_PROMPT_OS_MODE=1
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_PP_VENV=""
+_AI_CANDY_PP_EXIT=""
+_AI_CANDY_PP_SSH=""
+_AI_CANDY_PP_PUBLIC_IP=""
+_AI_CANDY_PP_GH_USER=""
+_AI_CANDY_PP_GIT_EXT=""
+_AI_CANDY_PP_GIT_SPECIAL=""
+_AI_CANDY_PP_PR=""
+_AI_CANDY_PP_AI_STATUS=""
+_AI_CANDY_PP_AI_STATUS_LONG=""
+_AI_CANDY_PP_JOBS=J
+_AI_CANDY_PP_SYSINFO_OS_LONG=System
+_AI_CANDY_PP_SYSINFO_OS_SHORT=System
+_AI_CANDY_PP_SYSINFO_KERNEL_LONG=""
+_AI_CANDY_PP_SYSINFO_KERNEL_SHORT=""
+function _ai_candy_prepare_smart_path_context() {
+  _AI_CANDY_SMART_PATH_TOTAL_LENGTH=1
+}
+function _ai_candy_compute_smart_path_direct() {
+  _AI_CANDY_PP_PATH=x
+}
+function find_minimum_long_width() {
+  integer width
+  MINIMUM_LONG_WIDTH=0
+  for width in {1..300}; do
+    COLUMNS=$width
+    _ai_candy_compute_layout_mode
+    if [[ -n "$_AI_CANDY_PP_SYSINFO_LEFT" ]]; then
+      MINIMUM_LONG_WIDTH=$width
+      return 0
+    fi
+  done
+  return 70
+}
+_AI_CANDY_PP_GIT_INFO=""
+find_minimum_long_width
+baseline=$MINIMUM_LONG_WIDTH
+_AI_CANDY_PP_GIT_INFO=x
+find_minimum_long_width
+git_width=$MINIMUM_LONG_WIDTH
+_AI_CANDY_PP_GIT_INFO=""
+command sleep 30 &
+job_pid=$!
+find_minimum_long_width
+job_width=$MINIMUM_LONG_WIDTH
+builtin kill -TERM "$job_pid" 2>/dev/null || true
+builtin wait "$job_pid" 2>/dev/null || true
+print -r -- "DELTAS=$(( git_width - baseline )):$(( job_width - baseline ))"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("DELTAS=2:3\n", result.stdout)
+
     def test_time_color_handles_leading_zero_with_octal_zeroes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -648,6 +648,7 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_MEM_CACHE_TOMBSTONES=()
   _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
   _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
+  _AI_CANDY_GIT_STASH_COUNT_BY_LOG=()
   _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY=()
@@ -681,6 +682,8 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
   _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
   _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
+  _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT=""
+  _ai_candy_prompt_clear_async_git_output
 
   builtin print -r -- "Prompt caches refreshed."
 }
@@ -851,6 +854,7 @@ function _ai_candy_prompt_apply_git_cache_invalidation() {
   _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
   _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
   _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
+  _ai_candy_prompt_clear_async_git_output
 
   (( invalidate_topology )) && _ai_candy_prompt_invalidate_git_topology_for_path "$command_path"
   [[ -n "$git_root" ]] && _ai_candy_prompt_invalidate_git_status_cache_for_root "$git_root"
@@ -865,6 +869,28 @@ function _ai_candy_capture_exit_status() {
   _AI_CANDY_LAST_EXIT_STATUS=$?
   return 0
 }
+
+typeset -g _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT=""
+function _ai_candy_prompt_clear_async_git_output() {
+  (( ${_AI_CANDY_USE_OMZ_ASYNC:-0} )) || return 0
+  builtin unset '_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]' \
+    2>/dev/null || true
+  _AI_CANDY_PP_GIT_INFO=""
+  _AI_CANDY_PP_GIT_EXT=""
+}
+
+function _ai_candy_prompt_sync_async_git_context() {
+  emulate -L zsh
+  (( ${_AI_CANDY_USE_OMZ_ASYNC:-0} )) || return 0
+
+  _ai_candy_git_discovery_context_key
+  local context="p${#PWD}:${PWD}d${#REPLY}:${REPLY}"
+  [[ "$context" == "$_AI_CANDY_OMZ_ASYNC_GIT_CONTEXT" ]] && return 0
+
+  _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT="$context"
+  _ai_candy_prompt_clear_async_git_output
+  return 0
+}
 # Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
 # This ensures we capture $? before other hooks (like zsh-syntax-highlighting) can modify it
 autoload -Uz add-zsh-hook
@@ -872,9 +898,11 @@ autoload -Uz add-zsh-hook
 typeset -ga precmd_functions
 precmd_functions=(${precmd_functions[@]:#_ai_candy_capture_exit_status})
 precmd_functions=(${precmd_functions[@]:#_ai_candy_prompt_apply_git_cache_invalidation})
+precmd_functions=(${precmd_functions[@]:#_ai_candy_prompt_sync_async_git_context})
 precmd_functions=(
   _ai_candy_capture_exit_status
   _ai_candy_prompt_apply_git_cache_invalidation
+  _ai_candy_prompt_sync_async_git_context
   ${precmd_functions[@]}
 )
 

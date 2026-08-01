@@ -219,6 +219,15 @@ function _ai_candy_compute_layout_mode() {
   _ai_candy_prompt_markup_width "$_AI_CANDY_PP_SSH"; ssh_len="$REPLY"
   _ai_candy_prompt_markup_width "$_AI_CANDY_PP_VENV"; venv_len="$REPLY"
 
+  local git_space=0 jobs_len=0 jobs_prefix_len=0
+  integer job_count=${#jobstates}
+  (( git_len > 0 )) && git_space=1
+  if (( job_count > 0 )); then
+    _ai_candy_prompt_markup_width "$_AI_CANDY_PP_JOBS"
+    jobs_prefix_len="$REPLY"
+    jobs_len=$(( 1 + jobs_prefix_len + ${#job_count} ))
+  fi
+
   # user@host: %n@%m expands to actual username and hostname
   # Use actual values instead of literal "%n@%m" (4 chars)
   local actual_user="${(%):-%n}"
@@ -257,7 +266,10 @@ function _ai_candy_compute_layout_mode() {
   # pr_space: 1 space before PR if PR is present
   local pr_space=0
   (( pr_len > 0 )) && pr_space=1
-  local min_len=$((venv_len + exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_space + pr_len + fixed_len))
+  local min_len=$((venv_len + exit_len + ssh_len + user_host_len + \
+    public_ip_len + gh_user_len + badge_len + time_len + path_len + \
+    git_space + git_len + git_ext_len + git_special_len + pr_space + pr_len + \
+    jobs_len + fixed_len))
 
   # Calculate lengths for different layout modes
   local short_version="${os_short}${kernel_short}"

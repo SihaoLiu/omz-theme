@@ -1511,6 +1511,30 @@ builtin print -r -- "REPLY=${REPLY}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("REPLY=preserved\n", result.stdout)
 
+    def test_exec_redirections_do_not_stop_registered_workers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+typeset -g STOP_CALLS=0
+function _ai_candy_stop_registered_background_jobs() {
+  (( STOP_CALLS++ ))
+}
+for command_text in \
+    'exec 2>&1' \
+    'exec 2>/dev/null' \
+    'exec {output_fd}>/dev/null'; do
+  _ai_candy_preexec_cleanup_for_exec \
+    "$command_text" "$command_text" "$command_text"
+done
+print -r -- "STOP_CALLS=${STOP_CALLS}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STOP_CALLS=0\n", result.stdout)
+
     def test_compound_command_exec_stops_registered_workers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(

@@ -1389,6 +1389,7 @@ typeset -gA _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT
 _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$PWD]=stale
 typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
 _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$PWD]=stale
+_AI_CANDY_GIT_STASH_COUNT_BY_LOG[$PWD]=stale
 typeset -gA _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT
 _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$PWD]=$(( EPOCHSECONDS + 3 ))
 _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$PWD]=stale
@@ -1408,6 +1409,7 @@ print -r -- "PROCESS_FILE=$([[ -f $_AI_CANDY_AI_PROCESS_CACHE_FILE ]] && print p
 print -r -- "ROOT_RETRIES=${#_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT}"
 print -r -- "REMOTE=${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}"
 print -r -- "OPTIONS=${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}"
+print -r -- "STASH_COUNTS=${#_AI_CANDY_GIT_STASH_COUNT_BY_LOG}"
 print -r -- "GRAPH_PATHS=${#_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY}"
 print -r -- "GRAPH_CONTEXTS=${#_AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY}"
 print -r -- "GRAPH_TIMEOUTS=${#_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY}"
@@ -1429,6 +1431,7 @@ print -r -- \
         self.assertIn("ROOT_RETRIES=0", result.stdout)
         self.assertIn("REMOTE=0", result.stdout)
         self.assertIn("OPTIONS=0", result.stdout)
+        self.assertIn("STASH_COUNTS=0", result.stdout)
         self.assertIn("GRAPH_PATHS=0", result.stdout)
         self.assertIn("GRAPH_CONTEXTS=0", result.stdout)
         self.assertIn("GRAPH_TIMEOUTS=0", result.stdout)
@@ -1436,6 +1439,27 @@ print -r -- \
         self.assertIn("GRAPH_FAILURE_SEQUENCE=0", result.stdout)
         self.assertIn("TOMBSTONES=0", result.stdout)
         self.assertIn("SEQUENCE=absent", result.stdout)
+
+    def test_unavailable_cache_never_attempts_persistent_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_READY=0
+_AI_CANDY_CACHE_BACKEND_STATE=1
+typeset -g PERSIST_READS=0
+function _ai_candy_cache_persist_read_with_waits() {
+  (( PERSIST_READS++ ))
+  return 0
+}
+_ai_candy_cache_get git_root key >/dev/null
+print -r -- "PERSIST_READS=${PERSIST_READS}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("PERSIST_READS=0\n", result.stdout)
 
     def test_memory_cache_cleanup_works_after_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

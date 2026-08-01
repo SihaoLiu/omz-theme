@@ -508,6 +508,70 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual([], list(theme_dir.glob(f"{THEME.name}.backup.*")))
             self.assertIn("Skipped ai-candy installation", result.stdout)
 
+    def test_confirm_option_installs_after_explicit_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous_theme = b"previous ai-candy theme\n"
+            result = self.run_installer(
+                root,
+                "--no-modify-zshrc",
+                "--confirm",
+                existing_theme=previous_theme,
+                stdin_text="CONFIRM\n",
+            )
+            theme_dir = root / "oh-my-zsh" / "custom" / "themes"
+            target = theme_dir / THEME.name
+            backups = list(theme_dir.glob(f"{THEME.name}.backup.*"))
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(THEME.read_bytes(), target.read_bytes())
+            self.assertEqual(1, len(backups), backups)
+            self.assertEqual(previous_theme, backups[0].read_bytes())
+
+    def test_theme_url_can_be_overridden(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            custom_url = "https://example.invalid/releases/ai-candy.zsh-theme"
+            result = self.run_installer(
+                root,
+                "--no-modify-zshrc",
+                extra_env={"AI_CANDY_THEME_URL": custom_url},
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(
+                custom_url + "\n", (root / "curl.log").read_text(encoding="ascii")
+            )
+
+    def test_unset_zsh_uses_the_default_oh_my_zsh_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home, omz, fake_bin, curl_log = self.prepare_installation(root)
+            default_omz = home / ".oh-my-zsh"
+            omz.rename(default_omz)
+            environment = {
+                **os.environ,
+                "HOME": str(home),
+                "PATH": f"{fake_bin}:/usr/bin:/bin",
+                "CURL_LOG": str(curl_log),
+                "DOWNLOAD_SOURCE": str(THEME),
+            }
+            environment.pop("ZSH", None)
+            environment.pop("ZSH_CUSTOM", None)
+            result = subprocess.run(
+                ["sh", str(INSTALLER), "--no-modify-zshrc"],
+                cwd=root,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            target = default_omz / "custom" / "themes" / THEME.name
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(THEME.read_bytes(), target.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

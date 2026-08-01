@@ -1092,6 +1092,8 @@ function _ai_candy_reset_git_snapshot() {
   _AI_CANDY_GIT_SNAPSHOT_AHEAD=0
   _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
   _AI_CANDY_GIT_SNAPSHOT_STASH=0
+  _AI_CANDY_GIT_HIDE_INFO=0
+  _AI_CANDY_GIT_HIDE_DIRTY=0
 }
 
 function _ai_candy_load_git_head_snapshot() {
@@ -1770,30 +1772,3 @@ function _ai_candy_get_cached_git_remote_branch() {
   _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="$context_key"
   REPLY="$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE"
 }
-
-function _ai_candy_git_prompt_async() {
-  emulate -L zsh
-  setopt localoptions noerrexit noerrreturn
-  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
-
-  _ai_candy_get_cached_git_root
-  _AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
-  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
-  _ai_candy_collect_git_snapshot || return 0
-  _ai_candy_format_git_snapshot
-  if [[ -n "${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}" ]]; then
-    builtin print -rn -- " ${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}"
-  fi
-}
-
-typeset _ai_candy_async_style=""
-if (( $+functions[_omz_register_handler] && $+functions[_omz_async_request] )) && \
-   { builtin zstyle -t ':omz:alpha:lib:git' async-prompt || \
-     builtin zstyle -T ':omz:alpha:lib:git' async-prompt || \
-     { builtin zstyle -s ':omz:alpha:lib:git' async-prompt _ai_candy_async_style && \
-       [[ "$_ai_candy_async_style" == "force" ]]; }; }; then
-  if _omz_register_handler _ai_candy_git_prompt_async; then
-    _AI_CANDY_USE_OMZ_ASYNC=1
-  fi
-fi
-unset _ai_candy_async_style

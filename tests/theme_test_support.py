@@ -54,8 +54,19 @@ def run_zsh(
     env: Optional[Mapping[str, str]] = None,
     timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess[str]:
+    isolated_home = cache_home.parent / "home"
+    isolated_config = cache_home.parent / "config"
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    isolated_config.mkdir(parents=True, exist_ok=True)
+    ambient_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "GIT_CONFIG" and not key.startswith("GIT_CONFIG_")
+    }
     shell_env = {
-        **os.environ,
+        **ambient_env,
+        "HOME": str(isolated_home),
+        "XDG_CONFIG_HOME": str(isolated_config),
         "XDG_CACHE_HOME": str(cache_home),
         **(env or {}),
     }

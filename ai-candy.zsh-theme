@@ -1515,8 +1515,20 @@ function _ai_candy_preexec_cleanup_for_exec() {
           (( ++index ))
           break
           ;;
-        '<'|'>'|'>>'|'<<'|'<<<'|'<>'|'>&'|'<&'|'>|'|'&>')
+        '<'|'>'|'>>'|'<<'|'<<<'|'<>'|'>&'|'<&'|'>|'|'&>'|\
+        <->'<'|<->'>'|<->'>>'|<->'<<'|<->'<<<'|<->'<>'|\
+        <->'>&'|<->'<&'|<->'>|'|<->'&>')
           (( index += 2 ))
+          ;;
+        \{[A-Za-z_][A-Za-z0-9_]#\})
+          case "${command_words[index+1]-}" in
+            '<'|'>'|'>>'|'<<'|'<<<'|'<>'|'>&'|'<&'|'>|'|'&>')
+              (( ++index ))
+              ;;
+            *)
+              break
+              ;;
+          esac
           ;;
         *)
           break
@@ -3790,6 +3802,7 @@ function _ai_candy_cache_persist_read() {
 }
 
 function _ai_candy_cache_get() {
+  (( ${_AI_CANDY_CACHE_READY:-0} )) || return 1
   local _AI_CANDY_CACHE_IO_TIMEOUT="${_AI_CANDY_CACHE_PROMPT_IO_TIMEOUT:-0.05}"
   local tombstone_key="$1:$2"
   local tombstone_time="${_AI_CANDY_MEM_CACHE_TOMBSTONES[$tombstone_key]-}"
@@ -4639,6 +4652,7 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_MEM_CACHE_TOMBSTONES=()
   _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
   _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
+  _AI_CANDY_GIT_STASH_COUNT_BY_LOG=()
   _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY=()
@@ -4672,6 +4686,8 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_SMART_PATH_CONTEXT_TIMESTAMP=0
   _AI_CANDY_GIT_TOPOLOGY_GENERATION=0
   _AI_CANDY_GIT_TOPOLOGY_GENERATION_VALID=1
+  _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT=""
+  _ai_candy_prompt_clear_async_git_output
 
   builtin print -r -- "Prompt caches refreshed."
 }
@@ -4842,6 +4858,7 @@ function _ai_candy_prompt_apply_git_cache_invalidation() {
   _AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH=""
   _AI_CANDY_PROMPT_GIT_TOPOLOGY_INVALIDATE=0
   _AI_CANDY_PROMPT_GIT_REMOTE_INVALIDATE=0
+  _ai_candy_prompt_clear_async_git_output
 
   (( invalidate_topology )) && _ai_candy_prompt_invalidate_git_topology_for_path "$command_path"
   [[ -n "$git_root" ]] && _ai_candy_prompt_invalidate_git_status_cache_for_root "$git_root"
@@ -4856,6 +4873,28 @@ function _ai_candy_capture_exit_status() {
   _AI_CANDY_LAST_EXIT_STATUS=$?
   return 0
 }
+
+typeset -g _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT=""
+function _ai_candy_prompt_clear_async_git_output() {
+  (( ${_AI_CANDY_USE_OMZ_ASYNC:-0} )) || return 0
+  builtin unset '_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]' \
+    2>/dev/null || true
+  _AI_CANDY_PP_GIT_INFO=""
+  _AI_CANDY_PP_GIT_EXT=""
+}
+
+function _ai_candy_prompt_sync_async_git_context() {
+  emulate -L zsh
+  (( ${_AI_CANDY_USE_OMZ_ASYNC:-0} )) || return 0
+
+  _ai_candy_git_discovery_context_key
+  local context="p${#PWD}:${PWD}d${#REPLY}:${REPLY}"
+  [[ "$context" == "$_AI_CANDY_OMZ_ASYNC_GIT_CONTEXT" ]] && return 0
+
+  _AI_CANDY_OMZ_ASYNC_GIT_CONTEXT="$context"
+  _ai_candy_prompt_clear_async_git_output
+  return 0
+}
 # Insert at the BEGINNING of precmd_functions array (not using add-zsh-hook which appends)
 # This ensures we capture $? before other hooks (like zsh-syntax-highlighting) can modify it
 autoload -Uz add-zsh-hook
@@ -4863,9 +4902,11 @@ autoload -Uz add-zsh-hook
 typeset -ga precmd_functions
 precmd_functions=(${precmd_functions[@]:#_ai_candy_capture_exit_status})
 precmd_functions=(${precmd_functions[@]:#_ai_candy_prompt_apply_git_cache_invalidation})
+precmd_functions=(${precmd_functions[@]:#_ai_candy_prompt_sync_async_git_context})
 precmd_functions=(
   _ai_candy_capture_exit_status
   _ai_candy_prompt_apply_git_cache_invalidation
+  _ai_candy_prompt_sync_async_git_context
   ${precmd_functions[@]}
 )
 
@@ -5109,6 +5150,15 @@ function _ai_candy_compute_layout_mode() {
   _ai_candy_prompt_markup_width "$_AI_CANDY_PP_SSH"; ssh_len="$REPLY"
   _ai_candy_prompt_markup_width "$_AI_CANDY_PP_VENV"; venv_len="$REPLY"
 
+  local git_space=0 jobs_len=0 jobs_prefix_len=0
+  integer job_count=${#jobstates}
+  (( git_len > 0 )) && git_space=1
+  if (( job_count > 0 )); then
+    _ai_candy_prompt_markup_width "$_AI_CANDY_PP_JOBS"
+    jobs_prefix_len="$REPLY"
+    jobs_len=$(( 1 + jobs_prefix_len + ${#job_count} ))
+  fi
+
   # user@host: %n@%m expands to actual username and hostname
   # Use actual values instead of literal "%n@%m" (4 chars)
   local actual_user="${(%):-%n}"
@@ -5147,7 +5197,10 @@ function _ai_candy_compute_layout_mode() {
   # pr_space: 1 space before PR if PR is present
   local pr_space=0
   (( pr_len > 0 )) && pr_space=1
-  local min_len=$((venv_len + exit_len + ssh_len + user_host_len + public_ip_len + gh_user_len + badge_len + time_len + path_len + git_len + git_ext_len + git_special_len + pr_space + pr_len + fixed_len))
+  local min_len=$((venv_len + exit_len + ssh_len + user_host_len + \
+    public_ip_len + gh_user_len + badge_len + time_len + path_len + \
+    git_space + git_len + git_ext_len + git_special_len + pr_space + pr_len + \
+    jobs_len + fixed_len))
 
   # Calculate lengths for different layout modes
   local short_version="${os_short}${kernel_short}"
@@ -6589,6 +6642,8 @@ function _ai_candy_reset_git_snapshot() {
   _AI_CANDY_GIT_SNAPSHOT_AHEAD=0
   _AI_CANDY_GIT_SNAPSHOT_BEHIND=0
   _AI_CANDY_GIT_SNAPSHOT_STASH=0
+  _AI_CANDY_GIT_HIDE_INFO=0
+  _AI_CANDY_GIT_HIDE_DIRTY=0
 }
 
 function _ai_candy_load_git_head_snapshot() {
@@ -7267,33 +7322,6 @@ function _ai_candy_get_cached_git_remote_branch() {
   _AI_CANDY_GIT_REMOTE_BRANCH_CACHE_CONTEXT="$context_key"
   REPLY="$_AI_CANDY_GIT_REMOTE_BRANCH_CACHE"
 }
-
-function _ai_candy_git_prompt_async() {
-  emulate -L zsh
-  setopt localoptions noerrexit noerrreturn
-  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
-
-  _ai_candy_get_cached_git_root
-  _AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
-  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
-  _ai_candy_collect_git_snapshot || return 0
-  _ai_candy_format_git_snapshot
-  if [[ -n "${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}" ]]; then
-    builtin print -rn -- " ${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}"
-  fi
-}
-
-typeset _ai_candy_async_style=""
-if (( $+functions[_omz_register_handler] && $+functions[_omz_async_request] )) && \
-   { builtin zstyle -t ':omz:alpha:lib:git' async-prompt || \
-     builtin zstyle -T ':omz:alpha:lib:git' async-prompt || \
-     { builtin zstyle -s ':omz:alpha:lib:git' async-prompt _ai_candy_async_style && \
-       [[ "$_ai_candy_async_style" == "force" ]]; }; }; then
-  if _omz_register_handler _ai_candy_git_prompt_async; then
-    _AI_CANDY_USE_OMZ_ASYNC=1
-  fi
-fi
-unset _ai_candy_async_style
 typeset -gi _AI_CANDY_GIT_CONFIG_GRAPH_FAILURE_SEQUENCE
 typeset -gA _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY
 typeset -gA _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY
@@ -7795,6 +7823,36 @@ function _ai_candy_compute_smart_path_direct() {
   _AI_CANDY_SMART_PATH_RENDER_KEY="$render_key"
   _AI_CANDY_SMART_PATH_RENDER_VALUE="$_AI_CANDY_PP_PATH"
 }
+# Oh My Zsh async Git integration.
+function _ai_candy_git_prompt_async() {
+  emulate -L zsh
+  setopt localoptions noerrexit noerrreturn
+  local _AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+
+  _ai_candy_get_cached_git_root
+  _AI_CANDY_PP_CACHED_GIT_ROOT="$REPLY"
+  _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
+  _ai_candy_collect_git_snapshot || return 0
+  _ai_candy_format_git_snapshot
+  if [[ -n "${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}" ]]; then
+    builtin print -rn -- \
+      " ${_AI_CANDY_GIT_FORMATTED_INFO}${_AI_CANDY_GIT_FORMATTED_EXT}"
+  fi
+}
+
+typeset _ai_candy_async_style=""
+if (( $+functions[_omz_register_handler] && $+functions[_omz_async_request] )) && \
+   { builtin zstyle -t ':omz:alpha:lib:git' async-prompt || \
+     builtin zstyle -T ':omz:alpha:lib:git' async-prompt || \
+     { builtin zstyle -s ':omz:alpha:lib:git' async-prompt \
+         _ai_candy_async_style && \
+       [[ "$_ai_candy_async_style" == "force" ]]; }; }; then
+  if _omz_register_handler _ai_candy_git_prompt_async; then
+    _AI_CANDY_USE_OMZ_ASYNC=1
+  fi
+fi
+unset _ai_candy_async_style
+
 # Helper: check if versions differ (indicates update available or version changed)
 # Returns: 0 if versions differ, 1 if same or missing
 # Simplified logic: any difference triggers indicator, avoids semver parsing issues
@@ -8017,7 +8075,7 @@ function _ai_candy_gh_username_update_ssh_worker() {
 
 function _ai_candy_gh_username_update_ssh() {
   setopt localoptions noerrexit
-  (( _AI_CANDY_HAS_SSH )) || return
+  (( _AI_CANDY_HAS_SSH && _AI_CANDY_HAS_TIMEOUT )) || return
   _ai_candy_request_background_refresh \
     gh-username-ssh "$_AI_CANDY_NETWORK_REFRESH_RETRY_DELAY" || return
 

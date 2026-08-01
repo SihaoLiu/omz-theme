@@ -21,7 +21,7 @@ PRIVACY_MARKERS = ROOT / "scripts" / "privacy-markers.zsh"
 VALID_DEMO_OUTPUT = (
     "printf '%s\\n' 'AI Candy |' 'demo@workstation' 'Network mode: OFF' "
     "'Disabled: public IP, GitHub username/PR status, AI update checks' "
-    "'All toggles turned ON:' 'Layout: MIN' > demo.txt\n"
+    "'All toggles turned ON:' 'Exit status: 1' 'Layout: MIN' > demo.txt\n"
 )
 
 
@@ -123,7 +123,7 @@ class DemoGenerationTest(unittest.TestCase):
             renderer = fake_bin / "vhs"
             renderer.write_text(
                 "#!/bin/sh\n"
-                f"printf '%s\\n' '{private_home}' > demo.txt\n"
+                f"printf '\\033[31m%s\\033[0m\\n' '{private_home}' > demo.txt\n"
                 "printf 'new-gif\\n' > demo.gif\n"
                 "printf 'new-png\\n' > demo.png\n",
                 encoding="ascii",
@@ -1011,11 +1011,13 @@ printf 'png\\n' > demo.png
             self.assertIn('Type "COLUMNS=112"', tape_text)
             self.assertIn('Type "COLUMNS=72"', tape_text)
             self.assertIn('Type "COLUMNS=160"', tape_text)
+            self.assertIn('Type "false"', tape_text)
             self.assertIn(
                 'export XDG_DATA_HOME="${fixture_dir}/data"', session_text
             )
             self.assertEqual(
                 {
+                    "error.ansi",
                     "long.ansi",
                     "min.ansi",
                     "no-os.ansi",
@@ -1092,7 +1094,7 @@ printf 'png\\n' > demo.png
                 cwd=fixture_dir,
                 input=(
                     "e\np\nn\na\no\noff\non\n"
-                    "COLUMNS=112\nCOLUMNS=72\nquit\n"
+                    "false\nCOLUMNS=112\nCOLUMNS=72\nquit\n"
                 ),
                 text=True,
                 stdout=subprocess.PIPE,
@@ -1110,6 +1112,7 @@ printf 'png\\n' > demo.png
                 recorded.stdout,
             )
             self.assertIn("All toggles turned ON", recorded.stdout)
+            self.assertIn("Exit status: 1", recorded.stdout)
             self.assertIn("Layout: SHORT", recorded.stdout)
             self.assertIn("Layout: MIN", recorded.stdout)
 
@@ -1118,7 +1121,7 @@ printf 'png\\n' > demo.png
                 cwd=fixture_dir,
                 input=(
                     "e\np\nn\na\no\noff\non\n"
-                    "COLUMNS=112\nCOLUMNS=72\nquit\n"
+                    "false\nCOLUMNS=112\nCOLUMNS=72\nquit\n"
                 ),
                 text=True,
                 stdout=subprocess.PIPE,
@@ -1128,6 +1131,7 @@ printf 'png\\n' > demo.png
             self.assertEqual(0, replayed.returncode, replayed.stderr)
             self.assertIn("demo@workstation", replayed.stdout)
             self.assertIn("Network mode: OFF", replayed.stdout)
+            self.assertIn("Exit status: 1", replayed.stdout)
             self.assertIn("Layout: MIN", replayed.stdout)
 
             fixture_text = "\n".join(
@@ -1159,6 +1163,7 @@ printf 'png\\n' > demo.png
         self.assertIn("Screenshot demo.png", tape)
         self.assertIn('Set Shell "bash"', tape)
         self.assertIn('Type "exec ./session.sh"', tape)
+        self.assertIn('Type "false"', tape)
         self.assertIn("Set LetterSpacing 0", tape)
 
     def test_committed_demo_assets_have_expected_formats(self) -> None:

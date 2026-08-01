@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,79 @@ from tests.theme_test_support import run_zsh
 
 
 class IntegrationRuntimeTest(unittest.TestCase):
+    def test_ssh_identity_refresh_requires_a_timeout_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_SSH=1
+_AI_CANDY_HAS_TIMEOUT=0
+_AI_CANDY_HAS_ZSH_NATIVE_TIMEOUT=0
+_AI_CANDY_TIMEOUT_CMD=""
+typeset -g STARTS=0
+function _ai_candy_start_registered_background_worker() {
+  (( STARTS++ ))
+}
+_ai_candy_gh_username_update_ssh
+print -r -- "STARTS=${STARTS} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STARTS=0 REQUESTED=0\n", result.stdout)
+
+    def test_async_git_output_is_cleared_when_working_context_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first_repo = root / "first"
+            second_repo = root / "second"
+            for repo in (first_repo, second_repo):
+                repo.mkdir()
+                subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+            result = run_zsh(
+                r"""
+typeset -gA _OMZ_ASYNC_OUTPUT
+typeset -ga precmd_functions=(_omz_async_request)
+function _omz_async_request() { return 0; }
+function _omz_register_handler() { return 0; }
+zstyle ':omz:alpha:lib:git' async-prompt force
+source "$1"
+cd "$FIRST_REPO"
+_ai_candy_prompt_sync_async_git_context
+_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]=' old-context'
+_AI_CANDY_PP_GIT_INFO=old-context
+cd "$SECOND_REPO"
+_ai_candy_prompt_sync_async_git_context
+print -r -- \
+  "OUTPUT=${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-empty}"
+print -r -- "INFO=${_AI_CANDY_PP_GIT_INFO:-empty}"
+_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]=' current-context'
+_AI_CANDY_PP_GIT_INFO=current-context
+_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE=1
+_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_ROOT="$SECOND_REPO"
+_AI_CANDY_PROMPT_GIT_CACHE_INVALIDATE_PATH="$SECOND_REPO"
+_ai_candy_prompt_apply_git_cache_invalidation
+print -r -- \
+  "INVALIDATED=${_OMZ_ASYNC_OUTPUT[_ai_candy_git_prompt_async]-empty}"
+print -r -- "INVALIDATED_INFO=${_AI_CANDY_PP_GIT_INFO:-empty}"
+""",
+                cache_home=root / "cache",
+                env={
+                    "FIRST_REPO": str(first_repo),
+                    "SECOND_REPO": str(second_repo),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "OUTPUT=empty\n"
+            "INFO=empty\n"
+            "INVALIDATED=empty\n"
+            "INVALIDATED_INFO=empty\n",
+            result.stdout,
+        )
+
     def test_network_refreshes_are_deduplicated_in_the_parent_shell(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(

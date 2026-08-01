@@ -402,6 +402,26 @@ print -r -- "$wrapped"
         self.assertEqual(direct_environment, wrapped_environment)
         self.assertNotIn("_AI_CANDY_TIMEOUT_TARGET_", wrapped_text)
 
+    def test_timeout_environment_carriers_do_not_persist_in_the_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+export BASH_COMMAND=ai-candy-test-command
+_ai_candy_run_with_timeout 1 /bin/true
+carrier_count=0
+for variable_name in "${_AI_CANDY_TIMEOUT_BASH_ENVIRONMENT_NAMES[@]}"; do
+  carrier_name="_AI_CANDY_TIMEOUT_TARGET_${variable_name}"
+  (( ${+parameters[$carrier_name]} )) && (( carrier_count++ ))
+done
+print -r -- "CARRIERS=${carrier_count}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("CARRIERS=0\n", result.stdout)
+
     def test_timeout_control_argv_does_not_expose_saved_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

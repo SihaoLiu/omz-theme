@@ -1475,6 +1475,33 @@ builtin print -r -- "DIRECT=$direct_hide"
                 write_global_config(second_config, "beta.git", "0")
                 self.assert_config_switch(repo, root / "cache", config_kind, env)
 
+    def test_branch_only_fallback_resets_repository_display_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            configure_repository(repo)
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_GIT_HIDE_INFO=1
+_AI_CANDY_GIT_HIDE_DIRTY=1
+_AI_CANDY_GIT_ROOT_IS_FALLBACK=1
+_AI_CANDY_PP_CACHED_GIT_ROOT="$PWD"
+_AI_CANDY_PROMPT_RENDER_ID=1
+_ai_candy_collect_git_snapshot || return 70
+_ai_candy_format_git_snapshot
+print -r -- \
+  "OPTIONS=${_AI_CANDY_GIT_HIDE_INFO}:${_AI_CANDY_GIT_HIDE_DIRTY}"
+print -P -r -- "BRANCH=${_AI_CANDY_GIT_FORMATTED_INFO}"
+""",
+                cache_home=root / "cache",
+                cwd=repo,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("OPTIONS=0:0\n", result.stdout)
+        self.assertIn("main", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
