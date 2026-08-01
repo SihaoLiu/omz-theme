@@ -266,18 +266,26 @@ builtin print -r -- "$_AI_CANDY_CACHE_DB_FILE"
             )
             self.assertEqual(0, seed.returncode, seed.stderr)
             database = Path(seed.stdout.strip())
-            page_size_result = subprocess.run(
-                [sqlite3, str(database), "PRAGMA page_size;"],
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            page_size = int(
+                subprocess.check_output(
+                    [sqlite3, str(database), "PRAGMA page_size;"], text=True
+                ).strip()
             )
-            page_size = int(page_size_result.stdout.strip())
-            self.assertGreaterEqual(database.stat().st_size, page_size * 2)
+            root_page = int(
+                subprocess.check_output(
+                    [
+                        sqlite3,
+                        str(database),
+                        "SELECT rootpage FROM sqlite_master WHERE name='cache';",
+                    ],
+                    text=True,
+                ).strip()
+            )
+            self.assertGreater(root_page, 1)
+            self.assertGreaterEqual(database.stat().st_size, page_size * root_page)
             invalid_page = b"invalid-sqlite-page"
             with database.open("r+b") as stream:
-                stream.seek(page_size)
+                stream.seek(page_size * (root_page - 1))
                 stream.write(
                     (invalid_page * (page_size // len(invalid_page) + 1))[:page_size]
                 )
