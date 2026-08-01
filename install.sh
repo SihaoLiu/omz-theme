@@ -119,7 +119,7 @@ theme_size=$(LC_ALL=C command wc -c < "$theme_temp") || \
   fail "downloaded theme exceeds size limit"
 grep -Fq '# AI Candy - Oh My Zsh Theme' "$theme_temp" || \
   fail "downloaded file is not the ai-candy theme"
-grep -Fq 'builtin unfunction _ai_candy_restore_source_options' "$theme_temp" || \
+tail -n 1 "$theme_temp" | grep -Fxq '# AI_CANDY_THEME_EOF' || \
   fail "downloaded theme is incomplete"
 zsh -n "$theme_temp" || fail "downloaded theme has invalid Zsh syntax"
 

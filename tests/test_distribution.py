@@ -129,6 +129,13 @@ class DistributionTest(unittest.TestCase):
             theme,
         )
 
+    def test_standalone_theme_has_one_end_of_file_marker(self) -> None:
+        marker = "# AI_CANDY_THEME_EOF"
+        theme = THEME.read_text(encoding="ascii")
+
+        self.assertEqual(1, theme.splitlines().count(marker))
+        self.assertTrue(theme.endswith(f"{marker}\n"))
+
     def test_repository_ignores_local_agent_settings(self) -> None:
         ignored = (ROOT / ".gitignore").read_text(encoding="ascii").splitlines()
 

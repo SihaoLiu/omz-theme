@@ -222,6 +222,59 @@ print -r -- "NETWORK=$([[ -f $NETWORK_LOG ]] && print yes || print no)"
         self.assertIn("LOCAL=yes", result.stdout)
         self.assertIn("NETWORK=no", result.stdout)
 
+    def test_tool_update_marker_requires_a_newer_remote_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_AI_PROCESS_COUNTS[codex]=0
+cache_file="${_AI_CANDY_CACHE_DIR}/version_order_cache"
+sep=$'\x1f'
+typeset -a cases=(
+  'upgrade|1.2.3|2.0.0|yes'
+  'equal|2.0.0|2.0.0|no'
+  'local-newer|3.0.0|2.9.9|no'
+  'remote-prerelease|1.0.0|2.0.0-beta.1|no'
+  'leading-zero-upgrade|0009.0.0|10.0.0|yes'
+  'large-upgrade|999999999999999999999999999999.0.0|1000000000000000000000000000000.0.0|yes'
+)
+label=""
+installed=""
+remote=""
+expected=""
+for case_data in "${cases[@]}"; do
+  IFS='|' builtin read -r label installed remote expected <<< "$case_data"
+  builtin print -r -- \
+    "${installed}${sep}${remote}${sep}${EPOCHSECONDS}" >| "$cache_file"
+  typeset -a refresh_jobs=()
+  tool_result=""
+  tool_result_long=""
+  _ai_candy_compute_ai_tool_status 1 "$cache_file" codex \
+    https://invalid.example Cx: Cx: 15 Codex codex
+  if [[ "$tool_result" == *\** ]]; then
+    marker=yes
+  else
+    marker=no
+  fi
+  builtin print -r -- "${label}=${marker}/${expected}"
+done
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "upgrade=yes/yes\n"
+            "equal=no/no\n"
+            "local-newer=no/no\n"
+            "remote-prerelease=no/no\n"
+            "leading-zero-upgrade=yes/yes\n"
+            "large-upgrade=yes/yes\n",
+            result.stdout,
+        )
+
     def test_background_version_probe_allows_a_slow_local_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

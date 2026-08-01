@@ -1223,6 +1223,45 @@ function _ai_candy_cache_schedule_operation() {
   return "$schedule_status"
 }
 
+function _ai_candy_cache_remove_sqlite_artifacts_unlocked() {
+  local artifact
+  for artifact in \
+    "$_AI_CANDY_CACHE_DB_FILE" \
+    "${_AI_CANDY_CACHE_DB_FILE}-journal" \
+    "${_AI_CANDY_CACHE_DB_FILE}-shm" \
+    "${_AI_CANDY_CACHE_DB_FILE}-wal"; do
+    [[ -e "$artifact" || -L "$artifact" ]] || continue
+    [[ -f "$artifact" || -L "$artifact" ]] || return 1
+    _ai_candy_cache_remove_path "$artifact" || return 1
+  done
+}
+
+function _ai_candy_cache_initialize_sqlite_unlocked() {
+  REPLY=""
+  local output=""
+  output=$(umask 077; _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
+    sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
+    'PRAGMA journal_mode=WAL;
+     CREATE TABLE IF NOT EXISTS cache (
+       key TEXT PRIMARY KEY,
+       value TEXT NOT NULL,
+       timestamp INTEGER NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);' \
+    2>&1)
+  local init_status=$?
+  REPLY="$output"
+  return "$init_status"
+}
+
+function _ai_candy_cache_sqlite_error_is_corruption() {
+  local error_output="$1"
+  [[ "$error_output" == *'file is not a database'* || \
+     "$error_output" == *'database disk image is malformed'* || \
+     "$error_output" == *'malformed database schema'* || \
+     "$error_output" == *'unsupported file format'* ]]
+}
+
 function _ai_candy_cache_backend_init_unlocked() {
   if (( _AI_CANDY_CACHE_BACKEND_STATE )); then
     if [[ "$_AI_CANDY_CACHE_BACKEND" == "none" ]]; then
@@ -1279,17 +1318,12 @@ function _ai_candy_cache_backend_init_unlocked() {
     (( _AI_CANDY_HAS_SQLITE3 )) || return 1
     [[ ! -L "$_AI_CANDY_CACHE_DB_FILE" && \
        ( ! -e "$_AI_CANDY_CACHE_DB_FILE" || -f "$_AI_CANDY_CACHE_DB_FILE" ) ]] || return 1
-    if ! ( umask 077 && _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-          sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
-          'PRAGMA journal_mode=WAL;
-           CREATE TABLE IF NOT EXISTS cache (
-             key TEXT PRIMARY KEY,
-             value TEXT NOT NULL,
-             timestamp INTEGER NOT NULL
-           );
-           CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);' \
-          &>/dev/null ); then
-      return 1
+    if ! _ai_candy_cache_initialize_sqlite_unlocked; then
+      local sqlite_error="$REPLY"
+      [[ -f "$_AI_CANDY_CACHE_DB_FILE" && ! -L "$_AI_CANDY_CACHE_DB_FILE" ]] || return 1
+      _ai_candy_cache_sqlite_error_is_corruption "$sqlite_error" || return 1
+      _ai_candy_cache_remove_sqlite_artifacts_unlocked || return 1
+      _ai_candy_cache_initialize_sqlite_unlocked || return 1
     fi
     _AI_CANDY_CACHE_BACKEND="sqlite"
     _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=0
@@ -1452,6 +1486,7 @@ function _ai_candy_cache_persist_write() {
 }
 
 function _ai_candy_cache_persist_read_with_waits() {
+  REPLY=""
   local operation_wait_ticks="$1"
   local commit_wait_ticks="$2"
   shift 2
@@ -1470,6 +1505,7 @@ function _ai_candy_cache_persist_read_with_waits() {
     _ai_candy_cache_lock_release "$_AI_CANDY_CACHE_COMMIT_LOCK"
     _ai_candy_cache_lock_release "$operation_lock"
   }
+  (( read_status == 0 )) || REPLY=""
   return "$read_status"
 }
 

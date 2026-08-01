@@ -28,15 +28,34 @@ if (( $+functions[_omz_register_handler] && $+functions[_omz_async_request] )) &
 fi
 unset _ai_candy_async_style
 
-# Helper: check if versions differ (indicates update available or version changed)
-# Returns: 0 if versions differ, 1 if same or missing
-# Simplified logic: any difference triggers indicator, avoids semver parsing issues
-_ai_candy_version_differs() {
+# Return success only when a stable remote version is newer than the installed one.
+_ai_candy_update_available() {
+  emulate -L zsh
   local installed="$1"
   local remote="$2"
 
-  [[ -z "$installed" || -z "$remote" ]] && return 1
-  [[ "$installed" != "$remote" ]] && return 0
+  [[ "$installed" == <->.<->.<-> && "$remote" == <->.<->.<-> ]] || return 1
+
+  local -a installed_parts=("${(@s:.:)installed}")
+  local -a remote_parts=("${(@s:.:)remote}")
+  local installed_part remote_part
+  integer index
+
+  for index in 1 2 3; do
+    installed_part="${installed_parts[index]}"
+    remote_part="${remote_parts[index]}"
+    while [[ "$installed_part" == 0?* ]]; do
+      installed_part="${installed_part#0}"
+    done
+    while [[ "$remote_part" == 0?* ]]; do
+      remote_part="${remote_part#0}"
+    done
+
+    (( ${#remote_part} > ${#installed_part} )) && return 0
+    (( ${#remote_part} < ${#installed_part} )) && return 1
+    [[ "$remote_part" > "$installed_part" ]] && return 0
+    [[ "$remote_part" < "$installed_part" ]] && return 1
+  done
   return 1
 }
 
@@ -770,7 +789,7 @@ function _ai_candy_compute_ai_tool_status() {
 
   if [[ -n "$installed_version" ]]; then
     local update_ind=""
-    _ai_candy_version_differs "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
+    _ai_candy_update_available "$installed_version" "$remote_version" && update_ind="%{$fg[red]%}*"
 
     # Count running instances (strip whitespace, default to 0)
     _ai_candy_count_ai_instances "$process_name"

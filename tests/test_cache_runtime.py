@@ -200,6 +200,115 @@ builtin print -r -- \
             self.assertNotEqual(0, status)
             self.assertFalse(file_cache.exists())
 
+    def test_corrupt_sqlite_database_is_recreated_in_place(self) -> None:
+        if shutil.which("sqlite3") is None:
+            self.skipTest("sqlite3 is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_persist_write git_root key old "$EPOCHSECONDS" || return 70
+[[ "$_AI_CANDY_CACHE_BACKEND" == sqlite ]] || return 71
+_ai_candy_cache_remove_path "${_AI_CANDY_CACHE_DB_FILE}-journal"
+_ai_candy_cache_remove_path "${_AI_CANDY_CACHE_DB_FILE}-shm"
+_ai_candy_cache_remove_path "${_AI_CANDY_CACHE_DB_FILE}-wal"
+builtin print -r -- 'not a sqlite database' >| "$_AI_CANDY_CACHE_DB_FILE"
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
+
+if _ai_candy_cache_persist_write git_root key new "$EPOCHSECONDS"; then
+  write_state=ok
+else
+  write_state=failed
+fi
+if _ai_candy_cache_persist_read git_root key; then
+  read_state=ok
+  value="$REPLY"
+else
+  read_state=missing
+  value="${REPLY:-empty}"
+fi
+owner=$(<"$_AI_CANDY_CACHE_BACKEND_OWNER_FILE")
+file_cache="${_AI_CANDY_CACHE_DIR}/git_root_cache"
+file_state=$([[ -e "$file_cache" ]] && print present || print absent)
+builtin print -r -- \
+  "WRITE=${write_state} READ=${read_state} VALUE=${value} BACKEND=${_AI_CANDY_CACHE_BACKEND} OWNER=${owner} FILE=${file_state}"
+""",
+                cache_home=root / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex(
+            result.stdout,
+            r"^WRITE=ok READ=ok VALUE=new\|[0-9]+ "
+            r"BACKEND=sqlite OWNER=sqlite FILE=absent\n$",
+        )
+
+    def test_transient_sqlite_failure_preserves_the_database(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            sqlite = bin_dir / "sqlite3"
+            sqlite.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'Error: database is locked' >&2\n"
+                "exit 1\n",
+                encoding="ascii",
+            )
+            sqlite.chmod(0o755)
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_atomic_write_unlocked \
+  "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" sqlite || return 70
+builtin print -r -- sentinel >| "$_AI_CANDY_CACHE_DB_FILE"
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
+if _ai_candy_cache_backend_init; then
+  state=ready
+else
+  state=failed
+fi
+builtin print -r -- \
+  "STATE=${state} DB=$(<"$_AI_CANDY_CACHE_DB_FILE") OWNER=$(<"$_AI_CANDY_CACHE_BACKEND_OWNER_FILE") BACKEND=${_AI_CANDY_CACHE_BACKEND}"
+""",
+                cache_home=root / "cache",
+                env={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "STATE=failed DB=sentinel OWNER=sqlite BACKEND=none\n",
+            result.stdout,
+        )
+
+    def test_failed_persistent_read_clears_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_atomic_write_unlocked \
+  "$_AI_CANDY_CACHE_BACKEND_OWNER_FILE" sqlite || return 70
+_AI_CANDY_HAS_SQLITE3=0
+_AI_CANDY_CACHE_BACKEND_STATE=0
+_AI_CANDY_CACHE_BACKEND=none
+REPLY=stale
+if _ai_candy_cache_persist_read git_root key; then
+  state=hit
+else
+  state=missing
+fi
+builtin print -r -- "STATE=${state} REPLY=${REPLY:-empty}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATE=missing REPLY=empty\n", result.stdout)
+
     def test_contended_delete_cannot_restore_stale_persistent_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(

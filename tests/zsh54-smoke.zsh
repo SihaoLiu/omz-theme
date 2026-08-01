@@ -13,6 +13,11 @@ function validate_zsh54_theme() {
   _ai_candy_prompt_text_width $'a\xE4\xB8\xAD'
   [[ "$REPLY" == 3 ]]
 
+  _ai_candy_update_available 1.2.3 2.0.0
+  ! _ai_candy_update_available 2.0.0 1.2.3
+  ! _ai_candy_update_available 1.0.0 2.0.0-beta.1
+  _ai_candy_update_available 0009.0.0 10.0.0
+
   local -x GIT_CONFIG_COUNT=1
   local -x GIT_CONFIG_KEY_0=oh-my-zsh.hide-info
   local -x GIT_CONFIG_VALUE_0=1

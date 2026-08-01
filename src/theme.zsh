@@ -31,3 +31,5 @@ ZSH_THEME_GIT_PROMPT_CLEAN=""
 
 _ai_candy_restore_source_options
 builtin unfunction _ai_candy_restore_source_options
+
+# AI_CANDY_THEME_EOF

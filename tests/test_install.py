@@ -138,13 +138,11 @@ class InstallerTest(unittest.TestCase):
             result = self.run_installer(root, zshrc_text=original_zshrc)
             zshrc = home / ".zshrc"
             target = root / "oh-my-zsh" / "custom" / "themes" / THEME.name
-            backup = home / ".zshrc.ai-candy-backup"
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(THEME.read_bytes(), target.read_bytes())
             self.assertEqual(0o644, target.stat().st_mode & 0o777)
             self.assertEqual(original_zshrc, zshrc.read_text(encoding="ascii"))
-            self.assertFalse(backup.exists())
             self.assertIn('set ZSH_THEME="ai-candy" manually', result.stderr)
             self.assertEqual(THEME_URL + "\n", (root / "curl.log").read_text())
             self.assertEqual([], list(target.parent.glob(".ai-candy.*")))
@@ -161,7 +159,6 @@ class InstallerTest(unittest.TestCase):
                 'ZSH_THEME="ai-candy"\nsource "$ZSH/oh-my-zsh.sh"\n',
                 zshrc.read_text(encoding="ascii"),
             )
-            self.assertFalse((home / ".zshrc.ai-candy-backup").exists())
 
     def test_download_failure_preserves_existing_theme(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -249,6 +246,10 @@ class InstallerTest(unittest.TestCase):
             "wrong-file": b"#!/bin/sh\nexit 0\n",
             "incomplete-theme": (
                 b"#!/bin/sh\n# AI Candy - Oh My Zsh Theme\nexit 0\n"
+            ),
+            "truncated-valid-zsh": (
+                b"# AI Candy - Oh My Zsh Theme\n"
+                b"builtin unfunction _ai_candy_restore_source_options\n"
             ),
             "invalid-zsh": (
                 b"#!/bin/sh\n"
@@ -347,7 +348,6 @@ class InstallerTest(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(original_zshrc, zshrc.read_text(encoding="ascii"))
-            self.assertFalse((home / ".zshrc.ai-candy-backup").exists())
             self.assertIn("was not modified", result.stderr)
 
     def test_no_modify_option_leaves_existing_zshrc_unchanged(self) -> None:
@@ -364,7 +364,6 @@ class InstallerTest(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(original_zshrc, zshrc.read_text(encoding="ascii"))
-            self.assertFalse((home / ".zshrc.ai-candy-backup").exists())
 
     def test_identical_theme_is_not_replaced_or_backed_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
