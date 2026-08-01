@@ -198,7 +198,9 @@ print -r -- "AFTER=$_AI_CANDY_PP_GIT_EXT"
     return output
 
 
-def run_public_ip_refresh_with_slow_curl(cache_home: Path, bin_dir: Path) -> None:
+def run_public_ip_refresh_with_slow_curl(
+    cache_home: Path, bin_dir: Path, call_log: Path
+) -> None:
     script = r"""
 source "$1"
 _AI_CANDY_NETWORK_TIMEOUT=1
@@ -222,6 +224,7 @@ done
             **os.environ,
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "XDG_CACHE_HOME": str(cache_home),
+            "CURL_CALL_LOG": str(call_log),
         },
     )
 
@@ -553,16 +556,23 @@ _ai_candy_stop_registered_background_jobs
             root = Path(tmp)
             cache_home = root / "cache"
             bin_dir = root / "bin"
+            call_log = root / "curl.calls"
             bin_dir.mkdir()
             curl = bin_dir / "curl"
-            curl.write_text("#!/bin/sh\nsleep 0.4\nexit 28\n", encoding="utf-8")
+            curl.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$CURL_CALL_LOG\"\n"
+                "sleep 0.4\n"
+                "exit 28\n",
+                encoding="utf-8",
+            )
             curl.chmod(0o755)
 
-            start = time.monotonic()
-            run_public_ip_refresh_with_slow_curl(cache_home, bin_dir)
-            elapsed = time.monotonic() - start
+            run_public_ip_refresh_with_slow_curl(cache_home, bin_dir, call_log)
+            calls = call_log.read_text(encoding="ascii").splitlines()
 
-            self.assertLess(elapsed, 1.35)
+            self.assertGreater(len(calls), 0)
+            self.assertLess(len(calls), 4)
 
     def test_sqlite_initialization_does_not_block_theme_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -676,6 +686,7 @@ _ai_candy_stop_registered_background_jobs
             cache_home = root / "cache"
             prompt_cache = cache_home / "zsh-prompt"
             bin_dir = root / "bin"
+            completion = root / "process-probe.completed"
             prompt_cache.mkdir(parents=True)
             bin_dir.mkdir()
             sep = "\x1f"
@@ -695,11 +706,15 @@ _ai_candy_stop_registered_background_jobs
             for name in ("claude", "codex", "gemini", "kimi"):
                 write_command(bin_dir, name, f"printf '%s\\n' '{name} 1.2.3'")
             for name in ("pgrep", "ps"):
-                write_command(bin_dir, name, "sleep 1\nexit 0")
+                write_command(
+                    bin_dir,
+                    name,
+                    f"sleep 1\nprintf completed > '{completion}'\nexit 0",
+                )
 
-            elapsed = render_first_prompt(cache_home, bin_dir)
+            render_first_prompt(cache_home, bin_dir)
 
-            self.assertLess(elapsed, 0.75)
+            self.assertFalse(completion.exists())
 
     def test_cache_directory_setup_does_not_block_theme_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

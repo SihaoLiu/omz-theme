@@ -479,9 +479,6 @@ typeset -g _AI_CANDY_LOCAL_PROMPT_TIMEOUT=0.25 # 250 milliseconds
 # Background and user-requested probes do not block prompt rendering.
 typeset -g _AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT=1 # 1 second
 
-# Process count timeout (tool instance counts are optional prompt decoration)
-typeset -g _AI_CANDY_PROCESS_COUNT_TIMEOUT=0.05 # 50 milliseconds
-
 # High frequency cache (fast-changing data, checked frequently)
 typeset -g _AI_CANDY_CACHE_TTL_HIGH=30         # 30 seconds - PR status, CI checks
 
@@ -1669,10 +1666,6 @@ function _ai_candy_run_background_probe() {
   _ai_candy_run_with_timeout "${_AI_CANDY_BACKGROUND_LOCAL_PROBE_TIMEOUT:-1}" "$@"
 }
 
-function _ai_candy_run_process_count_probe() {
-  _ai_candy_run_with_timeout "${_AI_CANDY_PROCESS_COUNT_TIMEOUT:-0.05}" "$@"
-}
-
 # ============================================================================
 # CACHE DIRECTORY SETUP - Secure cache location in user's home directory
 # ============================================================================
@@ -1688,6 +1681,14 @@ else
 fi
 typeset -g _AI_CANDY_CACHE_READY=0
 
+function _ai_candy_cache_dir_is_owned_by_current_user() {
+  local -a owner
+  [[ -d "$_AI_CANDY_CACHE_DIR" && ! -L "$_AI_CANDY_CACHE_DIR" ]] || return 1
+  (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) || return 1
+  builtin zstat -A owner +uid -- "$_AI_CANDY_CACHE_DIR" 2>/dev/null || return 1
+  [[ "${owner[1]-}" == "$EUID" ]]
+}
+
 function _ai_candy_cache_init_dir() {
   [[ -L "$_AI_CANDY_CACHE_DIR" ]] && return 1
 
@@ -1696,9 +1697,11 @@ function _ai_candy_cache_init_dir() {
   else
     ( umask 077 && command mkdir -p "$_AI_CANDY_CACHE_DIR" ) 2>/dev/null || return 1
   fi
+  _ai_candy_cache_dir_is_owned_by_current_user || return 1
   _ai_candy_chmod 700 "$_AI_CANDY_CACHE_DIR" 2>/dev/null || return 1
 
-  [[ -d "$_AI_CANDY_CACHE_DIR" && -w "$_AI_CANDY_CACHE_DIR" ]] || return 1
+  _ai_candy_cache_dir_is_owned_by_current_user && \
+    [[ -w "$_AI_CANDY_CACHE_DIR" ]] || return 1
   _AI_CANDY_CACHE_READY=1
 }
 
@@ -1720,6 +1723,7 @@ typeset -g _AI_CANDY_CLAUDE_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/claude_version_ca
 typeset -g _AI_CANDY_CODEX_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/codex_version_cache"
 typeset -g _AI_CANDY_GEMINI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gemini_version_cache"
 typeset -g _AI_CANDY_KIMI_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/kimi_version_cache"
+typeset -g _AI_CANDY_AI_PROCESS_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/ai_process_counts"
 
 # GitHub integration caches
 typeset -g _AI_CANDY_GH_AUTH_CACHE_FILE="${_AI_CANDY_CACHE_DIR}/gh_auth_status"

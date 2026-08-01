@@ -59,6 +59,7 @@ function _ai_candy_ai_tool_update_cache_worker() {
     if [[ -n "$installed_version" && $_AI_CANDY_HAS_CURL -eq 1 && \
           "$allow_network" == 1 ]]; then
       remote_payload=$(_ai_candy_run_with_timeout "$net_timeout" curl -sL \
+        --proto '=https' --proto-redir '=https' \
         --max-time "$net_timeout" "$version_url" 2>/dev/null)
       [[ "$remote_payload" =~ $manifest_pattern ]] && \
         remote_version="${match[1]}"
@@ -590,50 +591,103 @@ typeset -g _AI_CANDY_PP_AI_STATUS_LONG=""
 typeset -gA _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
 typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
 typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_TTL=30
-typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
 typeset -g _AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL=5
+
+function _ai_candy_ai_process_snapshot_is_valid() {
+  local snapshot="$1"
+  local current_time="${2:-$EPOCHSECONDS}"
+  local -a fields=("${(@s:|:)snapshot}")
+  local value
+  integer index
+
+  (( ${#fields} == 5 )) || return 1
+  for (( index=1; index<=4; index++ )); do
+    value="${fields[$index]}"
+    [[ "$value" == <-> ]] && (( ${#value} <= 7 )) || return 1
+  done
+  _ai_candy_cache_timestamp_is_valid "${fields[5]}" "$current_time"
+}
+
+function _ai_candy_ai_process_count_update_worker() {
+  local lock_file="$1"
+  local cache_file="$2"
+  local persistence_epoch="$3"
+
+  _ai_candy_acquire_background_lock "$lock_file" || return
+  {
+    local process_table="" line process_name tool_name
+    local node_tool_pattern='/bin/(claude|codex|gemini|kimi)([[:space:]]|$)'
+    local -A counts=(claude 0 codex 0 gemini 0 kimi 0)
+
+    if [[ "$OSTYPE" == darwin* ]]; then
+      process_table=$(_ai_candy_run_background_probe \
+        ps -U "$UID" -o comm= -o args= 2>/dev/null) || return
+    else
+      process_table=$(_ai_candy_run_background_probe \
+        ps -u "$UID" -o comm= -o args= 2>/dev/null) || return
+    fi
+
+    for line in "${(@f)process_table}"; do
+      [[ -n "$line" && "$line" != *"--version"* ]] || continue
+      line="${line#"${line%%[![:space:]]*}"}"
+      process_name="${line%%[[:space:]]*}"
+      process_name="${process_name:t}"
+      case "$process_name" in
+        claude|codex|gemini|kimi)
+          counts[$process_name]=$(( ${counts[$process_name]} + 1 ))
+          ;;
+        node)
+          if [[ "$line" =~ $node_tool_pattern ]]; then
+            tool_name="${match[1]}"
+            counts[$tool_name]=$(( ${counts[$tool_name]} + 1 ))
+          fi
+          ;;
+      esac
+    done
+
+    _ai_candy_cache_write "$cache_file" \
+      "${counts[claude]}|${counts[codex]}|${counts[gemini]}|${counts[kimi]}|${EPOCHSECONDS}" \
+      "$_AI_CANDY_CACHE_COMMIT_WAIT_TICKS" "$persistence_epoch"
+  } always {
+    _ai_candy_cache_lock_release "${lock_file}.d"
+  }
+}
+
 function _ai_candy_refresh_ai_process_counts() {
-  local current_time=$EPOCHSECONDS
+  local current_time="$EPOCHSECONDS"
   if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME" \
        "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
     return 0
   fi
-  if _ai_candy_cache_timestamp_is_fresh "$_AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME" \
-       "$_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time"; then
-    return 0
+
+  if _ai_candy_cache_read_small_file "$_AI_CANDY_AI_PROCESS_CACHE_FILE"; then
+    local snapshot="$REPLY"
+    if _ai_candy_ai_process_snapshot_is_valid "$snapshot" "$current_time"; then
+      local -a fields=("${(@s:|:)snapshot}")
+      _AI_CANDY_AI_PROCESS_COUNTS=(
+        claude "${fields[1]}"
+        codex "${fields[2]}"
+        gemini "${fields[3]}"
+        kimi "${fields[4]}"
+      )
+      _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME="${fields[5]}"
+      if _ai_candy_cache_timestamp_is_fresh \
+           "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME" \
+           "$_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL" "$current_time"; then
+        return 0
+      fi
+    fi
   fi
-  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME="$current_time"
 
-  local process_table=""
-  if [[ "$OSTYPE" == darwin* ]]; then
-    process_table=$(_ai_candy_run_process_count_probe ps -U "$UID" -o comm= -o args= 2>/dev/null) || return 0
-  else
-    process_table=$(_ai_candy_run_process_count_probe ps -u "$UID" -o comm= -o args= 2>/dev/null) || return 0
-  fi
-
-  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
-  _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME="$current_time"
-
-  local line process_name
-  for line in "${(@f)process_table}"; do
-    [[ -n "$line" && "$line" != *"--version"* ]] || continue
-    line="${line#"${line%%[![:space:]]*}"}"
-    process_name="${line%%[[:space:]]*}"
-    process_name="${process_name:t}"
-    case "$process_name" in
-      claude|codex|kimi)
-        _AI_CANDY_AI_PROCESS_COUNTS[$process_name]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[$process_name]:-0} + 1 ))
-        ;;
-      gemini)
-        _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
-        ;;
-      node)
-        if [[ "$line" == *'/bin/gemini'* ]]; then
-          _AI_CANDY_AI_PROCESS_COUNTS[gemini]=$(( ${_AI_CANDY_AI_PROCESS_COUNTS[gemini]:-0} + 1 ))
-        fi
-        ;;
-    esac
-  done
+  _ai_candy_request_background_refresh ai-process-counts \
+    "$_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL" "$current_time" || return 0
+  local persistence_epoch=""
+  _ai_candy_cache_read_persistence_epoch || return 0
+  persistence_epoch="$REPLY"
+  _ai_candy_start_registered_background_worker \
+    _ai_candy_ai_process_count_update_worker \
+    "${_AI_CANDY_AI_PROCESS_CACHE_FILE}.updating" \
+    "$_AI_CANDY_AI_PROCESS_CACHE_FILE" "$persistence_epoch" || true
 }
 
 function _ai_candy_count_ai_instances() {

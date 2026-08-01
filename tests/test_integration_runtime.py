@@ -183,6 +183,58 @@ _ai_candy_stop_registered_background_jobs
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("CACHE=1.2.3", result.stdout)
 
+    def test_tool_version_redirects_remain_https_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            curl_log = root / "curl.log"
+            bin_dir.mkdir()
+            for name, body in (
+                ("codex", "printf '%s\\n' 'codex 1.2.3'"),
+                (
+                    "curl",
+                    "printf '%s\\n' \"$*\" > \"$CURL_LOG\"\n"
+                    "printf '%s\\n' '{\"version\":\"2.0.0\"}'",
+                ),
+            ):
+                command = bin_dir / name
+                command.write_text(f"#!/bin/sh\n{body}\n", encoding="ascii")
+                command.chmod(0o755)
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_HAS_CURL=1
+function _ai_candy_acquire_background_lock() { return 0; }
+function _ai_candy_cache_lock_release() { return 0; }
+function _ai_candy_run_background_probe() {
+  builtin print -r -- "codex 1.2.3"
+}
+function _ai_candy_run_with_timeout() {
+  shift
+  command "$@"
+}
+function _ai_candy_cache_write() { return 0; }
+_ai_candy_cache_read_persistence_epoch
+epoch="$REPLY"
+_ai_candy_ai_tool_update_cache_worker \
+  "$_AI_CANDY_CODEX_CACHE_FILE" codex \
+  https://example.invalid/version 1 \
+  "${_AI_CANDY_CODEX_CACHE_FILE}.updating" 1 \
+  "$epoch"
+""",
+                cache_home=root / "cache",
+                env={
+                    "CURL_LOG": str(curl_log),
+                    "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                },
+            )
+            arguments = curl_log.read_text(encoding="ascii")
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("--proto =https", arguments)
+        self.assertIn("--proto-redir =https", arguments)
+
     def test_tool_status_allows_a_slow_local_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

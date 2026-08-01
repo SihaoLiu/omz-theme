@@ -12,6 +12,37 @@ from tests.theme_test_support import run_zsh
 
 
 class ThemeRuntimeTest(unittest.TestCase):
+    def test_help_discloses_and_lists_all_short_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_prompt_emoji_help
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("AI_CANDY_ENABLE_SHORT_ALIASES=1", result.stdout)
+        for command in ("o", "off", "on"):
+            self.assertRegex(result.stdout, rf"(?m)^.*\s{command}\s+.*$")
+
+    def test_logical_git_path_treats_metacharacters_literally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+value=$(_ai_candy_logicalize_path_from_pwd \
+  '/physical/repo[1]' '/logical/repo[1]/child' \
+  '/physical/repo[1]/child')
+print -r -- "VALUE=${value}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("VALUE=/logical/repo[1]\n", result.stdout)
+
     @staticmethod
     def _make_git_repo(path: Path) -> None:
         path.mkdir()

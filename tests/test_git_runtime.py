@@ -92,6 +92,9 @@ function _ai_candy_run_local_probe() {
 }
 _ai_candy_get_cached_git_root
 first="$REPLY"
+for retry_key in "${(@k)_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT}"; do
+  _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$retry_key]=$(( EPOCHSECONDS - 1 ))
+done
 _ai_candy_get_cached_git_root
 second="$REPLY"
 print -r -- "FIRST=${first} SECOND=${second}"

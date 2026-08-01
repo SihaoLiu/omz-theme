@@ -21,6 +21,7 @@ typeset -g _DEMO_DOCKER_CONTAINER_NAME=""
 typeset -ga _DEMO_RENDERER_PROCESS_TREE=()
 typeset -g _DEMO_CLEANUP_STARTED=0
 typeset -g _DEMO_CLEANUP_STATUS=0
+typeset -g _DEMO_STRINGS_COMMAND=""
 
 [[ -f "$PRIVACY_MARKER_FILE" && ! -L "$PRIVACY_MARKER_FILE" ]] || {
   print -u2 -r -- "Privacy marker policy must be a regular file."
@@ -63,7 +64,7 @@ for color in {0..255}; do
   FG[$color]=$'\e['"38;5;${color}m"
 done
 
-AI_CANDY_ENABLE_SHORT_ALIASES=0
+AI_CANDY_ENABLE_SHORT_ALIASES=1
 source "${fixture_dir}/ai-candy.zsh-theme"
 
 typeset -g _DEMO_COLUMNS=160
@@ -271,30 +272,30 @@ function _demo_apply_command() {
       _DEMO_TITLE="RICH / LONG"
       _DEMO_FRAME_NAME="on"
       ;;
-    compact)
+    COLUMNS=112)
       _DEMO_COLUMNS=112
-      _DEMO_MESSAGE="Layout: COMPACT"
-      _DEMO_TITLE="RICH / COMPACT"
-      _DEMO_FRAME_NAME="compact"
+      _DEMO_MESSAGE="Layout: SHORT"
+      _DEMO_TITLE="RICH / SHORT"
+      _DEMO_FRAME_NAME="short"
       ;;
-    minimal)
+    COLUMNS=72)
       _DEMO_COLUMNS=72
-      _DEMO_MESSAGE="Layout: MINIMAL"
-      _DEMO_TITLE="RICH / MINIMAL"
-      _DEMO_FRAME_NAME="minimal"
+      _DEMO_MESSAGE="Layout: MIN"
+      _DEMO_TITLE="RICH / MIN"
+      _DEMO_FRAME_NAME="min"
       ;;
-    clean)
+    COLUMNS=160)
       _DEMO_COLUMNS=160
-      _DEMO_MESSAGE=""
+      _DEMO_MESSAGE="Layout: LONG"
       _DEMO_TITLE="RICH / LONG"
-      _DEMO_FRAME_NAME="clean"
+      _DEMO_FRAME_NAME="long"
       ;;
     quit|exit)
       builtin print
       return 1
       ;;
     *)
-      _DEMO_MESSAGE="Commands: e p n a o off on compact minimal quit"
+      _DEMO_MESSAGE="Commands: e p n a o off on COLUMNS=112 COLUMNS=72 COLUMNS=160 quit"
       ;;
   esac
   _demo_show_frame
@@ -303,7 +304,8 @@ function _demo_apply_command() {
 _demo_seed_caches
 _demo_show_frame
 if [[ -n "$_DEMO_CAPTURE_DIR" ]]; then
-  for demo_command in e p n a o off on compact minimal clean; do
+  for demo_command in e p n a o off on \
+    "COLUMNS=112" "COLUMNS=72" "COLUMNS=160"; do
     _demo_apply_command "$demo_command"
   done
 else
@@ -342,9 +344,9 @@ while IFS= read -r demo_command; do
     o) mode=no-os ;;
     off) mode=off ;;
     on) mode=on ;;
-    compact) mode=compact ;;
-    minimal) mode=minimal ;;
-    clean) mode=clean ;;
+    COLUMNS=112) mode=short ;;
+    COLUMNS=72) mode=min ;;
+    COLUMNS=160) mode=long ;;
     quit|exit)
       printf '\n'
       exit 0
@@ -896,7 +898,7 @@ function _demo_publish_assets() {
     "Network mode: OFF"
     "Disabled: public IP, GitHub username/PR status, AI update checks"
     "All toggles turned ON:"
-    "Layout: MINIMAL"
+    "Layout: MIN"
   )
   for expected_text in "${expected_texts[@]}"; do
     if [[ "$text_content" != *"$expected_text"* ]]; then
@@ -905,17 +907,12 @@ function _demo_publish_assets() {
     fi
   done
 
-  local strings_command="" strings_output scan_status
-  strings_command=$(builtin whence -p strings 2>/dev/null) || strings_command=""
-  [[ -x "$strings_command" ]] || {
-    print -u2 -r -- "The strings command is required for binary privacy checks."
-    return 1
-  }
+  local strings_output scan_status
   for asset in "$gif_output" "$png_output"; do
     scan_status=0
     strings_output=$(command mktemp "${work_dir}/.${asset:t}.strings.XXXXXX")
     command chmod 600 "$strings_output"
-    command "$strings_command" -a "$asset" >| "$strings_output" || scan_status=$?
+    command "$_DEMO_STRINGS_COMMAND" -a "$asset" >| "$strings_output" || scan_status=$?
     if (( scan_status == 0 )); then
       _demo_assert_private_text_absent "$strings_output" || scan_status=$?
     fi
@@ -955,6 +952,13 @@ if (( $# > 0 )); then
   _demo_usage >&2
   exit 2
 fi
+
+_DEMO_STRINGS_COMMAND=$(builtin whence -p strings 2>/dev/null) || \
+  _DEMO_STRINGS_COMMAND=""
+[[ -x "$_DEMO_STRINGS_COMMAND" ]] || {
+  print -u2 -r -- "The strings command is required for binary privacy checks."
+  exit 1
+}
 
 typeset -g work_dir=""
 typeset -g scratch_dir="${REPO_ROOT}/temp"

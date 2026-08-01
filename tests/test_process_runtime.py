@@ -19,6 +19,33 @@ from tests.theme_test_support import (
 
 
 class ProcessRuntimeTest(unittest.TestCase):
+    def test_dash_without_setsid_fails_closed_silently(self) -> None:
+        dash = shutil.which("dash")
+        if dash is None:
+            self.skipTest("dash is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+command "$DASH" -c "$_AI_CANDY_TIMEOUT_SUPERVISOR_SCRIPT" \
+  ai-candy-timeout "$COMPLETION_FILE" "$GROUP_FILE" "" \
+  /usr/bin/env /bin/true
+print -r -- "STATUS=$?"
+""",
+                cache_home=root / "cache",
+                env={
+                    "COMPLETION_FILE": str(root / "completion"),
+                    "DASH": dash,
+                    "GROUP_FILE": str(root / "group"),
+                },
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stderr)
+        self.assertEqual("STATUS=125\n", result.stdout)
+
     def _assert_timeout_stops_output_holding_orphan(
         self, timeout_setup: str, env: dict[str, str]
     ) -> None:

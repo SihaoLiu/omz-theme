@@ -277,6 +277,7 @@ function _ai_candy_cache_write() {
   local lock_dir="${cache_file}.lock.d"
   local write_status=0
 
+  [[ "$cache_file" == /* ]] || return 1
   (( _AI_CANDY_CACHE_READY )) || return 1
   _ai_candy_cache_lock_acquire "$_AI_CANDY_CACHE_COMMIT_LOCK" \
     "$_AI_CANDY_CACHE_COMMIT_STALE_AFTER" "$max_wait_ticks" || return 1
@@ -667,6 +668,13 @@ function _ai_candy_mem_cache_remove_key() {
       done
       _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=("${(@kv)kept}")
       ;;
+    git_root_retry)
+      for candidate in "${(@k)_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT}"; do
+        [[ "$candidate" == "$remove_key" ]] || \
+          kept[$candidate]="${_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$candidate]}"
+      done
+      _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=("${(@kv)kept}")
+      ;;
     git_config_graph_timeout)
       for candidate in "${(@k)_AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY}"; do
         [[ "$candidate" == "$remove_key" ]] || \
@@ -709,6 +717,7 @@ function _ai_candy_mem_cache_cleanup() {
     git_options) keys=("${(@k)_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}") ;;
     git_remote) keys=("${(@k)_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}") ;;
     git_snapshot_retry) keys=("${(@k)_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT}") ;;
+    git_root_retry) keys=("${(@k)_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT}") ;;
     git_stash) keys=("${(@k)_AI_CANDY_GIT_STASH_COUNT_BY_LOG}") ;;
     refresh) keys=("${(@k)_AI_CANDY_REFRESH_REQUESTED}") ;;
     *) return 1 ;;
@@ -725,6 +734,7 @@ function _ai_candy_mem_cache_cleanup() {
       git_options) value="${_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$key]-}" ;;
       git_remote) value="${_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$key]-}" ;;
       git_snapshot_retry) value="${_AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT[$key]-}" ;;
+      git_root_retry) value="${_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$key]-}" ;;
       git_stash) value="${_AI_CANDY_GIT_STASH_COUNT_BY_LOG[$key]-}" ;;
       refresh) value="${_AI_CANDY_REFRESH_REQUESTED[$key]-}" ;;
     esac
@@ -1595,6 +1605,7 @@ function _ai_candy_cache_cleanup_unlocked() {
     "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"
     "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"
     "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
+    "$_AI_CANDY_AI_PROCESS_CACHE_FILE"
   )
   for cache_file in "${simple_cache_files[@]}"; do
     [[ -f "$cache_file" ]] || continue

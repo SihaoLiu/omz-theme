@@ -41,13 +41,13 @@ Sleep 900ms
 Type "on"
 Enter
 Sleep 1200ms
-Type "compact"
+Type "COLUMNS=112"
 Enter
 Sleep 1100ms
-Type "minimal"
+Type "COLUMNS=72"
 Enter
 Sleep 1400ms
-Type "clean"
+Type "COLUMNS=160"
 Enter
 Sleep 1200ms
 Screenshot demo.png

@@ -11,6 +11,7 @@ typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_CONTENT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_GENERATION_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_STAT_BY_PATH
 typeset -gA _AI_CANDY_GIT_VOLATILE_CONFIG_STABLE_BY_PATH
+typeset -gA _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT
 typeset -gi _AI_CANDY_GIT_CONTEXT_KEY_RENDER_ID=-1
 typeset -g _AI_CANDY_GIT_CONTEXT_KEY_INPUT=""
 typeset -g _AI_CANDY_GIT_CONTEXT_KEY_VALUE=""
@@ -66,6 +67,7 @@ function _ai_candy_apply_git_topology_generation() {
   _AI_CANDY_MEM_CACHE_GIT_ROOT=()
   _AI_CANDY_MEM_CACHE_GIT_ROOT_GENERATION=()
   _AI_CANDY_MEM_CACHE_GIT_HIERARCHY=()
+  _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_PP_CACHED_GIT_ROOT=""
   _AI_CANDY_SMART_PATH_CONTEXT_KEY=""
@@ -841,6 +843,12 @@ function _ai_candy_get_cached_git_root() {
     fi
   fi
 
+  local retry_after="${_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$root_cache_key]-0}"
+  if [[ "$retry_after" == <-> ]] && (( current_time < retry_after )); then
+    REPLY="NOT_GIT"
+    return 0
+  fi
+
   # Compute git root
   local git_root=""
   integer git_status=0
@@ -848,9 +856,20 @@ function _ai_candy_get_cached_git_root() {
     git rev-parse --show-toplevel 2>/dev/null) || git_status=$?
   if (( git_status != 0 && git_status != 128 )) || \
      (( git_status == 0 && ${#git_root} == 0 )); then
+    local retry_ttl="${_AI_CANDY_GIT_PROBE_FAILURE_RETRY_TTL:-3}"
+    if [[ "$retry_ttl" != <-> ]] || (( retry_ttl < 1 || retry_ttl > 30 )); then
+      retry_ttl=3
+    fi
+    _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$root_cache_key]=$((
+      current_time + retry_ttl
+    ))
+    (( ${#_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT} > \
+       _AI_CANDY_MEM_CACHE_CLEANUP_THRESHOLD )) && \
+      _ai_candy_mem_cache_cleanup git_root_retry
     REPLY="NOT_GIT"
     return 0
   fi
+  _ai_candy_mem_cache_remove_key git_root_retry "$root_cache_key"
   if (( git_status == 128 )); then
     if [[ -z "$discovery_context" || \
           -n "${GIT_DIR:-}${GIT_WORK_TREE:-}${GIT_COMMON_DIR:-}" ]] && \
@@ -1040,7 +1059,7 @@ typeset -g _AI_CANDY_GIT_HIDE_INFO=0
 typeset -g _AI_CANDY_GIT_HIDE_DIRTY=0
 typeset -g _AI_CANDY_GIT_CONFIG_CACHE_TTL=5
 typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
-typeset -g _AI_CANDY_GIT_SNAPSHOT_FAILURE_RETRY_TTL=3
+typeset -g _AI_CANDY_GIT_PROBE_FAILURE_RETRY_TTL=3
 typeset -gA _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT
 
 function _ai_candy_reset_git_snapshot() {
@@ -1196,7 +1215,7 @@ function _ai_candy_collect_git_snapshot() {
   local command_status=0
   snapshot=$(GIT_OPTIONAL_LOCKS=0 _ai_candy_run_local_probe git "${status_args[@]}" 2>/dev/null) || command_status=$?
   if (( command_status != 0 )); then
-    local retry_ttl="${_AI_CANDY_GIT_SNAPSHOT_FAILURE_RETRY_TTL:-3}"
+    local retry_ttl="${_AI_CANDY_GIT_PROBE_FAILURE_RETRY_TTL:-3}"
     if [[ "$retry_ttl" != <-> ]] || (( retry_ttl < 1 || retry_ttl > 30 )); then
       retry_ttl=3
     fi

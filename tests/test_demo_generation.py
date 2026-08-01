@@ -21,7 +21,7 @@ PRIVACY_MARKERS = ROOT / "scripts" / "privacy-markers.zsh"
 VALID_DEMO_OUTPUT = (
     "printf '%s\\n' 'AI Candy |' 'demo@workstation' 'Network mode: OFF' "
     "'Disabled: public IP, GitHub username/PR status, AI update checks' "
-    "'All toggles turned ON:' 'Layout: MINIMAL' > demo.txt\n"
+    "'All toggles turned ON:' 'Layout: MIN' > demo.txt\n"
 )
 
 
@@ -914,6 +914,7 @@ printf 'png\\n' > demo.png
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             fake_bin = project / "bin"
+            git_was_called = project / "git.was-called"
             scripts_dir = copy_demo_sources(project)
             fake_bin.mkdir()
             renderer = fake_bin / "vhs"
@@ -937,7 +938,6 @@ printf 'png\\n' > demo.png
                 "cat",
                 "cp",
                 "env",
-                "git",
                 "mv",
                 "rm",
                 "id",
@@ -946,6 +946,14 @@ printf 'png\\n' > demo.png
                 executable = shutil.which(name)
                 self.assertIsNotNone(executable, name)
                 (fake_bin / name).symlink_to(executable)
+            git = fake_bin / "git"
+            git.write_text(
+                "#!/bin/sh\n"
+                f"printf called > '{git_was_called}'\n"
+                "exit 99\n",
+                encoding="ascii",
+            )
+            git.chmod(0o755)
 
             generated = subprocess.run(
                 [shutil.which("zsh") or "zsh", str(scripts_dir / GENERATOR.name)],
@@ -960,6 +968,7 @@ printf 'png\\n' > demo.png
 
             self.assertNotEqual(0, generated.returncode)
             self.assertIn("strings", generated.stderr)
+            self.assertFalse(git_was_called.exists())
 
     def test_fixture_is_synthetic_network_free_and_interactive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -988,20 +997,27 @@ printf 'png\\n' > demo.png
             subprocess.run(["zsh", "-n", str(session)], check=True)
             subprocess.run(["sh", "-n", str(playback_session)], check=True)
             session_text = session.read_text(encoding="ascii")
+            tape_text = TAPE.read_text(encoding="ascii")
             self.assertIn("ai-candy.zsh-theme", session_text)
             self.assertIn("PROMPT", session_text)
             self.assertIn("RPROMPT", session_text)
             self.assertIn("_ai_candy_format_git_snapshot", session_text)
             self.assertIn("_ai_candy_compute_gh_username_direct", session_text)
             self.assertIn("_ai_candy_prompt_toggle_network", session_text)
+            self.assertIn("AI_CANDY_ENABLE_SHORT_ALIASES=1", session_text)
+            self.assertNotIn('Type "compact"', tape_text)
+            self.assertNotIn('Type "minimal"', tape_text)
+            self.assertNotIn('Type "clean"', tape_text)
+            self.assertIn('Type "COLUMNS=112"', tape_text)
+            self.assertIn('Type "COLUMNS=72"', tape_text)
+            self.assertIn('Type "COLUMNS=160"', tape_text)
             self.assertIn(
                 'export XDG_DATA_HOME="${fixture_dir}/data"', session_text
             )
             self.assertEqual(
                 {
-                    "clean.ansi",
-                    "compact.ansi",
-                    "minimal.ansi",
+                    "long.ansi",
+                    "min.ansi",
                     "no-os.ansi",
                     "no-tools.ansi",
                     "off.ansi",
@@ -1009,6 +1025,7 @@ printf 'png\\n' > demo.png
                     "on.ansi",
                     "plain.ansi",
                     "rich.ansi",
+                    "short.ansi",
                     "slash.ansi",
                 },
                 {path.name for path in fixture_dir.glob("*.ansi")},
@@ -1073,7 +1090,10 @@ printf 'png\\n' > demo.png
             recorded = subprocess.run(
                 [str(session)],
                 cwd=fixture_dir,
-                input="e\np\nn\na\no\noff\non\ncompact\nminimal\nquit\n",
+                input=(
+                    "e\np\nn\na\no\noff\non\n"
+                    "COLUMNS=112\nCOLUMNS=72\nquit\n"
+                ),
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1090,13 +1110,16 @@ printf 'png\\n' > demo.png
                 recorded.stdout,
             )
             self.assertIn("All toggles turned ON", recorded.stdout)
-            self.assertIn("Layout: COMPACT", recorded.stdout)
-            self.assertIn("Layout: MINIMAL", recorded.stdout)
+            self.assertIn("Layout: SHORT", recorded.stdout)
+            self.assertIn("Layout: MIN", recorded.stdout)
 
             replayed = subprocess.run(
                 [str(playback_session)],
                 cwd=fixture_dir,
-                input="e\np\nn\na\no\noff\non\ncompact\nminimal\nquit\n",
+                input=(
+                    "e\np\nn\na\no\noff\non\n"
+                    "COLUMNS=112\nCOLUMNS=72\nquit\n"
+                ),
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1105,7 +1128,7 @@ printf 'png\\n' > demo.png
             self.assertEqual(0, replayed.returncode, replayed.stderr)
             self.assertIn("demo@workstation", replayed.stdout)
             self.assertIn("Network mode: OFF", replayed.stdout)
-            self.assertIn("Layout: MINIMAL", replayed.stdout)
+            self.assertIn("Layout: MIN", replayed.stdout)
 
             fixture_text = "\n".join(
                 path.read_text(encoding="utf-8", errors="strict")

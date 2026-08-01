@@ -292,11 +292,15 @@ function _ai_candy_prompt_emoji_help() {
   builtin print -r -- "${_AI_CANDY_BOX_V}    Space mode enables double-click to select path segments       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$MID"
   builtin print -r -- "${_AI_CANDY_BOX_V}  QUICK COMMANDS                                                  ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    Enable aliases with AI_CANDY_ENABLE_SHORT_ALIASES=1           ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    u         Refresh all cached prompt info                      ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    e         Toggle emoji/plaintext mode                         ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    p         Toggle path separator (space/slash)                 ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    n         Toggle network features (IP, GitHub, AI updates)    ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    a         Toggle AI tools display (show/hide)                 ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    o         Toggle OS/kernel display (show/hide)                ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    off       Turn off all optional prompt features               ${_AI_CANDY_BOX_V}"
+  builtin print -r -- "${_AI_CANDY_BOX_V}    on        Turn on all optional prompt features                ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    h         Show this help                                      ${_AI_CANDY_BOX_V}"
   builtin print -r -- "${_AI_CANDY_BOX_V}    t         Show tool availability status                       ${_AI_CANDY_BOX_V}"
   builtin print -r -- "$BOT"
@@ -596,6 +600,7 @@ function _ai_candy_prompt_refresh_all_caches() {
     "$_AI_CANDY_GH_USERNAME_GH_CACHE_FILE"
     "$_AI_CANDY_GH_USERNAME_SSH_CACHE_FILE"
     "$_AI_CANDY_PUBLIC_IP_CACHE_FILE"
+    "$_AI_CANDY_AI_PROCESS_CACHE_FILE"
     "$_AI_CANDY_CLAUDE_CACHE_FILE"
     "$_AI_CANDY_CODEX_CACHE_FILE"
     "$_AI_CANDY_GEMINI_CACHE_FILE"
@@ -643,6 +648,7 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_MEM_CACHE_TOMBSTONES=()
   _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT=()
   _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT=()
+  _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_SNAPSHOT_RETRY_AFTER_BY_CONTEXT=()
   _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY=()
   _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY=()
@@ -662,7 +668,6 @@ function _ai_candy_prompt_refresh_all_caches() {
   _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=0
   _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 0 gemini 0 kimi 0)
   _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=0
-  _AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=0
   _AI_CANDY_REFRESH_REQUESTED=()
   _AI_CANDY_GIT_SNAPSHOT_RENDER_ID=-1
   _AI_CANDY_GIT_SNAPSHOT_CONTEXT=""

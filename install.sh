@@ -10,12 +10,8 @@ theme_name="ai-candy"
 theme_url_default="https://raw.githubusercontent.com/SihaoLiu/ai-candy/refs/heads/main/ai-candy.zsh-theme"
 theme_url=${AI_CANDY_THEME_URL:-$theme_url_default}
 theme_max_bytes=1048576
-theme_limit_unit=512
-if [ -n "${BASH_VERSION:-}" ]; then
-  theme_limit_unit=1024
-fi
 theme_limit_blocks=$((
-  (theme_max_bytes + theme_limit_unit - 1) / theme_limit_unit
+  (theme_max_bytes + 511) / 512
 ))
 modify_zshrc=1
 confirm_install=0

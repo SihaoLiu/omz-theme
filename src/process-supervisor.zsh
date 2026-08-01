@@ -134,7 +134,7 @@ if [ -n "$setsid_command" ]; then
   AI_CANDY_TIMEOUT_SUPERVISOR_PID=$$ \
     "$setsid_command" /usr/bin/env "$@" <&9 &
 else
-  set -m || exit 125
+  set -m 2>/dev/null || exit 125
   AI_CANDY_TIMEOUT_SUPERVISOR_PID=$$ /usr/bin/env "$@" <&9 &
 fi
 group_pid=$!

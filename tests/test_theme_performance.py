@@ -191,36 +191,78 @@ print -r -- "FIRST=${first} SECOND=${second}"
             result = run_zsh(
                 r"""
 source "$1"
-typeset -g PROBE_CALLS=0
-function _ai_candy_run_process_count_probe() {
-  (( PROBE_CALLS++ ))
-  builtin print -r -- "codex codex"
+typeset -gi STARTS=0
+typeset -gi PROBE_CALLS=0
+function _ai_candy_run_background_probe() {
+  (( ++PROBE_CALLS ))
+  return 1
+}
+function _ai_candy_start_registered_background_worker() {
+  [[ "$1" == _ai_candy_ai_process_count_update_worker ]] || return 71
+  (( ++STARTS ))
+  return 0
 }
 _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=$(( EPOCHSECONDS - 29 ))
 _ai_candy_refresh_ai_process_counts
-cached_calls="$PROBE_CALLS"
+cached_starts="$STARTS"
 _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 4 gemini 0 kimi 0)
 _AI_CANDY_AI_PROCESS_SNAPSHOT_TIME=1
-_AI_CANDY_AI_PROCESS_SNAPSHOT_ATTEMPT_TIME=1
-function _ai_candy_run_process_count_probe() {
-  builtin print -r -- called >> "$PROBE_LOG"
-  return 1
-}
 _ai_candy_refresh_ai_process_counts
 _ai_candy_refresh_ai_process_counts
-FAILED_PROBE_CALLS=$(command wc -l < "$PROBE_LOG")
-FAILED_PROBE_CALLS="${FAILED_PROBE_CALLS//[[:space:]]/}"
-print -r -- "TTL=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL} RETRY=${_AI_CANDY_AI_PROCESS_SNAPSHOT_RETRY_TTL} CACHED_CALLS=${cached_calls} FAILED_CALLS=${FAILED_PROBE_CALLS} FAILED_COUNT=${_AI_CANDY_AI_PROCESS_COUNTS[codex]} FAILED_TIME=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME}"
+print -r -- "TTL=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TTL} CACHED_STARTS=${cached_starts} STARTS=${STARTS} PROBES=${PROBE_CALLS} COUNT=${_AI_CANDY_AI_PROCESS_COUNTS[codex]} TIME=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME} REQUESTED=${#_AI_CANDY_REFRESH_REQUESTED}"
 """,
                 cache_home=root / "cache",
-                env={"PROBE_LOG": str(root / "probe.log")},
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            "TTL=30 RETRY=5 CACHED_CALLS=0 FAILED_CALLS=1 FAILED_COUNT=4 FAILED_TIME=1\n",
+            "TTL=30 CACHED_STARTS=0 STARTS=1 PROBES=0 "
+            "COUNT=4 TIME=1 REQUESTED=1\n",
             result.stdout,
         )
+
+    def test_ai_process_worker_counts_node_wrapped_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+function _ai_candy_acquire_background_lock() { return 0; }
+function _ai_candy_cache_lock_release() { return 0; }
+function _ai_candy_run_background_probe() {
+  builtin print -r -- "node node /opt/tools/bin/claude"
+  builtin print -r -- "node node /opt/tools/bin/codex"
+  builtin print -r -- "node node /opt/tools/bin/gemini"
+  builtin print -r -- "node node /opt/tools/bin/kimi"
+}
+function _ai_candy_cache_write() {
+  builtin print -r -- "SNAPSHOT=$2"
+}
+_ai_candy_ai_process_count_update_worker lock cache epoch
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex(result.stdout, r"^SNAPSHOT=1\|1\|1\|1\|[0-9]+\n$")
+
+    def test_smart_path_strips_literal_metacharacter_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_PROMPT_PATH_SEP_MODE=0
+_AI_CANDY_PP_CACHED_GIT_ROOT='/repo[1]'
+function _ai_candy_get_git_hierarchy() {
+  REPLY="/repo[1]${_AI_CANDY_GIT_HIERARCHY_SEP}/repo[1]/child${_AI_CANDY_GIT_HIERARCHY_SEP}"
+}
+_ai_candy_prepare_smart_path_context
+print -r -- "SEGMENTS=${(j:|:)_AI_CANDY_SMART_PATH_SEGMENTS}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("SEGMENTS=/repo[1]|child\n", result.stdout)
 
     def test_layout_identity_length_uses_no_external_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

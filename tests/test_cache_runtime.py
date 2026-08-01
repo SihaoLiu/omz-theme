@@ -12,6 +12,25 @@ from tests.theme_test_support import ROOT, THEME
 
 
 class CacheRuntimeTest(unittest.TestCase):
+    def test_cache_write_rejects_an_empty_path_without_a_cwd_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_write "" value
+write_status=$?
+artifact=absent
+[[ -e .lock.d.flock || -L .lock.d.flock ]] && artifact=present
+print -r -- "STATUS=${write_status} ARTIFACT=${artifact}"
+""",
+                cache_home=root / "cache",
+                cwd=root,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("STATUS=1 ARTIFACT=absent\n", result.stdout)
+
     def test_file_cache_round_trip_preserves_ksh_arrays(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_zsh(
@@ -1332,6 +1351,27 @@ print -r -- "READY=${_AI_CANDY_CACHE_READY}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("READY=0", result.stdout)
 
+    @unittest.skipUnless(os.geteuid() == 0, "changing directory ownership requires root")
+    def test_cache_directory_rejects_a_foreign_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            cache_dir = cache_home / "zsh-prompt"
+            cache_dir.mkdir(parents=True)
+            os.chown(cache_dir, 1, 1)
+            cache_dir.chmod(0o777)
+
+            result = run_zsh(
+                r"""
+source "$1"
+print -r -- "READY=${_AI_CANDY_CACHE_READY}"
+""",
+                cache_home=cache_home,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("READY=0\n", result.stdout)
+
     def test_refresh_clears_all_derived_cache_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1339,6 +1379,8 @@ print -r -- "READY=${_AI_CANDY_CACHE_READY}"
                 r"""
 source "$1"
 _ai_candy_cache_write "$_AI_CANDY_PUBLIC_IP_CACHE_FILE" "127.0.0.1|${EPOCHSECONDS}"
+_ai_candy_cache_write "$_AI_CANDY_AI_PROCESS_CACHE_FILE" "1|2|3|4|${EPOCHSECONDS}"
+print -r -- "PROCESS_BEFORE=$([[ -f $_AI_CANDY_AI_PROCESS_CACHE_FILE ]] && print present || print absent)"
 _ai_candy_cache_atomic_write_unlocked "$_AI_CANDY_CACHE_OPERATION_SEQUENCE_FILE" "0|7"
 _AI_CANDY_GH_AUTH_MEM_CACHE=1
 _AI_CANDY_GH_AUTH_MEM_CACHE_TIME=$EPOCHSECONDS
@@ -1347,6 +1389,8 @@ typeset -gA _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT
 _AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT[$PWD]=stale
 typeset -gA _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT
 _AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT[$PWD]=stale
+typeset -gA _AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT
+_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT[$PWD]=$(( EPOCHSECONDS + 3 ))
 _AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY[$PWD]=stale
 _AI_CANDY_GIT_CONFIG_GRAPH_CONTEXT_BY_KEY[$PWD]=stale
 _AI_CANDY_GIT_CONFIG_GRAPH_TIMEOUT_BY_KEY[$PWD]="9999999999|x7"
@@ -1360,6 +1404,8 @@ _ai_candy_prompt_refresh_all_caches >/dev/null
 print -r -- "IP=$([[ -f $_AI_CANDY_PUBLIC_IP_CACHE_FILE ]] && print present || print absent)"
 print -r -- "AUTH=${_AI_CANDY_GH_AUTH_MEM_CACHE:-empty}"
 print -r -- "PROCESS=${_AI_CANDY_AI_PROCESS_SNAPSHOT_TIME}"
+print -r -- "PROCESS_FILE=$([[ -f $_AI_CANDY_AI_PROCESS_CACHE_FILE ]] && print present || print absent)"
+print -r -- "ROOT_RETRIES=${#_AI_CANDY_GIT_ROOT_RETRY_AFTER_BY_CONTEXT}"
 print -r -- "REMOTE=${#_AI_CANDY_GIT_REMOTE_KEY_BY_CONTEXT}"
 print -r -- "OPTIONS=${#_AI_CANDY_GIT_OMZ_OPTIONS_BY_CONTEXT}"
 print -r -- "GRAPH_PATHS=${#_AI_CANDY_GIT_CONFIG_GRAPH_PATHS_BY_KEY}"
@@ -1376,8 +1422,11 @@ print -r -- \
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("IP=absent", result.stdout)
+        self.assertIn("PROCESS_BEFORE=present", result.stdout)
         self.assertIn("AUTH=empty", result.stdout)
         self.assertIn("PROCESS=0", result.stdout)
+        self.assertIn("PROCESS_FILE=absent", result.stdout)
+        self.assertIn("ROOT_RETRIES=0", result.stdout)
         self.assertIn("REMOTE=0", result.stdout)
         self.assertIn("OPTIONS=0", result.stdout)
         self.assertIn("GRAPH_PATHS=0", result.stdout)

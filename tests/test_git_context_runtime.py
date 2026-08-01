@@ -1169,6 +1169,42 @@ builtin print -r -- \
             result.stdout,
         )
 
+    def test_git_root_timeout_uses_retry_backoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            probe_log = root / "root-probes.log"
+            configure_repository(repo)
+
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_SCHEDULE_PERSISTENCE=0
+functions[_real_local_probe]="${functions[_ai_candy_run_local_probe]}"
+function _ai_candy_run_local_probe() {
+  if [[ "$*" == "git rev-parse --show-toplevel" ]]; then
+    builtin print -r -- probe >> "$ROOT_PROBE_LOG"
+    return 124
+  fi
+  _real_local_probe "$@"
+}
+_AI_CANDY_PROMPT_RENDER_ID=1
+_ai_candy_get_cached_git_root
+first="$REPLY"
+(( ++_AI_CANDY_PROMPT_RENDER_ID ))
+_ai_candy_get_cached_git_root
+second="$REPLY"
+probes=("${(@f)$(<"$ROOT_PROBE_LOG")}")
+print -r -- "ROOTS=${first}->${second} PROBES=${#probes}"
+""",
+                cache_home=root / "cache",
+                cwd=repo,
+                env={"ROOT_PROBE_LOG": str(probe_log)},
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("ROOTS=NOT_GIT->NOT_GIT PROBES=1\n", result.stdout)
+
     def test_external_kill_after_is_classified_as_git_timeout(self) -> None:
         external_timeout = shutil.which("timeout")
         if external_timeout is None:

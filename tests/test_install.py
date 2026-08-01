@@ -55,11 +55,7 @@ class InstallerTest(unittest.TestCase):
             "done\n"
             '[ "$secure_protocol$secure_redirect$connect_timeout$total_timeout$max_filesize" = 11111 ] || exit 64\n'
             'file_limit=$(ulimit -f)\n'
-            'if [ -n "${BASH_VERSION:-}" ]; then\n'
-            '  [ "$file_limit" -le 1024 ] || exit 64\n'
-            'else\n'
-            '  [ "$file_limit" -le 2048 ] || exit 64\n'
-            'fi\n'
+            '[ "$file_limit" -eq 2048 ] || exit 64\n'
             'printf \'%s\\n\' "$url" > "$CURL_LOG"\n'
             'if [ "${FAIL_DOWNLOAD:-0}" = 1 ]; then\n'
             '  printf partial > "$output"\n'
