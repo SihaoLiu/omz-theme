@@ -246,6 +246,108 @@ builtin print -r -- \
             r"BACKEND=sqlite OWNER=sqlite FILE=absent\n$",
         )
 
+    def test_runtime_sqlite_corruption_is_recreated_in_place(self) -> None:
+        sqlite3 = shutil.which("sqlite3")
+        if sqlite3 is None:
+            self.skipTest("sqlite3 is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_home = root / "cache"
+            seed = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_persist_write git_root key old "$EPOCHSECONDS" || return 70
+command sqlite3 "$_AI_CANDY_CACHE_DB_FILE" \
+  'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null || return 71
+builtin print -r -- "$_AI_CANDY_CACHE_DB_FILE"
+""",
+                cache_home=cache_home,
+            )
+            self.assertEqual(0, seed.returncode, seed.stderr)
+            database = Path(seed.stdout.strip())
+            page_size_result = subprocess.run(
+                [sqlite3, str(database), "PRAGMA page_size;"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            page_size = int(page_size_result.stdout.strip())
+            self.assertGreaterEqual(database.stat().st_size, page_size * 2)
+            invalid_page = b"invalid-sqlite-page"
+            with database.open("r+b") as stream:
+                stream.seek(page_size)
+                stream.write(
+                    (invalid_page * (page_size // len(invalid_page) + 1))[:page_size]
+                )
+            for suffix in ("-journal", "-shm", "-wal"):
+                sidecar = Path(f"{database}{suffix}")
+                if sidecar.exists() or sidecar.is_symlink():
+                    sidecar.unlink()
+
+            result = run_zsh(
+                r"""
+source "$1"
+_ai_candy_cache_persist_read git_root key || true
+integrity=$(command sqlite3 "$_AI_CANDY_CACHE_DB_FILE" \
+  'PRAGMA quick_check;' 2>/dev/null)
+if _ai_candy_cache_persist_write git_root key recovered "$EPOCHSECONDS"; then
+  write_state=ok
+else
+  write_state=failed
+fi
+if _ai_candy_cache_persist_read git_root key; then
+  read_state=ok
+  value="$REPLY"
+else
+  read_state=missing
+  value="${REPLY:-empty}"
+fi
+builtin print -r -- \
+  "RECOVERY=${integrity} WRITE=${write_state} READ=${read_state} VALUE=${value} BACKEND=${_AI_CANDY_CACHE_BACKEND}"
+""",
+                cache_home=cache_home,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex(
+            result.stdout,
+            r"^RECOVERY=ok WRITE=ok READ=ok VALUE=recovered\|[0-9]+ "
+            r"BACKEND=sqlite\n$",
+        )
+
+    def test_sqlite_recovery_keeps_database_if_sidecar_removal_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+builtin print -r -- database >| "$_AI_CANDY_CACHE_DB_FILE"
+builtin print -r -- wal >| "${_AI_CANDY_CACHE_DB_FILE}-wal"
+typeset -ga removals=()
+function _ai_candy_cache_remove_path() {
+  removals+=("${1:t}")
+  [[ "$1" != "${_AI_CANDY_CACHE_DB_FILE}-wal" ]] || return 1
+  /bin/rm -f "$1"
+}
+if _ai_candy_cache_remove_sqlite_artifacts_unlocked; then
+  state=ok
+else
+  state=failed
+fi
+db_state=$([[ -f "$_AI_CANDY_CACHE_DB_FILE" ]] && print present || print absent)
+builtin print -r -- \
+  "STATE=${state} DB=${db_state} REMOVALS=${(j:,:)removals}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "STATE=failed DB=present REMOVALS=prompt_cache.db-wal\n",
+            result.stdout,
+        )
+
     def test_transient_sqlite_failure_preserves_the_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

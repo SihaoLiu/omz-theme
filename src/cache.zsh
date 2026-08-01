@@ -1226,32 +1226,37 @@ function _ai_candy_cache_schedule_operation() {
 function _ai_candy_cache_remove_sqlite_artifacts_unlocked() {
   local artifact
   for artifact in \
-    "$_AI_CANDY_CACHE_DB_FILE" \
-    "${_AI_CANDY_CACHE_DB_FILE}-journal" \
+    "${_AI_CANDY_CACHE_DB_FILE}-wal" \
     "${_AI_CANDY_CACHE_DB_FILE}-shm" \
-    "${_AI_CANDY_CACHE_DB_FILE}-wal"; do
+    "${_AI_CANDY_CACHE_DB_FILE}-journal" \
+    "$_AI_CANDY_CACHE_DB_FILE"; do
     [[ -e "$artifact" || -L "$artifact" ]] || continue
     [[ -f "$artifact" || -L "$artifact" ]] || return 1
     _ai_candy_cache_remove_path "$artifact" || return 1
   done
 }
 
-function _ai_candy_cache_initialize_sqlite_unlocked() {
+function _ai_candy_cache_execute_sqlite_unlocked() {
+  local sql="$1"
   REPLY=""
   local output=""
   output=$(umask 077; _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-    sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
+    sqlite3 -batch -noheader -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
+    "$sql" 2>&1)
+  local sqlite_status=$?
+  REPLY="$output"
+  return "$sqlite_status"
+}
+
+function _ai_candy_cache_initialize_sqlite_unlocked() {
+  _ai_candy_cache_execute_sqlite_unlocked \
     'PRAGMA journal_mode=WAL;
      CREATE TABLE IF NOT EXISTS cache (
        key TEXT PRIMARY KEY,
        value TEXT NOT NULL,
        timestamp INTEGER NOT NULL
      );
-     CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);' \
-    2>&1)
-  local init_status=$?
-  REPLY="$output"
-  return "$init_status"
+     CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache(timestamp);'
 }
 
 function _ai_candy_cache_sqlite_error_is_corruption() {
@@ -1260,6 +1265,34 @@ function _ai_candy_cache_sqlite_error_is_corruption() {
      "$error_output" == *'database disk image is malformed'* || \
      "$error_output" == *'malformed database schema'* || \
      "$error_output" == *'unsupported file format'* ]]
+}
+
+function _ai_candy_cache_recreate_sqlite_unlocked() {
+  [[ ! -L "$_AI_CANDY_CACHE_DB_FILE" && \
+     ( ! -e "$_AI_CANDY_CACHE_DB_FILE" || -f "$_AI_CANDY_CACHE_DB_FILE" ) ]] || return 1
+  _ai_candy_cache_remove_sqlite_artifacts_unlocked || return 1
+  _ai_candy_cache_initialize_sqlite_unlocked || return 1
+  _ai_candy_chmod 600 "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null
+  return 0
+}
+
+function _ai_candy_cache_execute_sqlite_with_recovery_unlocked() {
+  local sql="$1"
+  local sqlite_status=0
+  local sqlite_error=""
+
+  if _ai_candy_cache_execute_sqlite_unlocked "$sql"; then
+    return 0
+  else
+    sqlite_status=$?
+  fi
+  sqlite_error="$REPLY"
+  if ! _ai_candy_cache_sqlite_error_is_corruption "$sqlite_error"; then
+    REPLY="$sqlite_error"
+    return "$sqlite_status"
+  fi
+  _ai_candy_cache_recreate_sqlite_unlocked || return 1
+  _ai_candy_cache_execute_sqlite_unlocked "$sql"
 }
 
 function _ai_candy_cache_backend_init_unlocked() {
@@ -1322,8 +1355,7 @@ function _ai_candy_cache_backend_init_unlocked() {
       local sqlite_error="$REPLY"
       [[ -f "$_AI_CANDY_CACHE_DB_FILE" && ! -L "$_AI_CANDY_CACHE_DB_FILE" ]] || return 1
       _ai_candy_cache_sqlite_error_is_corruption "$sqlite_error" || return 1
-      _ai_candy_cache_remove_sqlite_artifacts_unlocked || return 1
-      _ai_candy_cache_initialize_sqlite_unlocked || return 1
+      _ai_candy_cache_recreate_sqlite_unlocked || return 1
     fi
     _AI_CANDY_CACHE_BACKEND="sqlite"
     _AI_CANDY_CACHE_BACKEND_RETRY_AFTER=0
@@ -1380,10 +1412,9 @@ function _ai_candy_cache_persist_read_unlocked() {
   _ai_candy_cache_backend_init_unlocked || return 1
 
   if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
-    raw_output=$(_ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -noheader -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
-      "SELECT hex(value) || '|' || timestamp FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT) LIMIT 1;" \
-      2>/dev/null) || return 1
+    _ai_candy_cache_execute_sqlite_with_recovery_unlocked \
+      "SELECT hex(value) || '|' || timestamp FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT) LIMIT 1;" || return 1
+    raw_output="$REPLY"
     [[ -n "$raw_output" ]] || return 1
     hex_value="${raw_output%%|*}"
     timestamp="${raw_output#*|}"
@@ -1427,12 +1458,10 @@ function _ai_candy_cache_persist_write_unlocked() {
   hex_value="$REPLY"
 
   if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
+    _ai_candy_cache_execute_sqlite_with_recovery_unlocked \
       "INSERT OR REPLACE INTO cache (key, value, timestamp)
        VALUES (CAST(X'${hex_key}' AS TEXT), CAST(X'${hex_value}' AS TEXT), ${timestamp})
-       ;" \
-      &>/dev/null
+       ;"
   else
     local cache_file="${_AI_CANDY_CACHE_DIR}/${cache_name}_cache"
     local prefix="${hex_key}|"
@@ -1450,10 +1479,8 @@ function _ai_candy_cache_persist_delete_unlocked() {
   local hex_key="$REPLY"
 
   if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
-      "DELETE FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT);" \
-      &>/dev/null
+    _ai_candy_cache_execute_sqlite_with_recovery_unlocked \
+      "DELETE FROM cache WHERE key = CAST(X'${hex_key}' AS TEXT);"
   else
     local cache_file="${_AI_CANDY_CACHE_DIR}/${cache_name}_cache"
     _ai_candy_cache_remove_line_by_prefix "$cache_file" "${hex_key}|"
@@ -1653,9 +1680,8 @@ function _ai_candy_cache_cleanup_unlocked() {
   local -a simple_cache_files
 
   if [[ "$_AI_CANDY_CACHE_BACKEND" == "sqlite" ]]; then
-    _ai_candy_run_with_timeout "$_AI_CANDY_CACHE_IO_TIMEOUT" \
-      sqlite3 -batch -cmd '.timeout 500' "$_AI_CANDY_CACHE_DB_FILE" \
-      "DELETE FROM cache WHERE timestamp < ${cutoff} OR timestamp > ${current_time};" &>/dev/null
+    _ai_candy_cache_execute_sqlite_with_recovery_unlocked \
+      "DELETE FROM cache WHERE timestamp < ${cutoff} OR timestamp > ${current_time};"
   fi
 
   simple_cache_files=(

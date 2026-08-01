@@ -986,6 +986,42 @@ print -r -- "OUTPUT=${output}"
         self.assertIn(f"COMMAND={trusted_helper}\n", result.stdout)
         self.assertIn("OUTPUT=trusted\n", result.stdout)
 
+    def test_tool_status_does_not_execute_relative_path_du(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            relative_bin = root / "bin"
+            relative_bin.mkdir()
+            marker = root / "du-executed"
+            fake_du = relative_bin / "du"
+            fake_du.write_text(
+                "#!/bin/sh\n"
+                ": > \"$DU_MARKER\"\n"
+                "printf '%s\\n' '1K cache'\n",
+                encoding="ascii",
+            )
+            fake_du.chmod(0o755)
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_CACHE_BACKEND=sqlite
+builtin print -r -- cache >| "$_AI_CANDY_CACHE_DB_FILE"
+_AI_CANDY_HAS_GH=0
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_AI_CANDY_HAS_GEMINI=0
+_AI_CANDY_HAS_KIMI=0
+_ai_candy_prompt_tool_status >/dev/null
+""",
+                cache_home=root / "cache",
+                cwd=root,
+                env={
+                    "DU_MARKER": str(marker),
+                    "PATH": f"bin{os.pathsep}/usr/bin{os.pathsep}/bin",
+                },
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertFalse(marker.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -495,9 +495,16 @@ function _ai_candy_prompt_tool_status() {
 
   case "$_AI_CANDY_CACHE_BACKEND" in
     sqlite)
-      local db_info=$(command du -h "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null)
-      local db_size="${db_info%%[[:space:]]*}"
-      _ai_candy_tool_status_line "    Persistent cache: ${CHECK} SQLite (${db_size:-0K})"
+      local -a db_metadata
+      local db_size="0B"
+      if (( _AI_CANDY_HAS_ZSH_STAT_BUILTIN )) && \
+         [[ -f "$_AI_CANDY_CACHE_DB_FILE" && ! -L "$_AI_CANDY_CACHE_DB_FILE" ]] && \
+         builtin zstat -A db_metadata +size -- \
+           "$_AI_CANDY_CACHE_DB_FILE" 2>/dev/null && \
+         [[ "${db_metadata[1]-}" == <-> ]]; then
+        db_size="${db_metadata[1]}B"
+      fi
+      _ai_candy_tool_status_line "    Persistent cache: ${CHECK} SQLite (${db_size})"
       ;;
     file)
       _ai_candy_tool_status_line "    Persistent cache: ${CHECK} Portable file"
