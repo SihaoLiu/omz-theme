@@ -8525,7 +8525,7 @@ _ai_candy_gh_pr_update_cache() {
     "${_AI_CANDY_NETWORK_TIMEOUT:-5}" "$persistence_epoch"
 }
 
-# Combined optional-tool status uses compact or delimited display formats.
+# Emoji badges use comma-space separators; text badges use pipe separators.
 # Direct-assignment version: writes result to _AI_CANDY_PP_AI_STATUS global variable
 # Plaintext mode also generates _AI_CANDY_PP_AI_STATUS_LONG with full names.
 # PERFORMANCE: Avoids subshells by using direct variable assignment
@@ -8757,8 +8757,8 @@ function _ai_candy_compute_ai_tools_direct() {
     _ai_candy_ai_tools_update_caches "$_AI_CANDY_PROMPT_NETWORK_MODE" "${refresh_jobs[@]}"
 
   if (( _AI_CANDY_PROMPT_EMOJI_MODE )); then
-    ai_status="${(j::)short_results}"
-    ai_status_long="${(j::)long_results}"
+    ai_status="${(j:, :)short_results}"
+    ai_status_long="${(j:, :)long_results}"
   else
     ai_status="${(j:|:)short_results}"
     ai_status_long="${(j:|:)long_results}"

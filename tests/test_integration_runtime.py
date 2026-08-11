@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -221,6 +222,74 @@ print -r -- "NETWORK=$([[ -f $NETWORK_LOG ]] && print yes || print no)"
         self.assertIn("1.2.3", result.stdout)
         self.assertIn("LOCAL=yes", result.stdout)
         self.assertIn("NETWORK=no", result.stdout)
+
+    def test_emoji_ai_tools_use_comma_space_between_complete_badges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_zsh(
+                r"""
+source "$1"
+_AI_CANDY_PROMPT_NETWORK_MODE=1
+_AI_CANDY_PROMPT_AI_MODE=1
+_AI_CANDY_PROMPT_EMOJI_MODE=1
+_AI_CANDY_AI_TOOLS_DETECTED=1
+_AI_CANDY_HAS_CLAUDE=1
+_AI_CANDY_HAS_CODEX=1
+_AI_CANDY_HAS_GEMINI=1
+_AI_CANDY_HAS_KIMI=1
+separator=$'\x1f'
+builtin print -r -- \
+  "2.1.227${separator}2.1.227${separator}${EPOCHSECONDS}" >| \
+  "$_AI_CANDY_CLAUDE_CACHE_FILE"
+builtin print -r -- \
+  "0.147.0${separator}0.147.0${separator}${EPOCHSECONDS}" >| \
+  "$_AI_CANDY_CODEX_CACHE_FILE"
+builtin print -r -- \
+  "1.0.0${separator}1.0.1${separator}${EPOCHSECONDS}" >| \
+  "$_AI_CANDY_GEMINI_CACHE_FILE"
+builtin print -r -- \
+  "0.34.0${separator}0.34.0${separator}${EPOCHSECONDS}" >| \
+  "$_AI_CANDY_KIMI_CACHE_FILE"
+function _ai_candy_refresh_ai_process_counts() {
+  _AI_CANDY_AI_PROCESS_COUNTS=(claude 0 codex 1 gemini 0 kimi 0)
+}
+
+_ai_candy_compute_ai_tools_direct
+builtin print -P -r -- "ALL=${_AI_CANDY_PP_AI_STATUS}"
+
+_AI_CANDY_HAS_GEMINI=0
+_ai_candy_compute_ai_tools_direct
+builtin print -P -r -- "SPARSE=${_AI_CANDY_PP_AI_STATUS}"
+
+_AI_CANDY_HAS_CLAUDE=0
+_AI_CANDY_HAS_CODEX=0
+_ai_candy_compute_ai_tools_direct
+builtin print -P -r -- "SINGLE=${_AI_CANDY_PP_AI_STATUS}"
+
+_AI_CANDY_PROMPT_EMOJI_MODE=0
+_AI_CANDY_HAS_CLAUDE=1
+_AI_CANDY_HAS_CODEX=1
+_ai_candy_compute_ai_tools_direct
+builtin print -P -r -- "TEXT=${_AI_CANDY_PP_AI_STATUS_LONG}"
+""",
+                cache_home=Path(tmp) / "cache",
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        ansi_escape = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+        visible_output = ansi_escape.sub("", result.stdout)
+        claude_icon = "\uf069"
+        codex_icon = "\ue27f"
+        gemini_icon = "\uf1a0"
+        kimi_icon = "\uf186"
+        self.assertEqual(
+            f"ALL=[{claude_icon} 2.1.227, {codex_icon} 0.147.0(x1), "
+            f"{gemini_icon} 1.0.0*, {kimi_icon} 0.34.0]\n"
+            f"SPARSE=[{claude_icon} 2.1.227, {codex_icon} 0.147.0(x1), "
+            f"{kimi_icon} 0.34.0]\n"
+            f"SINGLE=[{kimi_icon} 0.34.0]\n"
+            "TEXT=[Claude:2.1.227|Codex(1):0.147.0|Kimi:0.34.0]\n",
+            visible_output,
+        )
 
     def test_tool_update_marker_requires_a_newer_remote_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
